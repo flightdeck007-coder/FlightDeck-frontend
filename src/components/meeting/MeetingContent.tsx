@@ -1,0 +1,222 @@
+'use client';
+
+import { CheckCircle2, Circle, Plus, User } from 'lucide-react';
+
+interface MeetingContentProps {
+  sectionId: string;
+  sectionTitle: string;
+}
+
+// Demo data for different sections
+const demoData: Record<string, any> = {
+  segue: {
+    type: 'text',
+    content: 'Welcome to the Level 10 Meeting. Let\'s start with a quick check-in.',
+  },
+  scorecard: {
+    type: 'metrics',
+    items: [
+      { name: 'Revenue', value: '$125K', trend: '+12%', status: 'good' },
+      { name: 'New Customers', value: '24', trend: '+8%', status: 'good' },
+      { name: 'Support Tickets', value: '18', trend: '-5%', status: 'good' },
+      { name: 'Team Satisfaction', value: '8.5/10', trend: '+0.5', status: 'good' },
+    ],
+  },
+  rocks: {
+    type: 'list',
+    items: [
+      { id: '1', title: 'Launch Q4 Marketing Campaign', owner: 'Sarah', status: 'on_track', dueDate: '2024-12-31' },
+      { id: '2', title: 'Complete Product Redesign', owner: 'Mike', status: 'on_track', dueDate: '2024-11-15' },
+      { id: '3', title: 'Hire 3 New Engineers', owner: 'Lisa', status: 'off_track', dueDate: '2024-10-30' },
+    ],
+  },
+  todos: {
+    type: 'list',
+    items: [
+      { id: '1', title: 'Update resources page', assignee: 'John', status: 'open', created: 'Jul 16' },
+      { id: '2', title: 'Client Calls', assignee: 'Sarah', status: 'open', created: 'Sep 13' },
+      { id: '3', title: 'Review roles and responsibilities', assignee: 'Mike', status: 'done', created: 'Sep 24' },
+      { id: '4', title: 'Website Updates', assignee: 'Lisa', status: 'open', created: 'Oct 1' },
+    ],
+  },
+  issues: {
+    type: 'list',
+    items: [
+      { id: '1', title: 'Update resources page', priority: 5, owner: 'John', created: 'Jul 16', status: 'open' },
+      { id: '2', title: 'Client Calls', priority: 3, owner: 'Sarah', created: 'Sep 13', status: 'open' },
+      { id: '3', title: 'Review roles and responsibilities', priority: 2, owner: 'Mike', created: 'Sep 24', status: 'resolved' },
+      { id: '4', title: 'Website Updates', priority: 4, owner: 'Lisa', created: 'Oct 1', status: 'open' },
+    ],
+  },
+  conclude: {
+    type: 'text',
+    content: 'Meeting concluded. All action items have been assigned and documented.',
+  },
+};
+
+export function MeetingContent({ sectionId, sectionTitle }: MeetingContentProps) {
+  const data = demoData[sectionId.toLowerCase()] || demoData.segue;
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="p-6 border-b border-border bg-card">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-foreground">{sectionTitle}</h2>
+          <div className="flex items-center gap-2">
+            <select className="px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground">
+              <option>Leadership Team</option>
+            </select>
+            <label className="flex items-center gap-2 text-sm text-foreground/70">
+              <input type="checkbox" className="rounded" />
+              Archive
+            </label>
+          </div>
+        </div>
+        
+        {/* Action Bar */}
+        <div className="flex items-center gap-2">
+          <button className="p-2 border border-border rounded-md hover:bg-accent transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+          <button className="p-2 border border-border rounded-md hover:bg-accent transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </button>
+          <input
+            type="text"
+            placeholder={`Search ${sectionTitle}...`}
+            className="flex-1 px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground"
+          />
+          <button className="px-4 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm">
+            Create
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-6">
+        {data.type === 'text' && (
+          <div className="bg-card border border-border rounded-lg p-6">
+            <p className="text-foreground/80">{data.content}</p>
+          </div>
+        )}
+
+        {data.type === 'metrics' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {data.items.map((item: any, index: number) => (
+              <div key={index} className="bg-card border border-border rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-medium text-foreground">{item.name}</h3>
+                  <span className={`text-xs px-2 py-1 rounded ${
+                    item.status === 'good' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                  }`}>
+                    {item.trend}
+                  </span>
+                </div>
+                <p className="text-2xl font-bold text-foreground">{item.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {data.type === 'list' && (
+          <div>
+            {/* Tabs for Issues */}
+            {sectionId === 'issues' && (
+              <div className="flex gap-2 mb-4 border-b border-border">
+                <button className="px-4 py-2 text-sm font-medium text-primary border-b-2 border-primary">
+                  Short-Term
+                </button>
+                <button className="px-4 py-2 text-sm font-medium text-foreground/70 hover:text-foreground">
+                  Long-Term
+                </button>
+              </div>
+            )}
+
+            {/* List Items */}
+            <div className="space-y-2">
+              {data.items.map((item: any) => (
+                <div
+                  key={item.id}
+                  className="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition-colors"
+                >
+                  <div className="flex items-start gap-4">
+                    {/* Checkbox */}
+                    <div className="pt-1">
+                      {item.status === 'done' || item.status === 'resolved' ? (
+                        <CheckCircle2 className="w-5 h-5 text-green-600" />
+                      ) : (
+                        <Circle className="w-5 h-5 text-foreground/30" />
+                      )}
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <h3 className="font-medium text-foreground">{item.id}. {item.title}</h3>
+                        {item.priority && (
+                          <span className="text-sm text-foreground/70">{item.priority}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-foreground/60">
+                        {item.owner && (
+                          <div className="flex items-center gap-1">
+                            <User className="w-3 h-3" />
+                            <span>{item.owner}</span>
+                          </div>
+                        )}
+                        {item.assignee && (
+                          <div className="flex items-center gap-1">
+                            <User className="w-3 h-3" />
+                            <span>{item.assignee}</span>
+                          </div>
+                        )}
+                        {item.created && <span>Created: {item.created}</span>}
+                        {item.dueDate && <span>Due: {item.dueDate}</span>}
+                        {item.status && (
+                          <span className={`px-2 py-0.5 rounded text-xs ${
+                            item.status === 'on_track' ? 'bg-green-100 text-green-700' :
+                            item.status === 'off_track' ? 'bg-red-100 text-red-700' :
+                            item.status === 'done' || item.status === 'resolved' ? 'bg-blue-100 text-blue-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {item.status.replace('_', ' ').toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Add Button */}
+            <button className="mt-4 flex items-center gap-2 px-4 py-2 border border-dashed border-border rounded-lg text-foreground/70 hover:text-foreground hover:border-primary/50 transition-colors">
+              <Plus className="w-4 h-4" />
+              {sectionId === 'issues' ? 'Add Issue' : sectionId === 'todos' ? 'Add To-Do' : 'Add Rock'}
+            </button>
+
+            {/* Pagination */}
+            <div className="mt-6 flex items-center justify-between text-sm text-foreground/70">
+              <div className="flex items-center gap-2">
+                <span>Items per page:</span>
+                <select className="px-2 py-1 border border-border rounded bg-background">
+                  <option>50</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <span>1-{data.items.length} of {data.items.length}</span>
+                <button className="p-1 hover:bg-accent rounded">←</button>
+                <button className="p-1 hover:bg-accent rounded">→</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

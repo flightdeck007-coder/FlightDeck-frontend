@@ -1,0 +1,100 @@
+'use client';
+
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { authService, AuthResponse } from '@/lib/api/auth.service';
+import { ROUTES } from '@/lib/constants/routes';
+
+interface User {
+  id: string;
+  email: string;
+  name?: string;
+}
+
+interface AuthContextType {
+  user: User | null;
+  token: string | null;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, name?: string) => Promise<void>;
+  logout: () => void;
+  isLoading: boolean;
+  isAuthenticated: boolean;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Check for existing auth on mount
+    const storedToken = authService.getToken();
+    const storedUser = authService.getCurrentUser();
+    
+    if (storedToken && storedUser) {
+      setToken(storedToken);
+      setUser(storedUser);
+    }
+    setIsLoading(false);
+  }, []);
+
+  const login = async (email: string, password: string) => {
+    const response: AuthResponse = await authService.login({ email, password });
+    setToken(response.access_token);
+    setUser(response.user);
+    
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('token', response.access_token);
+      localStorage.setItem('user', JSON.stringify(response.user));
+      // Also set cookie for middleware
+      document.cookie = `token=${response.access_token}; path=/; max-age=${7 * 24 * 60 * 60}`;
+    }
+  };
+
+  const register = async (email: string, password: string, name?: string) => {
+    const response: AuthResponse = await authService.register({ email, password, name });
+    setToken(response.access_token);
+    setUser(response.user);
+    
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('token', response.access_token);
+      localStorage.setItem('user', JSON.stringify(response.user));
+      // Also set cookie for middleware
+      document.cookie = `token=${response.access_token}; path=/; max-age=${7 * 24 * 60 * 60}`;
+    }
+  };
+
+  const logout = () => {
+    authService.logout();
+    setToken(null);
+    setUser(null);
+    if (typeof window !== 'undefined') {
+      window.location.href = ROUTES.LOGIN;
+    }
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        login,
+        register,
+        logout,
+        isLoading,
+        isAuthenticated: !!token && !!user,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}
