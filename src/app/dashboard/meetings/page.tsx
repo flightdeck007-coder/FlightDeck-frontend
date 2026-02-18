@@ -5,29 +5,52 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useRouter } from 'next/navigation';
 import { ROUTES } from '@/lib/constants/routes';
 import { meetingsService, Meeting } from '@/lib/api/meetings.service';
+import { teamsService, Team } from '@/lib/api/teams.service';
 import { Calendar, Users, Clock } from 'lucide-react';
 
 export default function MeetingsPage() {
   const router = useRouter();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
-
-  // For now, use a demo organizationId - in real app, get from user context
-  const organizationId = 'demo-org-id';
+  const [organizationId, setOrganizationId] = useState<string>('');
+  const [error, setError] = useState<string>('');
+  const [orgRole, setOrgRole] = useState<string | null>(null);
 
   useEffect(() => {
-    loadMeetings();
+    const storedOrgId = typeof window !== 'undefined' ? localStorage.getItem('organizationId') : null;
+    const storedRole = typeof window !== 'undefined' ? localStorage.getItem('organizationRole') : null;
+    const storedTeamId = typeof window !== 'undefined' ? localStorage.getItem('currentTeamId') : null;
+    
+    if (storedOrgId) {
+      setOrganizationId(storedOrgId);
+      if (storedRole) {
+        setOrgRole(storedRole);
+      }
+      void loadTeamsAndMeetings(storedOrgId, storedTeamId);
+    } else {
+      setIsLoading(false);
+    }
   }, []);
 
-  const loadMeetings = async () => {
+  const loadTeamsAndMeetings = async (orgId: string, preferredTeamId: string | null = null) => {
     try {
       setIsLoading(true);
-      // For demo, we'll use sample data if API fails
-      try {
-        const data = await meetingsService.findAll(organizationId);
+      setError('');
+      const teamList = await teamsService.list(orgId);
+      setTeams(teamList);
+
+      // Use preferred team ID if available, otherwise use first team
+      const teamId = preferredTeamId && teamList.find((t) => t.id === preferredTeamId)?.id 
+        ? preferredTeamId 
+        : teamList[0]?.id || '';
+      setSelectedTeamId(teamId);
+
+      if (teamId) {
+        const data = await meetingsService.findAll(orgId, teamId);
         setMeetings(data);
-      } catch (error) {
-        // Use demo meetings if API not ready
+      } else {
         setMeetings([]);
       }
     } finally {
@@ -35,10 +58,48 @@ export default function MeetingsPage() {
     }
   };
 
-  const handleStartMeeting = () => {
-    // For now, navigate to a sample meeting
-    // In real app, create meeting first then navigate
-    router.push(ROUTES.MEETING('sample-123'));
+  const handleStartMeeting = async () => {
+    if (!organizationId) {
+      setError('Set a current organization first (Dashboard → Organizations).');
+      return;
+    }
+    if (!selectedTeamId) {
+      setError('Create/select a team first (Dashboard → Teams).');
+      return;
+    }
+
+    try {
+      setError('');
+      const meeting = await meetingsService.create(organizationId, {
+        teamId: selectedTeamId,
+        meetingSeriesName: 'Weekly L10',
+        scheduledAt: new Date().toISOString(),
+      });
+      // refresh list
+      const updated = await meetingsService.findAll(organizationId, selectedTeamId);
+      setMeetings(updated);
+      router.push(ROUTES.MEETING(meeting.id));
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Failed to start meeting');
+    }
+  };
+
+  const handleTeamChange = async (teamId: string) => {
+    setSelectedTeamId(teamId);
+    if (typeof window !== 'undefined' && teamId) {
+      localStorage.setItem('currentTeamId', teamId);
+    }
+    if (!organizationId || !teamId) return;
+    try {
+      setIsLoading(true);
+      setError('');
+      const data = await meetingsService.findAll(organizationId, teamId);
+      setMeetings(data);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Failed to load meetings');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -56,14 +117,50 @@ export default function MeetingsPage() {
       <div className="p-8">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-semibold text-foreground">Meetings</h1>
-          <button
-            onClick={handleStartMeeting}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors flex items-center gap-2"
-          >
-            <Calendar className="w-4 h-4" />
-            Start a Meeting
-          </button>
+          {orgRole === 'ADMIN' || orgRole === 'MANAGER' ? (
+            <button
+              onClick={handleStartMeeting}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors flex items-center gap-2"
+            >
+              <Calendar className="w-4 h-4" />
+              Start a Meeting
+            </button>
+          ) : (
+            <span className="text-sm text-foreground/60">
+              Only Admins/Managers can start meetings.
+            </span>
+          )}
         </div>
+
+        {/* Team selector - all roles see their team(s) and meetings for that team */}
+        <div className="mb-4 flex flex-col gap-2">
+          <div className="flex flex-col md:flex-row md:items-center gap-3">
+            <span className="text-sm text-foreground/70">Team:</span>
+            <select
+              value={selectedTeamId}
+              onChange={(e) => void handleTeamChange(e.target.value)}
+              className="px-3 py-2 border border-border rounded-md bg-background text-foreground max-w-sm"
+            >
+              <option value="">Select team</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-foreground/60">
+            {orgRole === 'ADMIN' || orgRole === 'MANAGER'
+              ? 'You can create, run, and end meetings. Members can view history and join.'
+              : 'You can view meeting history and join scheduled meetings for your team.'}
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 border border-red-200 bg-red-50 text-sm text-red-700 rounded">
+            {error}
+          </div>
+        )}
 
         {isLoading ? (
           <div className="bg-card border border-border rounded-lg p-6">
@@ -72,7 +169,10 @@ export default function MeetingsPage() {
         ) : meetings.length === 0 ? (
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-foreground/70 text-center py-8">
-              No meetings yet. Click "Start a Meeting" to begin an L10-style meeting.
+              No meetings yet for this team.
+              {orgRole === 'ADMIN' || orgRole === 'MANAGER'
+                ? ' Click "Start a Meeting" to begin an L10-style meeting.'
+                : ' When your admin or manager starts one, it will appear here and you can join.'}
             </p>
           </div>
         ) : (

@@ -4,6 +4,8 @@ export interface RegisterDto {
   email: string;
   password: string;
   name?: string;
+  organizationInviteCode?: string;
+  organizationName?: string;
 }
 
 export interface LoginDto {
@@ -18,6 +20,12 @@ export interface AuthResponse {
     email: string;
     name?: string;
   };
+  organization?: {
+    id: string;
+    name: string;
+    inviteCode: string;
+  } | null;
+  organizationRole?: 'ADMIN' | 'MANAGER' | 'MEMBER' | null;
 }
 
 export const authService = {
@@ -53,5 +61,15 @@ export const authService = {
       return localStorage.getItem('token');
     }
     return null;
+  },
+
+  validateInviteCode: async (code: string) => {
+    // Public endpoint, no auth token needed
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+    const response = await fetch(`${apiUrl}/organizations/public/invite/${code}`);
+    if (!response.ok) {
+      throw new Error('Invalid invite code');
+    }
+    return response.json();
   },
 };

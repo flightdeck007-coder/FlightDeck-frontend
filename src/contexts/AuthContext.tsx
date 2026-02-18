@@ -14,7 +14,13 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name?: string) => Promise<void>;
+  register: (
+    email: string,
+    password: string,
+    name?: string,
+    organizationInviteCode?: string,
+    organizationName?: string,
+  ) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
   isAuthenticated: boolean;
@@ -49,11 +55,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('user', JSON.stringify(response.user));
       // Also set cookie for middleware
       document.cookie = `token=${response.access_token}; path=/; max-age=${7 * 24 * 60 * 60}`;
+      
+      // Auto-set organization if provided
+      if (response.organization) {
+        localStorage.setItem('organizationId', response.organization.id);
+        localStorage.setItem('organizationName', response.organization.name);
+        if (response.organizationRole) {
+          localStorage.setItem('organizationRole', response.organizationRole);
+        }
+      }
     }
   };
 
-  const register = async (email: string, password: string, name?: string) => {
-    const response: AuthResponse = await authService.register({ email, password, name });
+  const register = async (
+    email: string,
+    password: string,
+    name?: string,
+    organizationInviteCode?: string,
+    organizationName?: string,
+  ) => {
+    const response: AuthResponse = await authService.register({
+      email,
+      password,
+      name,
+      organizationInviteCode,
+      organizationName,
+    });
     setToken(response.access_token);
     setUser(response.user);
     
@@ -62,6 +89,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('user', JSON.stringify(response.user));
       // Also set cookie for middleware
       document.cookie = `token=${response.access_token}; path=/; max-age=${7 * 24 * 60 * 60}`;
+      
+      // Auto-set organization if provided (from signup)
+      if (response.organization) {
+        localStorage.setItem('organizationId', response.organization.id);
+        localStorage.setItem('organizationName', response.organization.name);
+        if (response.organizationRole) {
+          localStorage.setItem('organizationRole', response.organizationRole);
+        }
+      }
     }
   };
 

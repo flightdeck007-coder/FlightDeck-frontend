@@ -2,7 +2,8 @@ import { apiClient } from './client';
 
 export interface CreateMeetingDto {
   teamId: string;
-  meetingSeriesId: string;
+  meetingSeriesId?: string;
+  meetingSeriesName?: string;
   scheduledAt: string;
   sectionTitles?: string[];
 }
@@ -67,8 +68,15 @@ export const meetingsService = {
     return response.data;
   },
 
-  update: async (organizationId: string, meetingId: string, data: Partial<CreateMeetingDto>): Promise<Meeting> => {
-    const response = await apiClient.put<Meeting>(`/meetings/${meetingId}?organizationId=${organizationId}`, data);
+  update: async (
+    organizationId: string,
+    meetingId: string,
+    data: { startedAt?: string; endedAt?: string },
+  ): Promise<Meeting> => {
+    const response = await apiClient.put<Meeting>(
+      `/meetings/${meetingId}?organizationId=${organizationId}`,
+      data,
+    );
     return response.data;
   },
 

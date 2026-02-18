@@ -2,13 +2,28 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { ROUTES } from '@/lib/constants/routes';
 import { useAuth } from '@/hooks/useAuth';
-import { BarChart3, Calendar, CheckSquare, Target, AlertTriangle, TrendingUp, LogOut } from 'lucide-react';
+import {
+  BarChart3,
+  Calendar,
+  CheckSquare,
+  Target,
+  AlertTriangle,
+  TrendingUp,
+  LogOut,
+  Building2,
+  Users,
+  UserCog,
+} from 'lucide-react';
 
 const sidebarLinks = [
   { href: ROUTES.OVERVIEW, label: 'Overview', icon: BarChart3 },
   { href: ROUTES.MEETINGS, label: 'Meetings', icon: Calendar },
+  { href: ROUTES.ORGANIZATIONS, label: 'Organizations', icon: Building2 },
+  { href: ROUTES.ORGANIZATIONS_MEMBERS, label: 'Members', icon: UserCog },
+  { href: ROUTES.TEAMS, label: 'Teams', icon: Users },
   { href: ROUTES.TODOS, label: 'To-Dos', icon: CheckSquare },
   { href: ROUTES.ROCKS, label: 'Rocks', icon: Target },
   { href: ROUTES.ISSUES, label: 'Issues', icon: AlertTriangle },
@@ -18,14 +33,50 @@ const sidebarLinks = [
 export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const [orgName, setOrgName] = useState<string | null>(null);
+  const [orgRole, setOrgRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const loadOrgInfo = () => {
+      const name = localStorage.getItem('organizationName');
+      const role = localStorage.getItem('organizationRole');
+      if (name) setOrgName(name);
+      if (role) setOrgRole(role);
+    };
+    
+    loadOrgInfo();
+    
+    // Listen for role changes
+    const handleRoleChange = (event: CustomEvent) => {
+      if (event.detail?.role) {
+        setOrgRole(event.detail.role);
+      }
+    };
+    
+    window.addEventListener('organizationRoleChanged', handleRoleChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('organizationRoleChanged', handleRoleChange as EventListener);
+    };
+  }, []);
 
   return (
     <div className="h-full bg-card border-r border-border flex flex-col">
-      {/* Logo/Header */}
+      {/* Logo/Header - clickable, goes to home; then user email, org name and role */}
       <div className="p-6 border-b border-border">
-        <h1 className="text-xl font-semibold text-foreground">FlightDeck</h1>
+        <Link href="/" className="block focus:outline-none focus:ring-2 focus:ring-primary/50 rounded">
+          <h1 className="text-xl font-semibold text-foreground hover:text-primary transition-colors">FlightDeck</h1>
+        </Link>
         {user && (
           <p className="text-sm text-foreground/70 mt-1">{user.email}</p>
+        )}
+        {(orgName || orgRole) && (
+          <p className="text-sm text-foreground/70 mt-1">
+            {orgName && <span className="font-medium text-foreground">{orgName}</span>}
+            {orgName && ' · '}
+            <span>{orgRole ?? 'MEMBER'}</span>
+          </p>
         )}
       </div>
 

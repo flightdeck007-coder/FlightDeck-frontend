@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MeetingLayout } from '@/components/meeting/MeetingLayout';
 import { MeetingSidebar } from '@/components/meeting/MeetingSidebar';
 import { MeetingContent } from '@/components/meeting/MeetingContent';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import { meetingsService } from '@/lib/api/meetings.service';
+import { ROUTES } from '@/lib/constants/routes';
 
 // L10 Meeting Format Sections
 const meetingSections = [
@@ -19,10 +21,48 @@ const meetingSections = [
 export default function MeetingPage() {
   const params = useParams();
   const meetingId = params.id as string;
+  const router = useRouter();
   const [currentSection, setCurrentSection] = useState<string>('segue');
   const [isRunning, setIsRunning] = useState(false);
   const [elapsedTime, setElapsedTime] = useState('00:00');
   const [totalTime, setTotalTime] = useState('00:55');
+  const [headerTitle, setHeaderTitle] = useState('IDS™ | Level 10 Meeting™ - Leadership Team');
+  const [loadedSections, setLoadedSections] = useState(meetingSections);
+  const [organizationId, setOrganizationId] = useState<string>('');
+  const [orgRole, setOrgRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    const storedOrgId = typeof window !== 'undefined' ? localStorage.getItem('organizationId') : null;
+    const storedRole = typeof window !== 'undefined' ? localStorage.getItem('organizationRole') : null;
+    if (storedOrgId) setOrganizationId(storedOrgId);
+    if (storedRole) setOrgRole(storedRole);
+  }, []);
+
+  useEffect(() => {
+    // load meeting details (real) if available
+    if (!organizationId || !meetingId) return;
+    (async () => {
+      try {
+        const meeting = await meetingsService.findOne(organizationId, meetingId);
+        setHeaderTitle(`IDS™ | Level 10 Meeting™ - ${meeting.team.name}`);
+        if (meeting.sections?.length) {
+          const normalized = meeting.sections
+            .slice()
+            .sort((a, b) => a.order - b.order)
+            .map((s) => ({
+              id: s.title.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+              title: s.title,
+              duration: s.durationMinutes ?? 5,
+              order: s.order + 1,
+            }));
+          setLoadedSections(normalized);
+          setCurrentSection(normalized[0]?.id || 'segue');
+        }
+      } catch {
+        // keep static template
+      }
+    })();
+  }, [organizationId, meetingId]);
 
   const handleStart = () => {
     setIsRunning(true);
@@ -39,17 +79,30 @@ export default function MeetingPage() {
 
   const handleFinish = () => {
     setIsRunning(false);
-    // Save meeting logic
+    if (!organizationId) {
+      router.push(ROUTES.MEETINGS);
+      return;
+    }
+    (async () => {
+      try {
+        await meetingsService.update(organizationId, meetingId, {
+          endedAt: new Date().toISOString(),
+        });
+      } finally {
+        router.push(ROUTES.MEETINGS);
+      }
+    })();
   };
 
-  const currentSectionData = meetingSections.find(s => s.id === currentSection) || meetingSections[0];
+  const currentSectionData =
+    loadedSections.find((s) => s.id === currentSection) || loadedSections[0];
 
   return (
     <MeetingLayout>
       {/* Sidebar - 20% */}
       <div className="w-1/5 min-w-[250px] flex-shrink-0">
         <MeetingSidebar
-          sections={meetingSections}
+          sections={loadedSections}
           currentSection={currentSection}
           onSectionClick={setCurrentSection}
           totalTime={totalTime}
@@ -68,7 +121,7 @@ export default function MeetingPage() {
           {/* Meeting Header */}
           <div className="p-4 border-b border-border bg-card">
             <h1 className="text-lg font-semibold text-foreground">
-              IDS™ | Level 10 Meeting™ - Leadership Team
+              {headerTitle}
             </h1>
             <p className="text-sm text-foreground/70 mt-1">Meeting ID: {meetingId}</p>
           </div>
@@ -79,6 +132,17 @@ export default function MeetingPage() {
             sectionTitle={currentSectionData.title}
           />
         </div>
+      </div>
+      {/* Footer actions */}
+      <div className="absolute bottom-4 right-4 flex gap-3">
+        {orgRole === 'ADMIN' || orgRole === 'MANAGER' ? (
+          <button
+            onClick={handleFinish}
+            className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+          >
+            Finish Meeting
+          </button>
+        ) : null}
       </div>
     </MeetingLayout>
   );

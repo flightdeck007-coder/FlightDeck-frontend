@@ -1,27 +1,19 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
-import { ROUTES } from '@/lib/constants/routes';
+import { LandingNavbar } from '@/components/landing/LandingNavbar';
+import { Hero } from '@/components/landing/Hero';
+import { About } from '@/components/landing/About';
+import { FAQ } from '@/components/landing/FAQ';
+import { CTA } from '@/components/landing/CTA';
 
-export default function Home() {
-  const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuth();
-
-  useEffect(() => {
-    if (!isLoading) {
-      if (isAuthenticated) {
-        router.push(ROUTES.DASHBOARD);
-      } else {
-        router.push(ROUTES.LOGIN);
-      }
-    }
-  }, [isAuthenticated, isLoading, router]);
-
+export default function LandingPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background p-8">
-      <p className="text-foreground/70">Loading...</p>
+    <div className="min-h-screen bg-background">
+      <LandingNavbar />
+      <Hero />
+      <About />
+      <FAQ />
+      <CTA />
     </div>
   );
 }
