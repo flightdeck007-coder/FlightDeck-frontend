@@ -55,18 +55,18 @@ export function About() {
 
         <div className="mt-16 bg-card border border-border rounded-lg p-8">
           <h3 className="text-2xl font-semibold text-foreground mb-4">
-            What is Level 10 Meeting™?
+            What is a Weekly Flight Review?
           </h3>
           <p className="text-foreground/80 leading-relaxed mb-4">
-            Level 10 Meetings are structured weekly sessions designed to help teams operate at peak
-            performance. Based on the Entrepreneurial Operating System (EOS), these meetings
-            follow a consistent agenda that keeps teams aligned, accountable, and focused on what
-            matters most.
+            Weekly Flight Reviews are structured sessions designed to help crews operate at peak
+            performance. Based on the Entrepreneurial Operating System (EOS) and Level 10 Meeting™
+            format, these reviews follow a consistent agenda that keeps everyone aligned, accountable,
+            and focused on waypoints (goals), clearances (to-dos), and resolving turbulence (issues).
           </p>
           <p className="text-foreground/80 leading-relaxed">
-            FlightDeck brings this proven methodology to your organization with digital tools that
-            streamline meeting execution, track progress, and maintain clarity across all levels of
-            your business.
+            FlightDeck brings this methodology to your fleet with digital tools that streamline
+            flight reviews, track progress on the Instrument Panel, and maintain clarity across
+            all levels of your organization.
           </p>
         </div>
       </div>

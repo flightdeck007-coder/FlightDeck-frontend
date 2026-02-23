@@ -24,7 +24,7 @@ export function Hero() {
             Your high-trust operations dashboard for strategic business management.
           </p>
           <p className="text-lg text-foreground/60 mb-8 max-w-2xl mx-auto">
-            Navigate complexity with clarity and confidence using Level 10 Meetings™
+            Navigate complexity with clarity and confidence using Weekly Flight Reviews
           </p>
 
           {/* CTA Buttons */}

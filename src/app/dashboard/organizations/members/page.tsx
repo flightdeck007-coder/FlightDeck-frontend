@@ -81,10 +81,10 @@ export default function MembersPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
             <Users className="w-6 h-6 text-primary" />
-            Organization Members
+            Fleet Crew
           </h1>
           <p className="text-sm text-foreground/70 mt-1">
-            Manage roles and permissions for your organization members
+            Manage roles and permissions for your fleet crew
           </p>
         </div>
 
@@ -97,16 +97,16 @@ export default function MembersPage() {
         {!organizationId ? (
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-foreground/70">
-              Please select an organization first from the Organizations page.
+              Please select a fleet first from the Fleet page.
             </p>
           </div>
         ) : isLoading ? (
           <div className="bg-card border border-border rounded-lg p-6">
-            <p className="text-foreground/70">Loading members...</p>
+            <p className="text-foreground/70">Loading crew...</p>
           </div>
         ) : members.length === 0 ? (
           <div className="bg-card border border-border rounded-lg p-6">
-            <p className="text-foreground/70">No members found.</p>
+            <p className="text-foreground/70">No crew found.</p>
           </div>
         ) : (
           <div className="bg-card border border-border rounded-lg overflow-hidden">
@@ -115,7 +115,7 @@ export default function MembersPage() {
                 <thead className="bg-accent/50 border-b border-border">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-foreground/70 uppercase tracking-wider">
-                      Member
+                      Crew
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-foreground/70 uppercase tracking-wider">
                       Role

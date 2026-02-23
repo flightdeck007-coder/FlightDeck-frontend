@@ -90,7 +90,7 @@ export default function OrganizationsPage() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
             <Building2 className="w-6 h-6 text-primary" />
-            Organizations
+            Fleet
           </h1>
         </div>
 
@@ -103,12 +103,12 @@ export default function OrganizationsPage() {
         {/* List */}
         {isLoading ? (
           <div className="bg-card border border-border rounded-lg p-6">
-            <p className="text-foreground/70">Loading organizations...</p>
+            <p className="text-foreground/70">Loading fleet...</p>
           </div>
         ) : organizations.length === 0 ? (
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-foreground/70">
-              You have no organizations yet. Create one above to get started.
+              You have no fleet yet. Create one during signup to get started.
             </p>
           </div>
         ) : (
@@ -134,16 +134,16 @@ export default function OrganizationsPage() {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-foreground/60">
-                      Teams: {org.teams.length} · Members: {org.members.length}
-                    </p>
+                      <p className="text-sm text-foreground/60">
+                        Flight crews: {org.teams.length} · Crew: {org.members.length}
+                      </p>
                   </div>
 
                   {/* Invite Code Section */}
                   {isCurrent && (
                     <div className="mt-6 p-4 bg-accent/50 rounded-lg border border-border">
                       <h3 className="text-sm font-semibold text-foreground mb-3">
-                        Invite Team Members
+                        Invite Crew Members
                       </h3>
                       <div className="space-y-3">
                         <div>
@@ -202,7 +202,7 @@ export default function OrganizationsPage() {
                         href={ROUTES.ORGANIZATIONS_MEMBERS}
                         className="text-sm text-primary hover:underline flex items-center gap-1"
                       >
-                        View all members →
+                        View all crew →
                       </Link>
                     </div>
                   )}

@@ -172,7 +172,7 @@ export default function TeamsPage() {
         <div className="p-8">
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-foreground/70">
-              No organization selected. Please sign up or join an organization first.
+              No fleet selected. Please sign up or join a fleet first.
             </p>
           </div>
         </div>
@@ -186,7 +186,7 @@ export default function TeamsPage() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
             <Users className="w-6 h-6 text-primary" />
-            Teams
+            Flight Crews
           </h1>
         </div>
 
@@ -194,7 +194,7 @@ export default function TeamsPage() {
         {isAdminOrManager && teams.length > 0 && (
           <div className="mb-6 p-4 bg-accent/50 rounded-lg border border-border">
             <label className="block text-sm font-medium text-foreground mb-2">
-              Current Team (for meetings)
+              Current Flight Crew (for flight reviews)
             </label>
             <select
               value={currentTeamId || ''}
@@ -210,7 +210,7 @@ export default function TeamsPage() {
             </select>
             {currentTeamId && (
               <p className="text-xs text-foreground/60 mt-2">
-                Meetings will be shown for: <strong>{teams.find((t) => t.id === currentTeamId)?.name}</strong>
+                Flight reviews will be shown for: <strong>{teams.find((t) => t.id === currentTeamId)?.name}</strong>
               </p>
             )}
           </div>
@@ -251,8 +251,8 @@ export default function TeamsPage() {
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-foreground/70">
               {organizationRole === 'MEMBER' || !isAdminOrManager
-                ? "You're not added to any team yet. Contact your admin or manager to be added to a team."
-                : `No teams yet. Create one above.`}
+                ? "You're not added to any flight crew yet. Contact your admin or manager to be added."
+                : 'No flight crews yet. Create one above.'}
             </p>
           </div>
         ) : (
@@ -315,7 +315,7 @@ export default function TeamsPage() {
                     {/* Team members list + add member (ADMIN/MANAGER only) */}
                     {team.members && team.members.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-border">
-                        <p className="text-xs font-medium text-foreground/70 mb-2">Members</p>
+                        <p className="text-xs font-medium text-foreground/70 mb-2">Crew</p>
                         <ul className="space-y-1">
                           {team.members.map((tm) => (
                             <li

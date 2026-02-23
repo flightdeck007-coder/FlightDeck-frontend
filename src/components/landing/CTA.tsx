@@ -13,8 +13,8 @@ export function CTA() {
             Ready to Elevate Your Operations?
           </h2>
           <p className="text-xl text-foreground/70 mb-8 max-w-2xl mx-auto">
-            Join teams that are already operating at altitude with FlightDeck. Start your free
-            trial today and experience the power of Level 10 Meetings™.
+            Join crews that are already operating at altitude with FlightDeck. Start your free
+            trial today and experience the power of Weekly Flight Reviews.
           </p>
           <Link
             href={ROUTES.SIGNUP}

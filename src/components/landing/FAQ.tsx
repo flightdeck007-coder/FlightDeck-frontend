@@ -10,17 +10,17 @@ export function FAQ() {
     {
       question: 'What is FlightDeck?',
       answer:
-        'FlightDeck is a comprehensive operations platform designed for Level 10 Meetings™. It helps teams run structured weekly meetings, track KPIs, manage priorities (Rocks), handle issues, and maintain accountability across your organization.',
+        'FlightDeck is a comprehensive operations platform for Weekly Flight Reviews. It helps crews run structured reviews, track KPIs on the Instrument Panel, manage waypoints (Rocks), handle turbulence (issues), manage clearances (to-dos), and maintain accountability across your fleet.',
     },
     {
-      question: 'How do Level 10 Meetings work?',
+      question: 'How do Weekly Flight Reviews work?',
       answer:
-        'Level 10 Meetings follow a structured agenda with timed sections: Segue (5 min), Scorecard/Data (5 min), Rock Review (10 min), To-Do List (10 min), Issues/IDS™ (20 min), and Conclude (5 min). This consistent format keeps meetings focused and productive.',
+        'Flight Reviews follow a structured agenda with timed sections: Segue (5 min), Scorecard/Data (5 min), Waypoint Review (10 min), Clearances (10 min), Turbulence/IDS™ (20 min), and Conclude (5 min). This consistent format keeps reviews focused and productive.',
     },
     {
-      question: 'Can I invite team members?',
+      question: 'Can I invite crew members?',
       answer:
-        'Yes! When you create an organization, you receive a unique invite code. Share this code with team members during signup, and they will automatically join your organization. Organization admins can also manage member roles and permissions.',
+        'Yes! When you create a fleet, you receive a unique invite code. Share this code with crew during signup, and they will automatically join your fleet. Fleet admins can also manage crew roles and permissions.',
     },
     {
       question: 'Is there a free trial?',
@@ -30,7 +30,7 @@ export function FAQ() {
     {
       question: 'How secure is my data?',
       answer:
-        'FlightDeck uses multi-tenant architecture with strict data isolation. Each organization\'s data is completely separate, and role-based access control ensures team members only see what they should.',
+        'FlightDeck uses multi-tenant architecture with strict data isolation. Each fleet\'s data is completely separate, and role-based access control ensures crew only see what they should.',
     },
   ];
 

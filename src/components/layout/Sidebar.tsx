@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ROUTES } from '@/lib/constants/routes';
+import { FLIGHT_TERMS } from '@/lib/constants/flightTerminology';
 import { useAuth } from '@/hooks/useAuth';
 import {
   BarChart3,
@@ -19,15 +20,15 @@ import {
 } from 'lucide-react';
 
 const sidebarLinks = [
-  { href: ROUTES.OVERVIEW, label: 'Overview', icon: BarChart3 },
-  { href: ROUTES.MEETINGS, label: 'Meetings', icon: Calendar },
-  { href: ROUTES.ORGANIZATIONS, label: 'Organizations', icon: Building2 },
-  { href: ROUTES.ORGANIZATIONS_MEMBERS, label: 'Members', icon: UserCog },
-  { href: ROUTES.TEAMS, label: 'Teams', icon: Users },
-  { href: ROUTES.TODOS, label: 'To-Dos', icon: CheckSquare },
-  { href: ROUTES.ROCKS, label: 'Rocks', icon: Target },
-  { href: ROUTES.ISSUES, label: 'Issues', icon: AlertTriangle },
-  { href: ROUTES.SCORECARD, label: 'Scorecard', icon: TrendingUp },
+  { href: ROUTES.OVERVIEW, label: FLIGHT_TERMS.OVERVIEW, icon: BarChart3 },
+  { href: ROUTES.MEETINGS, label: FLIGHT_TERMS.MEETINGS, icon: Calendar },
+  { href: ROUTES.ORGANIZATIONS, label: FLIGHT_TERMS.ORGANIZATIONS, icon: Building2 },
+  { href: ROUTES.ORGANIZATIONS_MEMBERS, label: FLIGHT_TERMS.MEMBERS, icon: UserCog },
+  { href: ROUTES.TEAMS, label: FLIGHT_TERMS.TEAMS, icon: Users },
+  { href: ROUTES.TODOS, label: FLIGHT_TERMS.TODOS, icon: CheckSquare },
+  { href: ROUTES.ROCKS, label: FLIGHT_TERMS.ROCKS, icon: Target },
+  { href: ROUTES.ISSUES, label: FLIGHT_TERMS.ISSUES, icon: AlertTriangle },
+  { href: ROUTES.SCORECARD, label: FLIGHT_TERMS.SCORECARD, icon: TrendingUp },
 ];
 
 export function Sidebar() {

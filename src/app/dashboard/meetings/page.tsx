@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useRouter } from 'next/navigation';
 import { ROUTES } from '@/lib/constants/routes';
+import { FLIGHT_TERMS } from '@/lib/constants/flightTerminology';
 import { meetingsService, Meeting } from '@/lib/api/meetings.service';
 import { teamsService, Team } from '@/lib/api/teams.service';
 import { Calendar, Users, Clock } from 'lucide-react';
@@ -60,11 +61,11 @@ export default function MeetingsPage() {
 
   const handleStartMeeting = async () => {
     if (!organizationId) {
-      setError('Set a current organization first (Dashboard → Organizations).');
+      setError('Set a current fleet first (Dashboard → Fleet).');
       return;
     }
     if (!selectedTeamId) {
-      setError('Create/select a team first (Dashboard → Teams).');
+      setError('Create/select a flight crew first (Dashboard → Flight Crews).');
       return;
     }
 
@@ -116,18 +117,18 @@ export default function MeetingsPage() {
     <DashboardLayout>
       <div className="p-8">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-foreground">Meetings</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Flight Review</h1>
           {orgRole === 'ADMIN' || orgRole === 'MANAGER' ? (
             <button
               onClick={handleStartMeeting}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors flex items-center gap-2"
             >
               <Calendar className="w-4 h-4" />
-              Start a Meeting
+              {FLIGHT_TERMS.START_MEETING}
             </button>
           ) : (
             <span className="text-sm text-foreground/60">
-              Only Admins/Managers can start meetings.
+              Only Admins/Managers can start flight reviews.
             </span>
           )}
         </div>
@@ -135,7 +136,7 @@ export default function MeetingsPage() {
         {/* Team selector - all roles see their team(s) and meetings for that team */}
         <div className="mb-4 flex flex-col gap-2">
           <div className="flex flex-col md:flex-row md:items-center gap-3">
-            <span className="text-sm text-foreground/70">Team:</span>
+            <span className="text-sm text-foreground/70">Flight crew:</span>
             <select
               value={selectedTeamId}
               onChange={(e) => void handleTeamChange(e.target.value)}
@@ -151,8 +152,8 @@ export default function MeetingsPage() {
           </div>
           <p className="text-xs text-foreground/60">
             {orgRole === 'ADMIN' || orgRole === 'MANAGER'
-              ? 'You can create, run, and end meetings. Members can view history and join.'
-              : 'You can view meeting history and join scheduled meetings for your team.'}
+              ? 'You can create, run, and end flight reviews. Crew can view history and join.'
+              : 'You can view flight review history and join scheduled reviews for your flight crew.'}
           </p>
         </div>
 
@@ -169,9 +170,9 @@ export default function MeetingsPage() {
         ) : meetings.length === 0 ? (
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-foreground/70 text-center py-8">
-              No meetings yet for this team.
+              No flight reviews yet for this crew.
               {orgRole === 'ADMIN' || orgRole === 'MANAGER'
-                ? ' Click "Start a Meeting" to begin an L10-style meeting.'
+                ? ` Click "${FLIGHT_TERMS.START_MEETING}" to begin a Weekly Flight Review.`
                 : ' When your admin or manager starts one, it will appear here and you can join.'}
             </p>
           </div>

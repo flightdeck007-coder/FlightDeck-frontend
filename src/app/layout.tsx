@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "FlightDeck",
-  description: "Structured weekly meetings (L10-style) for teams — Rocks, To-Dos, Issues, Scorecard.",
+  description: "FlightDeck OS — Weekly Flight Reviews, Waypoints (Rocks), Clearances (To-Dos), Turbulence (Issues), Instrument Panel.",
 };
 
 export default function RootLayout({
