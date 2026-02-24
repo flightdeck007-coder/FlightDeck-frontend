@@ -1,17 +1,21 @@
 'use client';
 
 import { CheckCircle2, Circle, Plus, User } from 'lucide-react';
+import { InstrumentsSegmentView } from './InstrumentsSegmentView';
+import { RocksSegmentView } from './RocksSegmentView';
+import { HeadlinesSegmentView } from './HeadlinesSegmentView';
 
 interface MeetingContentProps {
   sectionId: string;
   sectionTitle: string;
 }
 
-// Demo data for different sections
+// Demo data for different sections (L10-style; flight wording in UI)
 const demoData: Record<string, any> = {
   segue: {
-    type: 'text',
-    content: 'Welcome to the Level 10 Meeting. Let\'s start with a quick check-in.',
+    type: 'prompt',
+    content: 'Share Your Good News',
+    empty: true, // component details row is empty for this section
   },
   scorecard: {
     type: 'metrics',
@@ -21,6 +25,11 @@ const demoData: Record<string, any> = {
       { name: 'Support Tickets', value: '18', trend: '-5%', status: 'good' },
       { name: 'Team Satisfaction', value: '8.5/10', trend: '+0.5', status: 'good' },
     ],
+  },
+  headlines: {
+    type: 'prompt',
+    content: 'Customer & Employee Headlines',
+    empty: true,
   },
   rocks: {
     type: 'list',
@@ -50,62 +59,77 @@ const demoData: Record<string, any> = {
   },
   conclude: {
     type: 'text',
-    content: 'Meeting concluded. All action items have been assigned and documented.',
+    content: 'Debrief complete. All clearances and action items have been assigned and documented.',
   },
 };
 
 export function MeetingContent({ sectionId, sectionTitle }: MeetingContentProps) {
   const data = demoData[sectionId.toLowerCase()] || demoData.segue;
+  const isMinimalPrompt = data.type === 'prompt' && data.empty; // Segue, Headlines: prompt + empty only
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="p-6 border-b border-border bg-card">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-foreground">{sectionTitle}</h2>
+      {/* Section-specific header/action bar: only when not a minimal prompt and not scorecard/rocks (they use dedicated segment views) */}
+      {!isMinimalPrompt && sectionId !== 'scorecard' && sectionId !== 'rocks' && sectionId !== 'headlines' && (
+        <div className="p-6 border-b border-border bg-card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-foreground">{sectionTitle}</h2>
+            <div className="flex items-center gap-2">
+              <select className="px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground">
+                <option>Leadership Team</option>
+              </select>
+              <label className="flex items-center gap-2 text-sm text-foreground/70">
+                <input type="checkbox" className="rounded" />
+                Archive
+              </label>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
-            <select className="px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground">
-              <option>Leadership Team</option>
-            </select>
-            <label className="flex items-center gap-2 text-sm text-foreground/70">
-              <input type="checkbox" className="rounded" />
-              Archive
-            </label>
+            <button className="p-2 border border-border rounded-md hover:bg-accent transition-colors" type="button">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            <button className="p-2 border border-border rounded-md hover:bg-accent transition-colors" type="button">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </button>
+            <input
+              type="text"
+              placeholder={`Search ${sectionTitle}...`}
+              className="flex-1 px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground"
+            />
+            <button className="px-4 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm" type="button">
+              Create
+            </button>
           </div>
         </div>
-        
-        {/* Action Bar */}
-        <div className="flex items-center gap-2">
-          <button className="p-2 border border-border rounded-md hover:bg-accent transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-          </button>
-          <button className="p-2 border border-border rounded-md hover:bg-accent transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </button>
-          <input
-            type="text"
-            placeholder={`Search ${sectionTitle}...`}
-            className="flex-1 px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground"
-          />
-          <button className="px-4 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm">
-            Create
-          </button>
-        </div>
-      </div>
+      )}
 
-      {/* Content */}
+      {/* Content: for Segue = prompt line + empty; others = existing UI */}
       <div className="flex-1 overflow-y-auto p-6">
-        {data.type === 'text' && (
+        {isMinimalPrompt && sectionId !== 'headlines' && (
+          <>
+            <p className="text-lg text-foreground font-medium">{data.content}</p>
+            <div className="flex-1 min-h-[200px]" aria-hidden />
+          </>
+        )}
+        {sectionId === 'scorecard' && (
+          <InstrumentsSegmentView embedded teamName="Leadership Team" />
+        )}
+        {sectionId === 'rocks' && (
+          <RocksSegmentView embedded sectionTitle={sectionTitle} />
+        )}
+        {sectionId === 'headlines' && (
+          <HeadlinesSegmentView embedded teamName="Leadership Team" />
+        )}
+        {data.type === 'text' && !data.empty && (
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-foreground/80">{data.content}</p>
           </div>
         )}
-
-        {data.type === 'metrics' && (
+        {data.type === 'metrics' && sectionId !== 'scorecard' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {data.items.map((item: any, index: number) => (
               <div key={index} className="bg-card border border-border rounded-lg p-4">
@@ -123,9 +147,9 @@ export function MeetingContent({ sectionId, sectionTitle }: MeetingContentProps)
           </div>
         )}
 
-        {data.type === 'list' && (
+        {data.type === 'list' && sectionId !== 'rocks' && sectionId !== 'headlines' && (
           <div>
-            {/* Tabs for Issues */}
+            {/* Tabs for Turbulence (Issues) */}
             {sectionId === 'issues' && (
               <div className="flex gap-2 mb-4 border-b border-border">
                 <button className="px-4 py-2 text-sm font-medium text-primary border-b-2 border-primary">
@@ -197,7 +221,7 @@ export function MeetingContent({ sectionId, sectionTitle }: MeetingContentProps)
             {/* Add Button */}
             <button className="mt-4 flex items-center gap-2 px-4 py-2 border border-dashed border-border rounded-lg text-foreground/70 hover:text-foreground hover:border-primary/50 transition-colors">
               <Plus className="w-4 h-4" />
-              {sectionId === 'issues' ? 'Add Issue' : sectionId === 'todos' ? 'Add To-Do' : 'Add Rock'}
+              {sectionId === 'issues' ? 'Add Turbulence' : sectionId === 'todos' ? 'Add Clearance' : 'Add Waypoint'}
             </button>
 
             {/* Pagination */}

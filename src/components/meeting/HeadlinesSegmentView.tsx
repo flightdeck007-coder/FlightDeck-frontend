@@ -1,0 +1,697 @@
+'use client';
+
+import { useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  DndContext,
+  type DragEndEvent,
+  pointerWithin,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
+  Search,
+  MoreHorizontal,
+  GripVertical,
+  Mountain,
+  CheckSquare,
+  AlertCircle,
+  Megaphone,
+  Send,
+  Archive,
+  Link2,
+  Trash2,
+} from 'lucide-react';
+import {
+  useHeadlines,
+  type HeadlineItem,
+  type CascadingMessageItem,
+} from '@/contexts/HeadlinesContext';
+
+const MENU_WIDTH = 248;
+const MENU_GAP = 8;
+
+interface HeadlinesSegmentViewProps {
+  teamName?: string;
+  embedded?: boolean;
+}
+
+export function HeadlinesSegmentView({
+  teamName = 'Leadership Team',
+  embedded = false,
+}: HeadlinesSegmentViewProps) {
+  const [teamFilter, setTeamFilter] = useState(teamName);
+  const [archiveOn, setArchiveOn] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const {
+    headlines,
+    cascadingMessages,
+    addHeadline,
+    addCascadingMessage,
+    reorderHeadlines,
+    reorderCascadingMessages,
+  } = useHeadlines();
+
+  const activeHeadlines = useMemo(
+    () => headlines.filter((h) => !h.archived),
+    [headlines]
+  );
+  const activeCascading = useMemo(
+    () => cascadingMessages.filter((c) => !c.archived),
+    [cascadingMessages]
+  );
+  const archivedHeadlines = useMemo(
+    () => headlines.filter((h) => h.archived),
+    [headlines]
+  );
+  const archivedCascading = useMemo(
+    () => cascadingMessages.filter((c) => c.archived),
+    [cascadingMessages]
+  );
+
+  const filteredHeadlines = useMemo(() => {
+    if (!searchQuery.trim()) return activeHeadlines;
+    const q = searchQuery.toLowerCase();
+    return activeHeadlines.filter((h) => h.title.toLowerCase().includes(q));
+  }, [activeHeadlines, searchQuery]);
+
+  const filteredCascading = useMemo(() => {
+    if (!searchQuery.trim()) return activeCascading;
+    const q = searchQuery.toLowerCase();
+    return activeCascading.filter((c) => c.title.toLowerCase().includes(q));
+  }, [activeCascading, searchQuery]);
+
+  const headlineIds = useMemo(() => filteredHeadlines.map((h) => h.id), [filteredHeadlines]);
+  const cascadingIds = useMemo(() => filteredCascading.map((c) => c.id), [filteredCascading]);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    if (headlineIds.includes(activeId)) {
+      const from = headlineIds.indexOf(activeId);
+      const to = headlineIds.indexOf(overId);
+      if (from !== -1 && to !== -1) reorderHeadlines(from, to);
+    } else if (cascadingIds.includes(activeId)) {
+      const from = cascadingIds.indexOf(activeId);
+      const to = cascadingIds.indexOf(overId);
+      if (from !== -1 && to !== -1) reorderCascadingMessages(from, to);
+    }
+  };
+
+  const wrap = embedded ? 'p-4' : 'p-6';
+
+  return (
+    <div className={`flex flex-col min-h-0 h-full ${wrap}`}>
+      {/* Simple header */}
+      <div className="mb-4 shrink-0">
+        <h2 className="text-xl font-semibold text-foreground">
+          Headlines – {teamFilter}
+        </h2>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Easily share important announcements with your team.
+        </p>
+      </div>
+
+      {/* Filter row: Team, Archive toggle, Search */}
+      <div className="flex flex-wrap items-center gap-3 mb-4 shrink-0">
+        <div>
+          <span className="text-muted-foreground text-sm mr-1">Team:</span>
+          <select
+            value={teamFilter}
+            onChange={(e) => setTeamFilter(e.target.value)}
+            className="pl-3 pr-8 py-2 border border-border rounded-md bg-background text-foreground text-sm appearance-none cursor-pointer"
+          >
+            <option>Leadership Team</option>
+          </select>
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <span className="text-sm text-foreground">Archive</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={archiveOn}
+            onClick={() => setArchiveOn((o) => !o)}
+            className={`relative w-10 h-5 rounded-full transition-colors ${
+              archiveOn ? 'bg-primary' : 'bg-muted'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                archiveOn ? 'left-5' : 'left-0.5'
+              }`}
+            />
+          </button>
+        </label>
+        <div className="flex-1 min-w-[200px] flex justify-end">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="search"
+              placeholder="Search Headlines..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full max-w-xs pl-9 pr-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Content: active vs archived */}
+      <div className="flex-1 overflow-auto min-h-0">
+        {archiveOn ? (
+          <>
+            <ArchivedSection
+              title="Archived Headlines"
+              count={archivedHeadlines.length}
+              subtitle="Customer/Employee Headlines"
+              emptyMessage="Your team doesn't have any Archived Headlines."
+              hint="Headlines are a great way to share news across teams."
+              learnLink="Learn more about Headlines."
+            />
+            <ArchivedSection
+              title="Archived Cascading Messages"
+              count={archivedCascading.length}
+              emptyMessage="Your team doesn't have any Archived Cascading Messages."
+              hint="Cascading messages help communicate across the organization."
+              learnLink="Learn more about Cascading Messages."
+              className="mt-6"
+            />
+          </>
+        ) : (
+          <>
+            <DndContext
+              onDragEnd={handleDragEnd}
+              collisionDetection={pointerWithin}
+            >
+              <HeadlinesList
+                items={filteredHeadlines}
+                onCreateClick={() =>
+                  addHeadline({
+                    title: 'New headline',
+                    createdAt: new Date().toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    }),
+                    createdAgo: 'Just now',
+                    ownerInitials: 'JD',
+                    archived: false,
+                  })
+                }
+                sectionTitle="Headlines"
+                sectionSubtitle="Customer/Employee Headlines"
+                createLabel="Create Headline"
+              />
+              <CascadingList
+                items={filteredCascading}
+                teamName={teamFilter}
+                onCreateClick={() =>
+                  addCascadingMessage({
+                    title: 'New cascading message',
+                    from: teamFilter,
+                    createdAt: new Date().toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    }),
+                    createdAgo: 'Just now',
+                    ownerInitials: 'JD',
+                    archived: false,
+                  })
+                }
+              />
+            </DndContext>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ArchivedSection({
+  title,
+  count,
+  subtitle,
+  emptyMessage,
+  hint,
+  learnLink,
+  className = '',
+}: {
+  title: string;
+  count: number;
+  subtitle?: string;
+  emptyMessage: string;
+  hint: string;
+  learnLink: string;
+  className?: string;
+}) {
+  return (
+    <div className={`bg-card border border-border rounded-lg p-8 ${className}`}>
+      <h3 className="text-lg font-semibold text-foreground">
+        {title} {count}
+      </h3>
+      {subtitle && (
+        <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>
+      )}
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+          <Megaphone className="w-8 h-8 text-muted-foreground" />
+        </div>
+        <p className="text-foreground font-medium">{emptyMessage}</p>
+        <p className="text-sm text-muted-foreground mt-1">{hint}</p>
+        <button
+          type="button"
+          className="text-primary hover:underline text-sm font-medium mt-2"
+        >
+          {learnLink}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HeadlinesList({
+  items,
+  onCreateClick,
+  sectionTitle,
+  sectionSubtitle,
+  createLabel,
+}: {
+  items: HeadlineItem[];
+  onCreateClick: () => void;
+  sectionTitle: string;
+  sectionSubtitle: string;
+  createLabel: string;
+}) {
+  return (
+    <div className="bg-card border border-border rounded-lg overflow-hidden mb-6">
+      <div className="p-4 border-b border-border">
+        <h3 className="font-semibold text-foreground">
+          {sectionTitle} {items.length}
+        </h3>
+        <p className="text-sm text-muted-foreground mt-0.5">{sectionSubtitle}</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border bg-muted/30">
+              <th className="w-10 px-4 py-2" />
+              <th className="w-8 px-4 py-2" />
+              <th className="text-left font-medium text-foreground px-4 py-2">
+                Title
+              </th>
+              <th className="text-left font-medium text-foreground px-4 py-2">
+                Created
+              </th>
+              <th className="text-left font-medium text-foreground px-4 py-2 w-24">
+                Owner
+              </th>
+              <th className="text-right font-medium text-foreground px-4 py-2 w-14">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <SortableContext
+              items={items.map((i) => i.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {items.map((item) => (
+                <HeadlineRow key={item.id} item={item} />
+              ))}
+            </SortableContext>
+          </tbody>
+        </table>
+      </div>
+      <div className="p-3 border-t border-border">
+        <button
+          type="button"
+          onClick={onCreateClick}
+          className="text-primary hover:underline text-sm font-medium"
+        >
+          + {createLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HeadlineRow({ item }: { item: HeadlineItem }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+  const { archiveHeadline, deleteHeadline } = useHeadlines();
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const openMenu = () => {
+    if (buttonRef.current) {
+      setAnchorRect(buttonRef.current.getBoundingClientRect());
+      setMenuOpen(true);
+    }
+  };
+
+  return (
+    <>
+      <tr
+        ref={setNodeRef}
+        style={style}
+        className={`border-b border-border hover:bg-muted/10 ${isDragging ? 'opacity-50 bg-muted/20' : ''}`}
+      >
+        <td className="px-4 py-2 w-10 align-middle">
+          <button
+            type="button"
+            className="p-1 rounded text-muted-foreground hover:bg-muted/80 cursor-grab active:cursor-grabbing"
+            {...attributes}
+            {...listeners}
+            aria-label="Drag to reorder"
+          >
+            <GripVertical className="w-4 h-4" />
+          </button>
+        </td>
+        <td className="px-4 py-2 w-8 align-middle">
+          <input type="checkbox" className="rounded border-border" />
+        </td>
+        <td className="px-4 py-2 font-medium text-foreground align-middle">
+          {item.title}
+        </td>
+        <td className="px-4 py-2 text-muted-foreground align-middle">
+          <div>{item.createdAt}</div>
+          <div className="text-xs">{item.createdAgo}</div>
+        </td>
+        <td className="px-4 py-2 align-middle">
+          <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
+            {item.ownerInitials}
+          </div>
+        </td>
+        <td className="px-4 py-2 align-middle text-right">
+          <button
+            ref={buttonRef}
+            type="button"
+            onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
+            className="p-2 rounded-md hover:bg-muted/80 text-muted-foreground"
+            aria-label="More actions"
+          >
+            <MoreHorizontal className="w-4 h-4" />
+          </button>
+          {menuOpen && anchorRect && typeof document !== 'undefined' && (
+            <HeadlineRowMenu
+              anchorRect={anchorRect}
+              onClose={() => {
+                setMenuOpen(false);
+                setAnchorRect(null);
+              }}
+              item={item}
+              onArchive={() => archiveHeadline(item.id)}
+              onDelete={() => deleteHeadline(item.id)}
+              includeCascade
+            />
+          )}
+        </td>
+      </tr>
+    </>
+  );
+}
+
+function CascadingList({
+  items,
+  teamName,
+  onCreateClick,
+}: {
+  items: CascadingMessageItem[];
+  teamName: string;
+  onCreateClick: () => void;
+}) {
+  return (
+    <div className="bg-card border border-border rounded-lg overflow-hidden">
+      <div className="p-4 border-b border-border">
+        <h3 className="font-semibold text-foreground">
+          Cascading Messages {items.length}
+        </h3>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border bg-muted/30">
+              <th className="w-10 px-4 py-2" />
+              <th className="w-8 px-4 py-2" />
+              <th className="text-left font-medium text-foreground px-4 py-2">
+                Title
+              </th>
+              <th className="text-left font-medium text-foreground px-4 py-2">
+                From
+              </th>
+              <th className="text-left font-medium text-foreground px-4 py-2">
+                Created
+              </th>
+              <th className="text-left font-medium text-foreground px-4 py-2 w-24">
+                Owner
+              </th>
+              <th className="text-right font-medium text-foreground px-4 py-2 w-14">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <SortableContext
+              items={items.map((i) => i.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {items.map((item) => (
+                <CascadingRow key={item.id} item={item} />
+              ))}
+            </SortableContext>
+          </tbody>
+        </table>
+      </div>
+      <div className="p-3 border-t border-border">
+        <button
+          type="button"
+          onClick={onCreateClick}
+          className="text-primary hover:underline text-sm font-medium"
+        >
+          + Create Cascading Message
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CascadingRow({ item }: { item: CascadingMessageItem }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+  const { archiveCascadingMessage, deleteCascadingMessage } = useHeadlines();
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const openMenu = () => {
+    if (buttonRef.current) {
+      setAnchorRect(buttonRef.current.getBoundingClientRect());
+      setMenuOpen(true);
+    }
+  };
+
+  return (
+    <>
+      <tr
+        ref={setNodeRef}
+        style={style}
+        className={`border-b border-border hover:bg-muted/10 ${isDragging ? 'opacity-50 bg-muted/20' : ''}`}
+      >
+        <td className="px-4 py-2 w-10 align-middle">
+          <button
+            type="button"
+            className="p-1 rounded text-muted-foreground hover:bg-muted/80 cursor-grab active:cursor-grabbing"
+            {...attributes}
+            {...listeners}
+            aria-label="Drag to reorder"
+          >
+            <GripVertical className="w-4 h-4" />
+          </button>
+        </td>
+        <td className="px-4 py-2 w-8 align-middle">
+          <input type="checkbox" className="rounded border-border" />
+        </td>
+        <td className="px-4 py-2 font-medium text-foreground align-middle">
+          {item.title}
+        </td>
+        <td className="px-4 py-2 text-muted-foreground align-middle">
+          {item.from}
+        </td>
+        <td className="px-4 py-2 text-muted-foreground align-middle">
+          <div>{item.createdAt}</div>
+          <div className="text-xs">{item.createdAgo}</div>
+        </td>
+        <td className="px-4 py-2 align-middle">
+          <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
+            {item.ownerInitials}
+          </div>
+        </td>
+        <td className="px-4 py-2 align-middle text-right">
+          <button
+            ref={buttonRef}
+            type="button"
+            onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
+            className="p-2 rounded-md hover:bg-muted/80 text-muted-foreground"
+            aria-label="More actions"
+          >
+            <MoreHorizontal className="w-4 h-4" />
+          </button>
+          {menuOpen && anchorRect && typeof document !== 'undefined' && (
+            <HeadlineRowMenu
+              anchorRect={anchorRect}
+              onClose={() => {
+                setMenuOpen(false);
+                setAnchorRect(null);
+              }}
+              item={{ id: item.id, title: item.title }}
+              onArchive={() => archiveCascadingMessage(item.id)}
+              onDelete={() => deleteCascadingMessage(item.id)}
+              includeCascade={false}
+            />
+          )}
+        </td>
+      </tr>
+    </>
+  );
+}
+
+function HeadlineRowMenu({
+  anchorRect,
+  onClose,
+  item,
+  onArchive,
+  onDelete,
+  includeCascade,
+}: {
+  anchorRect: DOMRect;
+  onClose: () => void;
+  item: { id: string; title: string };
+  onArchive: () => void;
+  onDelete: () => void;
+  includeCascade: boolean;
+}) {
+  const position = useMemo(() => {
+    if (typeof window === 'undefined')
+      return { top: anchorRect.top, left: anchorRect.right + MENU_GAP };
+    const padding = 8;
+    const maxLeft = window.innerWidth - MENU_WIDTH - padding;
+    const leftWhenRight = anchorRect.right + MENU_GAP;
+    const left =
+      leftWhenRight > maxLeft
+        ? anchorRect.left - MENU_WIDTH - MENU_GAP
+        : leftWhenRight;
+    const top = Math.min(
+      anchorRect.top,
+      Math.max(padding, window.innerHeight - 420)
+    );
+    return { top, left };
+  }, [anchorRect]);
+
+  const btn =
+    'w-full text-left px-3 py-2.5 text-sm text-foreground hover:bg-muted/60 rounded-md flex items-center gap-3 transition-colors';
+  const icon = 'w-4 h-4 text-muted-foreground shrink-0';
+
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} aria-hidden />
+      <div
+        className="fixed z-50 py-2 bg-card border border-border rounded-lg shadow-xl min-w-[240px]"
+        style={{ top: position.top, left: position.left }}
+        role="menu"
+        aria-label="Row actions"
+      >
+        <div className="px-2 py-1">
+          {includeCascade && (
+            <button type="button" className={btn} onClick={onClose} role="menuitem">
+              <Send className={icon} />
+              Cascade
+            </button>
+          )}
+          <button type="button" className={btn} onClick={onClose} role="menuitem">
+            <Mountain className={icon} />
+            Create linked Rock
+          </button>
+          <button type="button" className={btn} onClick={onClose} role="menuitem">
+            <CheckSquare className={icon} />
+            Create linked To-Do
+          </button>
+          <button type="button" className={btn} onClick={onClose} role="menuitem">
+            <AlertCircle className={icon} />
+            Create linked Issue
+          </button>
+          <button type="button" className={btn} onClick={onClose} role="menuitem">
+            <Megaphone className={icon} />
+            Create linked Headline
+          </button>
+        </div>
+        <div className="border-t border-border my-1" />
+        <div className="px-2 py-1">
+          <button
+            type="button"
+            className={btn}
+            onClick={() => {
+              onArchive();
+              onClose();
+            }}
+            role="menuitem"
+          >
+            <Archive className={icon} />
+            Archive
+          </button>
+          <button type="button" className={btn} onClick={onClose} role="menuitem">
+            <Link2 className={icon} />
+            Copy Link
+          </button>
+        </div>
+        <div className="border-t border-border my-1" />
+        <div className="px-2 py-1">
+          <button
+            type="button"
+            className="w-full text-left px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-md flex items-center gap-3 transition-colors"
+            onClick={() => {
+              onDelete();
+              onClose();
+            }}
+            role="menuitem"
+          >
+            <Trash2 className="w-4 h-4 shrink-0" />
+            Delete
+          </button>
+        </div>
+      </div>
+    </>,
+    document.body
+  );
+}

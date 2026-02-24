@@ -15,6 +15,7 @@ export interface Meeting {
   scheduledAt: string;
   startedAt?: string;
   endedAt?: string;
+  suspendedAt?: string | null;
   team: {
     id: string;
     name: string;
@@ -82,6 +83,20 @@ export const meetingsService = {
 
   addAttendance: async (organizationId: string, meetingId: string): Promise<any> => {
     const response = await apiClient.post(`/meetings/${meetingId}/attend?organizationId=${organizationId}`);
+    return response.data;
+  },
+
+  suspend: async (organizationId: string, meetingId: string): Promise<Meeting> => {
+    const response = await apiClient.post<Meeting>(
+      `/meetings/${meetingId}/suspend?organizationId=${organizationId}`,
+    );
+    return response.data;
+  },
+
+  resume: async (organizationId: string, meetingId: string): Promise<Meeting> => {
+    const response = await apiClient.post<Meeting>(
+      `/meetings/${meetingId}/resume?organizationId=${organizationId}`,
+    );
     return response.data;
   },
 };
