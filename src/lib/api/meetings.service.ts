@@ -8,10 +8,26 @@ export interface CreateMeetingDto {
   sectionTitles?: string[];
 }
 
+/** Recap data saved when meeting ends; loaded for past meeting panel */
+export interface MeetingRecapData {
+  todosCreated?: Array<{ id: string; title: string; assigneeInitials?: string }>;
+  issuesSolved?: Array<{ id: string; title: string }>;
+  shortTermStats?: {
+    totalTracked: number;
+    solvedLastMeeting: number;
+    solvedToday: number;
+    solveRatePercent: number;
+  };
+  sectionDurations?: Array<{ sectionTitle: string; durationMMSS: string }>;
+  ratings?: Array<{ attendanceId?: string; userName: string; rating: number | null }>;
+  attachments?: Array<{ id: string; name: string; url?: string }>;
+}
+
 export interface Meeting {
   id: string;
   teamId: string;
   meetingSeriesId: string;
+  facilitatorId?: string | null;
   scheduledAt: string;
   startedAt?: string;
   endedAt?: string;
@@ -19,6 +35,7 @@ export interface Meeting {
   team: {
     id: string;
     name: string;
+    organizationId?: string;
   };
   series: {
     id: string;
@@ -86,6 +103,11 @@ export const meetingsService = {
     return response.data;
   },
 
+  leaveMeeting: async (organizationId: string, meetingId: string): Promise<{ success: boolean }> => {
+    const response = await apiClient.post(`/meetings/${meetingId}/leave?organizationId=${organizationId}`);
+    return response.data;
+  },
+
   suspend: async (organizationId: string, meetingId: string): Promise<Meeting> => {
     const response = await apiClient.post<Meeting>(
       `/meetings/${meetingId}/suspend?organizationId=${organizationId}`,
@@ -98,5 +120,145 @@ export const meetingsService = {
       `/meetings/${meetingId}/resume?organizationId=${organizationId}`,
     );
     return response.data;
+  },
+
+  saveNote: async (
+    organizationId: string,
+    meetingId: string,
+    sectionId: string,
+    content: string,
+  ): Promise<{ id: string; content: string; author: { id: string; email: string; name?: string } }> => {
+    const response = await apiClient.post(
+      `/meetings/${meetingId}/sections/${sectionId}/notes?organizationId=${organizationId}`,
+      { content },
+    );
+    return response.data;
+  },
+
+  getAttachments: async (
+    organizationId: string,
+    meetingId: string,
+  ): Promise<Array<{ id: string; fileName: string; filePath: string; mimeType?: string; user?: { id: string; name?: string; email: string } }>> => {
+    const response = await apiClient.get(
+      `/meetings/${meetingId}/attachments?organizationId=${organizationId}`,
+    );
+    return response.data;
+  },
+
+  uploadAttachment: async (
+    organizationId: string,
+    meetingId: string,
+    file: File,
+  ): Promise<{ id: string; fileName: string; filePath: string; mimeType?: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await apiClient.post(
+      `/meetings/${meetingId}/attachments?organizationId=${organizationId}`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      },
+    );
+    return response.data;
+  },
+
+  getRecap: async (
+    organizationId: string,
+    meetingId: string,
+  ): Promise<MeetingRecapData | null> => {
+    const response = await apiClient.get<MeetingRecapData | null>(
+      `/meetings/${meetingId}/recap?organizationId=${organizationId}`,
+    );
+    return response.data;
+  },
+
+  saveRecap: async (
+    organizationId: string,
+    meetingId: string,
+    data: MeetingRecapData,
+  ): Promise<{ success: boolean }> => {
+    const response = await apiClient.post(
+      `/meetings/${meetingId}/recap?organizationId=${organizationId}`,
+      data,
+    );
+    return response.data;
+  },
+
+  downloadAttachment: async (
+    organizationId: string,
+    meetingId: string,
+    attachmentId: string,
+    fileName: string,
+  ): Promise<void> => {
+    const response = await apiClient.get(
+      `/meetings/${meetingId}/attachments/${attachmentId}/download?organizationId=${organizationId}`,
+      { responseType: 'blob' },
+    );
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
+};
+
+export interface ScorecardGroup {
+  id: string;
+  meetingId: string;
+  timeframe: string;
+  name: string;
+  description: string | null;
+  order: number;
+}
+
+export const scorecardGroupsService = {
+  list: async (
+    organizationId: string,
+    meetingId: string,
+    timeframe?: string,
+  ): Promise<ScorecardGroup[]> => {
+    const params = new URLSearchParams({ organizationId });
+    if (timeframe) params.set('timeframe', timeframe);
+    const response = await apiClient.get<ScorecardGroup[]>(
+      `/meetings/${meetingId}/scorecard-groups?${params}`,
+    );
+    return response.data;
+  },
+  create: async (
+    organizationId: string,
+    meetingId: string,
+    data: { timeframe: string; name: string; description?: string },
+  ): Promise<ScorecardGroup> => {
+    const response = await apiClient.post<ScorecardGroup>(
+      `/meetings/${meetingId}/scorecard-groups?organizationId=${organizationId}`,
+      data,
+    );
+    return response.data;
+  },
+  update: async (
+    organizationId: string,
+    meetingId: string,
+    groupId: string,
+    data: { name?: string; description?: string },
+  ): Promise<ScorecardGroup> => {
+    const response = await apiClient.put<ScorecardGroup>(
+      `/meetings/${meetingId}/scorecard-groups/${groupId}?organizationId=${organizationId}`,
+      data,
+    );
+    return response.data;
+  },
+  delete: async (
+    organizationId: string,
+    meetingId: string,
+    groupId: string,
+  ): Promise<void> => {
+    await apiClient.delete(
+      `/meetings/${meetingId}/scorecard-groups/${groupId}?organizationId=${organizationId}`,
+    );
   },
 };

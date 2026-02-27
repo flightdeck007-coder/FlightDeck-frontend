@@ -4,10 +4,28 @@ import { CheckCircle2, Circle, Plus, User } from 'lucide-react';
 import { InstrumentsSegmentView } from './InstrumentsSegmentView';
 import { RocksSegmentView } from './RocksSegmentView';
 import { HeadlinesSegmentView } from './HeadlinesSegmentView';
+import { TodosSegmentView } from './TodosSegmentView';
+import { IssuesSegmentView } from './IssuesSegmentView';
+import { ConcludeSegmentView } from './ConcludeSegmentView';
+
+export type CreatePopupType = 'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message';
 
 interface MeetingContentProps {
   sectionId: string;
   sectionTitle: string;
+  onOpenCreateIssue?: () => void;
+  onOpenCreate?: (type: CreatePopupType) => void;
+  onFinishMeeting?: () => Promise<void>;
+  finishLoading?: boolean;
+  meetingId?: string;
+  organizationId?: string;
+  isFacilitator?: boolean;
+  facilitatorId?: string | null;
+  meetingAttendances?: Array<{
+    id: string;
+    present: boolean;
+    user: { id: string; name?: string | null; email: string };
+  }>;
 }
 
 // Demo data for different sections (L10-style; flight wording in UI)
@@ -63,14 +81,15 @@ const demoData: Record<string, any> = {
   },
 };
 
-export function MeetingContent({ sectionId, sectionTitle }: MeetingContentProps) {
+export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onOpenCreate, onFinishMeeting, finishLoading, meetingId, organizationId, isFacilitator, facilitatorId, meetingAttendances }: MeetingContentProps) {
   const data = demoData[sectionId.toLowerCase()] || demoData.segue;
   const isMinimalPrompt = data.type === 'prompt' && data.empty; // Segue, Headlines: prompt + empty only
+  const hasFilterBar = ['scorecard', 'rocks', 'headlines', 'todos', 'issues', 'conclude'].includes(sectionId);
 
   return (
     <div className="h-full flex flex-col">
       {/* Section-specific header/action bar: only when not a minimal prompt and not scorecard/rocks (they use dedicated segment views) */}
-      {!isMinimalPrompt && sectionId !== 'scorecard' && sectionId !== 'rocks' && sectionId !== 'headlines' && (
+      {!isMinimalPrompt && sectionId !== 'scorecard' && sectionId !== 'rocks' && sectionId !== 'headlines' && sectionId !== 'todos' && sectionId !== 'issues' && sectionId !== 'conclude' && (
         <div className="p-6 border-b border-border bg-card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-foreground">{sectionTitle}</h2>
@@ -108,7 +127,7 @@ export function MeetingContent({ sectionId, sectionTitle }: MeetingContentProps)
       )}
 
       {/* Content: for Segue = prompt line + empty; others = existing UI */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className={`flex-1 overflow-y-auto ${hasFilterBar ? 'pt-0 px-6 pb-6' : 'p-6'}`}>
         {isMinimalPrompt && sectionId !== 'headlines' && (
           <>
             <p className="text-lg text-foreground font-medium">{data.content}</p>
@@ -116,15 +135,46 @@ export function MeetingContent({ sectionId, sectionTitle }: MeetingContentProps)
           </>
         )}
         {sectionId === 'scorecard' && (
-          <InstrumentsSegmentView embedded teamName="Leadership Team" />
+          <InstrumentsSegmentView embedded teamName="Leadership Team" meetingId={meetingId} organizationId={organizationId} isFacilitator={isFacilitator} />
         )}
         {sectionId === 'rocks' && (
-          <RocksSegmentView embedded sectionTitle={sectionTitle} />
+          <RocksSegmentView embedded sectionTitle={sectionTitle} meetingId={meetingId} isFacilitator={isFacilitator} onOpenCreate={onOpenCreate} />
         )}
         {sectionId === 'headlines' && (
-          <HeadlinesSegmentView embedded teamName="Leadership Team" />
+          <HeadlinesSegmentView embedded teamName="Leadership Team" meetingId={meetingId} isFacilitator={isFacilitator} onOpenCreate={onOpenCreate} />
         )}
-        {data.type === 'text' && !data.empty && (
+        {sectionId === 'todos' && (
+          <TodosSegmentView
+            embedded
+            teamName="Leadership Team"
+            meetingId={meetingId}
+            isFacilitator={isFacilitator}
+            onOpenCreate={onOpenCreate}
+          />
+        )}
+        {sectionId === 'issues' && (
+          <IssuesSegmentView
+            embedded
+            teamName="Leadership Team"
+            meetingId={meetingId}
+            isFacilitator={isFacilitator}
+            onOpenCreate={onOpenCreate}
+            onOpenCreateIssue={onOpenCreateIssue}
+          />
+        )}
+        {sectionId === 'conclude' && (
+          <ConcludeSegmentView
+            embedded
+            teamName="Leadership Team"
+            onFinishMeeting={onFinishMeeting}
+            finishLoading={finishLoading}
+            meetingId={meetingId}
+            isFacilitator={isFacilitator}
+            facilitatorId={facilitatorId}
+            attendances={meetingAttendances}
+          />
+        )}
+        {data.type === 'text' && !data.empty && sectionId !== 'conclude' && (
           <div className="bg-card border border-border rounded-lg p-6">
             <p className="text-foreground/80">{data.content}</p>
           </div>
@@ -147,7 +197,7 @@ export function MeetingContent({ sectionId, sectionTitle }: MeetingContentProps)
           </div>
         )}
 
-        {data.type === 'list' && sectionId !== 'rocks' && sectionId !== 'headlines' && (
+        {data.type === 'list' && sectionId !== 'rocks' && sectionId !== 'headlines' && sectionId !== 'todos' && sectionId !== 'issues' && (
           <div>
             {/* Tabs for Turbulence (Issues) */}
             {sectionId === 'issues' && (

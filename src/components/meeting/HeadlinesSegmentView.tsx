@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
 import {
   DndContext,
   type DragEndEvent,
@@ -26,6 +27,10 @@ import {
   Archive,
   Link2,
   Trash2,
+  ChevronDown,
+  X,
+  Check,
+  Loader2,
 } from 'lucide-react';
 import {
   useHeadlines,
@@ -36,18 +41,27 @@ import {
 const MENU_WIDTH = 248;
 const MENU_GAP = 8;
 
+type CreatePopupType = 'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message';
+
 interface HeadlinesSegmentViewProps {
   teamName?: string;
   embedded?: boolean;
+  meetingId?: string;
+  isFacilitator?: boolean;
+  onOpenCreate?: (type: CreatePopupType) => void;
 }
 
 export function HeadlinesSegmentView({
   teamName = 'Leadership Team',
   embedded = false,
+  meetingId,
+  isFacilitator = true,
+  onOpenCreate,
 }: HeadlinesSegmentViewProps) {
   const [teamFilter, setTeamFilter] = useState(teamName);
   const [archiveOn, setArchiveOn] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const { socket } = useMeetingSocket();
 
   const {
     headlines,
@@ -57,6 +71,28 @@ export function HeadlinesSegmentView({
     reorderHeadlines,
     reorderCascadingMessages,
   } = useHeadlines();
+
+  const [isAddingHeadline, setIsAddingHeadline] = useState(false);
+  const [newHeadlineTitle, setNewHeadlineTitle] = useState('');
+  const [isSavingHeadline, setIsSavingHeadline] = useState(false);
+
+  // Sync headlines filters from facilitator to members
+  useEffect(() => {
+    if (!socket || !meetingId) return;
+    const onHeadlinesFilter = (payload: {
+      teamFilter?: string;
+      archiveOn?: boolean;
+      searchQuery?: string;
+    }) => {
+      if (payload.teamFilter !== undefined) setTeamFilter(payload.teamFilter);
+      if (payload.archiveOn !== undefined) setArchiveOn(payload.archiveOn);
+      if (payload.searchQuery !== undefined) setSearchQuery(payload.searchQuery);
+    };
+    socket.on('headlines_filter', onHeadlinesFilter);
+    return () => {
+      socket.off('headlines_filter', onHeadlinesFilter);
+    };
+  }, [socket, meetingId]);
 
   const activeHeadlines = useMemo(
     () => headlines.filter((h) => !h.archived),
@@ -87,6 +123,25 @@ export function HeadlinesSegmentView({
     return activeCascading.filter((c) => c.title.toLowerCase().includes(q));
   }, [activeCascading, searchQuery]);
 
+  const handleSaveNewHeadline = () => {
+    const title = newHeadlineTitle.trim() || 'New headline';
+    setIsSavingHeadline(true);
+    addHeadline({
+      title,
+      createdAt: new Date().toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      }),
+      createdAgo: 'Just now',
+      ownerInitials: 'JD',
+      archived: false,
+    });
+    setIsAddingHeadline(false);
+    setNewHeadlineTitle('');
+    setIsSavingHeadline(false);
+  };
+
   const headlineIds = useMemo(() => filteredHeadlines.map((h) => h.id), [filteredHeadlines]);
   const cascadingIds = useMemo(() => filteredCascading.map((c) => c.id), [filteredCascading]);
 
@@ -106,48 +161,51 @@ export function HeadlinesSegmentView({
     }
   };
 
-  const wrap = embedded ? 'p-4' : 'p-6';
-
+  const wrap = embedded ? 'pt-0 pb-4' : 'pt-0 pb-6';
+  const contentPad = embedded ? 'px-4' : 'px-6';
   return (
     <div className={`flex flex-col min-h-0 h-full ${wrap}`}>
-      {/* Simple header */}
-      <div className="mb-4 shrink-0">
-        <h2 className="text-xl font-semibold text-foreground">
-          Headlines – {teamFilter}
-        </h2>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Easily share important announcements with your team.
-        </p>
-      </div>
-
-      {/* Filter row: Team, Archive toggle, Search */}
-      <div className="flex flex-wrap items-center gap-3 mb-4 shrink-0">
-        <div>
+      {/* Filter row — full width; facilitator-only with sync */}
+      <div className="flex flex-wrap items-center gap-3 py-3 -mx-6 px-4 border-t border-b border-border bg-muted/30 shrink-0">
+        <div className={`relative ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
           <span className="text-muted-foreground text-sm mr-1">Team:</span>
           <select
             value={teamFilter}
-            onChange={(e) => setTeamFilter(e.target.value)}
-            className="pl-3 pr-8 py-2 border border-border rounded-md bg-background text-foreground text-sm appearance-none cursor-pointer"
+            onChange={(e) => {
+              if (!isFacilitator) return;
+              const v = e.target.value;
+              setTeamFilter(v);
+              if (meetingId && socket) socket.emit('headlines_filter', { meetingId, teamFilter: v });
+            }}
+            disabled={!isFacilitator}
+            className={`pl-3 pr-8 py-2 border border-border rounded-lg bg-background text-foreground text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50 hover:border-foreground/20'}`}
           >
             <option>Leadership Team</option>
           </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
         </div>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <span className="text-sm text-foreground">Archive</span>
+        <label className={`flex items-center gap-2 group ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
+          <span className="text-sm text-foreground group-hover:text-foreground/90">Archive</span>
           <button
             type="button"
             role="switch"
             aria-checked={archiveOn}
-            onClick={() => setArchiveOn((o) => !o)}
-            className={`relative w-10 h-5 rounded-full transition-colors ${
-              archiveOn ? 'bg-primary' : 'bg-muted'
-            }`}
+            disabled={!isFacilitator}
+            onClick={() => {
+              if (!isFacilitator) return;
+              setArchiveOn((o) => {
+                const next = !o;
+                if (meetingId && socket) socket.emit('headlines_filter', { meetingId, archiveOn: next });
+                return next;
+              });
+            }}
+            className={`relative w-11 h-6 rounded-full transition-colors border-2 flex items-center ${
+              archiveOn
+                ? 'bg-primary border-primary justify-end'
+                : 'bg-muted border-border justify-start hover:bg-muted/80'
+            } ${!isFacilitator ? 'cursor-not-allowed' : 'cursor-pointer'}`}
           >
-            <span
-              className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                archiveOn ? 'left-5' : 'left-0.5'
-              }`}
-            />
+            <span className="w-4 h-4 rounded-full bg-white shadow border border-border shrink-0 m-0.5" />
           </button>
         </label>
         <div className="flex-1 min-w-[200px] flex justify-end">
@@ -157,15 +215,21 @@ export function HeadlinesSegmentView({
               type="search"
               placeholder="Search Headlines..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full max-w-xs pl-9 pr-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
+              onChange={(e) => {
+                if (!isFacilitator) return;
+                const v = e.target.value;
+                setSearchQuery(v);
+                if (meetingId && socket) socket.emit('headlines_filter', { meetingId, searchQuery: v });
+              }}
+              disabled={!isFacilitator}
+              className={`w-full max-w-xs pl-9 pr-3 py-2 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'hover:border-foreground/20'}`}
             />
           </div>
         </div>
       </div>
 
-      {/* Content: active vs archived */}
-      <div className="flex-1 overflow-auto min-h-0">
+      {/* Content: padding after filter bar */}
+      <div className={`flex-1 overflow-auto min-h-0 mt-6 ${contentPad}`}>
         {archiveOn ? (
           <>
             <ArchivedSection
@@ -193,39 +257,43 @@ export function HeadlinesSegmentView({
             >
               <HeadlinesList
                 items={filteredHeadlines}
-                onCreateClick={() =>
-                  addHeadline({
-                    title: 'New headline',
-                    createdAt: new Date().toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    }),
-                    createdAgo: 'Just now',
-                    ownerInitials: 'JD',
-                    archived: false,
-                  })
+                onCreateClick={
+                  onOpenCreate
+                    ? () => onOpenCreate('headline')
+                    : () => setIsAddingHeadline(true)
                 }
                 sectionTitle="Headlines"
                 sectionSubtitle="Customer/Employee Headlines"
                 createLabel="Create Headline"
+                isAdding={isAddingHeadline}
+                newTitle={newHeadlineTitle}
+                onNewTitleChange={setNewHeadlineTitle}
+                onSaveNew={handleSaveNewHeadline}
+                onCancelNew={() => {
+                  setIsAddingHeadline(false);
+                  setNewHeadlineTitle('');
+                }}
+                isSaving={isSavingHeadline}
               />
               <CascadingList
                 items={filteredCascading}
                 teamName={teamFilter}
-                onCreateClick={() =>
-                  addCascadingMessage({
-                    title: 'New cascading message',
-                    from: teamFilter,
-                    createdAt: new Date().toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    }),
-                    createdAgo: 'Just now',
-                    ownerInitials: 'JD',
-                    archived: false,
-                  })
+                onCreateClick={
+                  onOpenCreate
+                    ? () => onOpenCreate('cascading_message')
+                    : () =>
+                        addCascadingMessage({
+                          title: 'New cascading message',
+                          from: teamFilter,
+                          createdAt: new Date().toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          }),
+                          createdAgo: 'Just now',
+                          ownerInitials: 'JD',
+                          archived: false,
+                        })
                 }
               />
             </DndContext>
@@ -284,13 +352,26 @@ function HeadlinesList({
   sectionTitle,
   sectionSubtitle,
   createLabel,
+  isAdding,
+  newTitle,
+  onNewTitleChange,
+  onSaveNew,
+  onCancelNew,
+  isSaving,
 }: {
   items: HeadlineItem[];
   onCreateClick: () => void;
   sectionTitle: string;
   sectionSubtitle: string;
   createLabel: string;
+  isAdding?: boolean;
+  newTitle?: string;
+  onNewTitleChange?: (v: string) => void;
+  onSaveNew?: () => void;
+  onCancelNew?: () => void;
+  isSaving?: boolean;
 }) {
+  const showInlineAdd = isAdding && onSaveNew && onCancelNew;
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden mb-6">
       <div className="p-4 border-b border-border">
@@ -320,6 +401,53 @@ function HeadlinesList({
             </tr>
           </thead>
           <tbody>
+            {showInlineAdd && (
+              <tr className="border-b border-border bg-primary/5">
+                <td className="px-4 py-2 w-10" />
+                <td className="px-4 py-2 w-8" />
+                <td className="px-4 py-2" colSpan={2}>
+                  <input
+                    type="text"
+                    placeholder="Type headline title..."
+                    value={newTitle ?? ''}
+                    onChange={(e) => onNewTitleChange?.(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') onSaveNew?.();
+                      if (e.key === 'Escape') onCancelNew?.();
+                    }}
+                    autoFocus
+                    className="w-full px-3 py-1.5 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </td>
+                <td className="px-4 py-2">—</td>
+                <td className="px-4 py-2 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <button
+                      type="button"
+                      onClick={onCancelNew}
+                      disabled={isSaving}
+                      className="p-1.5 rounded hover:bg-muted text-muted-foreground disabled:opacity-50"
+                      aria-label="Cancel"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onSaveNew}
+                      disabled={isSaving}
+                      className="p-1.5 rounded hover:bg-primary/20 text-primary disabled:opacity-50 flex items-center gap-1"
+                      aria-label="Save"
+                    >
+                      {isSaving ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )}
             <SortableContext
               items={items.map((i) => i.id)}
               strategy={verticalListSortingStrategy}
@@ -332,13 +460,18 @@ function HeadlinesList({
         </table>
       </div>
       <div className="p-3 border-t border-border">
-        <button
-          type="button"
-          onClick={onCreateClick}
-          className="text-primary hover:underline text-sm font-medium"
-        >
-          + {createLabel}
-        </button>
+        {!isAdding && (
+          <button
+            type="button"
+            onClick={onCreateClick}
+            className="text-primary hover:underline text-sm font-medium"
+          >
+            + {createLabel}
+          </button>
+        )}
+        {isAdding && (
+          <span className="text-sm text-muted-foreground">Type title above and click ✓ to save</span>
+        )}
       </div>
     </div>
   );

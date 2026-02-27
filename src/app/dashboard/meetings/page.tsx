@@ -5,9 +5,11 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useRouter } from 'next/navigation';
 import { ROUTES } from '@/lib/constants/routes';
 import { FLIGHT_TERMS } from '@/lib/constants/flightTerminology';
-import { meetingsService, Meeting } from '@/lib/api/meetings.service';
+import { meetingsService, Meeting, type MeetingRecapData } from '@/lib/api/meetings.service';
 import { teamsService, Team } from '@/lib/api/teams.service';
 import { Calendar, Users, Clock } from 'lucide-react';
+import { ButtonLoader } from '@/components/ui/loaders';
+import { PastMeetingRecapPanel } from '@/components/meeting/PastMeetingRecapPanel';
 
 export default function MeetingsPage() {
   const router = useRouter();
@@ -18,6 +20,14 @@ export default function MeetingsPage() {
   const [organizationId, setOrganizationId] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [orgRole, setOrgRole] = useState<string | null>(null);
+  const [schedulingMeeting, setSchedulingMeeting] = useState(false);
+  const [selectedPastMeeting, setSelectedPastMeeting] = useState<Meeting | null>(null);
+  const [selectedRecap, setSelectedRecap] = useState<MeetingRecapData | null>(null);
+  const [recapLoading, setRecapLoading] = useState(false);
+  const [continueMeetingModal, setContinueMeetingModal] = useState<Meeting | null>(null);
+  const [resumingMeetingId, setResumingMeetingId] = useState<string | null>(null);
+
+  const RESUME_MEETING_KEY = 'meeting-app-resumeMeetingId';
 
   useEffect(() => {
     const storedOrgId = typeof window !== 'undefined' ? localStorage.getItem('organizationId') : null;
@@ -34,6 +44,28 @@ export default function MeetingsPage() {
       setIsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!selectedPastMeeting?.id || !organizationId) {
+      return;
+    }
+    let cancelled = false;
+    setRecapLoading(true);
+    meetingsService
+      .getRecap(organizationId, selectedPastMeeting.id)
+      .then((data) => {
+        if (!cancelled && data) setSelectedRecap(data);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedRecap(null);
+      })
+      .finally(() => {
+        if (!cancelled) setRecapLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPastMeeting?.id, organizationId]);
 
   const loadTeamsAndMeetings = async (orgId: string, preferredTeamId: string | null = null) => {
     try {
@@ -71,17 +103,19 @@ export default function MeetingsPage() {
 
     try {
       setError('');
+      setSchedulingMeeting(true);
       const meeting = await meetingsService.create(organizationId, {
         teamId: selectedTeamId,
         meetingSeriesName: 'Weekly L10',
         scheduledAt: new Date().toISOString(),
       });
-      // refresh list
       const updated = await meetingsService.findAll(organizationId, selectedTeamId);
       setMeetings(updated);
       router.push(ROUTES.MEETING(meeting.id));
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Failed to start meeting');
+    } finally {
+      setSchedulingMeeting(false);
     }
   };
 
@@ -113,18 +147,47 @@ export default function MeetingsPage() {
     });
   };
 
+  const handleContinueSuspendedMeeting = (meeting: Meeting) => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(RESUME_MEETING_KEY, meeting.id);
+    }
+    setResumingMeetingId(meeting.id);
+    setContinueMeetingModal(null);
+    router.push(ROUTES.MEETING(meeting.id));
+  };
+
   return (
     <DashboardLayout>
+      {/* Full-screen loader when navigating to resume a suspended meeting */}
+      {resumingMeetingId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-medium text-foreground">Opening meeting…</p>
+          </div>
+        </div>
+      )}
+
       <div className="p-8">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-semibold text-foreground">Flight Review</h1>
           {orgRole === 'ADMIN' || orgRole === 'MANAGER' ? (
             <button
-              onClick={handleStartMeeting}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors flex items-center gap-2"
+              onClick={() => void handleStartMeeting()}
+              disabled={schedulingMeeting}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              <Calendar className="w-4 h-4" />
-              {FLIGHT_TERMS.START_MEETING}
+              {schedulingMeeting ? (
+                <>
+                  <ButtonLoader className="border-primary-foreground border-t-transparent" />
+                  Scheduling…
+                </>
+              ) : (
+                <>
+                  <Calendar className="w-4 h-4" />
+                  {FLIGHT_TERMS.START_MEETING}
+                </>
+              )}
             </button>
           ) : (
             <span className="text-sm text-foreground/60">
@@ -182,7 +245,16 @@ export default function MeetingsPage() {
               <div
                 key={meeting.id}
                 className="bg-card border border-border rounded-lg p-6 hover:border-primary/50 transition-colors cursor-pointer"
-                onClick={() => router.push(ROUTES.MEETING(meeting.id))}
+                onClick={() => {
+                  if (meeting.endedAt) {
+                    setSelectedPastMeeting(meeting);
+                    setSelectedRecap(null);
+                  } else if (meeting.suspendedAt) {
+                    setContinueMeetingModal(meeting);
+                  } else {
+                    router.push(ROUTES.MEETING(meeting.id));
+                  }
+                }}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -211,6 +283,11 @@ export default function MeetingsPage() {
                       <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md text-sm">
                         Completed
                       </span>
+                    ) : meeting.suspendedAt ? (
+                      <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold bg-amber-400 text-amber-950 border border-amber-600/50 shadow-sm dark:bg-amber-500 dark:text-amber-950 dark:border-amber-600">
+                        <span className="w-2 h-2 rounded-full bg-amber-800 dark:bg-amber-900 animate-pulse" aria-hidden />
+                        Suspended
+                      </span>
                     ) : meeting.startedAt ? (
                       <span className="px-3 py-1 bg-green-100 text-green-700 rounded-md text-sm">
                         In Progress
@@ -226,7 +303,78 @@ export default function MeetingsPage() {
             ))}
           </div>
         )}
+
+        {selectedPastMeeting && organizationId && selectedPastMeeting.teamId && (
+          <PastMeetingRecapPanel
+            meeting={selectedPastMeeting}
+            recap={selectedRecap ?? getDefaultRecap(selectedPastMeeting)}
+            recapLoading={recapLoading}
+            organizationId={organizationId}
+            teamId={selectedPastMeeting.teamId}
+            onClose={() => {
+              setSelectedPastMeeting(null);
+              setSelectedRecap(null);
+            }}
+          />
+        )}
+
+        {/* Continue suspended meeting confirmation */}
+        {continueMeetingModal && (
+          <>
+            <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setContinueMeetingModal(null)} aria-hidden />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="bg-card border border-border rounded-lg shadow-xl max-w-sm w-full p-6">
+                <h3 className="text-lg font-semibold text-foreground mb-2">Continue meeting?</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  You&apos;ll resume from where you left off. Continue?
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setContinueMeetingModal(null)}
+                    className="px-4 py-2 border border-border rounded-md hover:bg-muted text-sm font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleContinueSuspendedMeeting(continueMeetingModal)}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium"
+                  >
+                    Yes, continue
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </DashboardLayout>
   );
+}
+
+function getDefaultRecap(meeting: Meeting): MeetingRecapData {
+  return {
+    todosCreated: [
+      { id: '1', title: 'testing', assigneeInitials: 'GS' },
+    ],
+    issuesSolved: [],
+    shortTermStats: {
+      totalTracked: 2,
+      solvedLastMeeting: 0,
+      solvedToday: 0,
+      solveRatePercent: 0,
+    },
+    sectionDurations: meeting.sections
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((s, i) => ({
+        sectionTitle: s.title,
+        durationMMSS: i === 0 ? '04:23' : '00:00',
+      })),
+    ratings: meeting.attendances.map((a) => ({
+      userName: a.user.name || a.user.email || 'Attendee',
+      rating: null,
+    })),
+  };
 }

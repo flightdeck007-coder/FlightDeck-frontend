@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
 import {
   DndContext,
   type DragEndEvent,
@@ -51,14 +52,22 @@ const COLUMN_LABELS: Record<RockColumnId, string> = {
 const ROCK_ACTIONS_MENU_WIDTH = 248;
 const ROCK_ACTIONS_MENU_GAP = 8;
 
+type CreatePopupType = 'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message';
+
 interface RocksSegmentViewProps {
   sectionTitle?: string;
   embedded?: boolean;
+  meetingId?: string;
+  isFacilitator?: boolean;
+  onOpenCreate?: (type: CreatePopupType) => void;
 }
 
 export function RocksSegmentView({
   sectionTitle = 'ROCK REVIEW',
   embedded = false,
+  meetingId,
+  isFacilitator = true,
+  onOpenCreate,
 }: RocksSegmentViewProps) {
   const [teamFilter, setTeamFilter] = useState('Leadership Team');
   const [ownerFilter, setOwnerFilter] = useState('All');
@@ -69,6 +78,29 @@ export function RocksSegmentView({
     'rocks'
   );
   const [vtoExpanded, setVtoExpanded] = useState(true);
+  const { socket } = useMeetingSocket();
+
+  // Sync rocks filters/tabs from facilitator to members
+  useEffect(() => {
+    if (!socket || !meetingId) return;
+    const onRocksFilter = (payload: {
+      activeTab?: 'rocks' | 'planning' | 'archive';
+      teamFilter?: string;
+      ownerFilter?: string;
+      statusFilter?: string;
+      searchQuery?: string;
+    }) => {
+      if (payload.activeTab !== undefined) setActiveTab(payload.activeTab);
+      if (payload.teamFilter !== undefined) setTeamFilter(payload.teamFilter);
+      if (payload.ownerFilter !== undefined) setOwnerFilter(payload.ownerFilter);
+      if (payload.statusFilter !== undefined) setStatusFilter(payload.statusFilter);
+      if (payload.searchQuery !== undefined) setSearchQuery(payload.searchQuery);
+    };
+    socket.on('rocks_filter', onRocksFilter);
+    return () => {
+      socket.off('rocks_filter', onRocksFilter);
+    };
+  }, [socket, meetingId]);
 
   const {
     rocks,
@@ -125,50 +157,72 @@ export function RocksSegmentView({
     }
   };
 
-  const wrap = embedded ? 'p-4' : 'p-6';
-
+  const wrap = embedded ? 'pt-0 pb-4' : 'pt-0 pb-6';
+  const contentPad = embedded ? 'px-4' : 'px-6';
   return (
     <div className={`flex flex-col min-h-0 h-full ${wrap}`}>
-      {/* Filters row — no extra select arrows (native select has its own) */}
-      <div className="flex flex-wrap items-center gap-3 mb-3 shrink-0">
-        <div>
+      {/* Filters row — full width like main header */}
+      <div className="flex flex-wrap items-center gap-3 py-3 -mx-6 px-4 border-t border-b border-border bg-muted/30 shrink-0">
+        <div className={`relative ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
           <span className="text-muted-foreground text-sm mr-1">Team:</span>
           <select
             value={teamFilter}
-            onChange={(e) => setTeamFilter(e.target.value)}
-            className="pl-3 pr-8 py-2 border border-border rounded-md bg-background text-foreground text-sm appearance-none cursor-pointer"
+            onChange={(e) => {
+              if (!isFacilitator) return;
+              const v = e.target.value;
+              setTeamFilter(v);
+              if (meetingId && socket) socket.emit('rocks_filter', { meetingId, teamFilter: v });
+            }}
+            disabled={!isFacilitator}
+            className={`pl-3 pr-8 py-2 border border-border rounded-lg bg-background text-foreground text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50 hover:border-foreground/20'}`}
           >
             <option>Leadership Team</option>
           </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
         </div>
-        <div>
+        <div className={`relative ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
           <span className="text-muted-foreground text-sm mr-1">Owner:</span>
           <select
             value={ownerFilter}
-            onChange={(e) => setOwnerFilter(e.target.value)}
-            className="pl-3 pr-8 py-2 border border-border rounded-md bg-background text-foreground text-sm appearance-none cursor-pointer"
+            onChange={(e) => {
+              if (!isFacilitator) return;
+              const v = e.target.value;
+              setOwnerFilter(v);
+              if (meetingId && socket) socket.emit('rocks_filter', { meetingId, ownerFilter: v });
+            }}
+            disabled={!isFacilitator}
+            className={`pl-3 pr-8 py-2 border border-border rounded-lg bg-background text-foreground text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50 hover:border-foreground/20'}`}
           >
             <option>All</option>
             <option>John Doe</option>
           </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
         </div>
-        <div>
+        <div className={`relative ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
           <span className="text-muted-foreground text-sm mr-1">Status:</span>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="pl-3 pr-8 py-2 border border-border rounded-md bg-background text-foreground text-sm appearance-none cursor-pointer"
+            onChange={(e) => {
+              if (!isFacilitator) return;
+              const v = e.target.value;
+              setStatusFilter(v);
+              if (meetingId && socket) socket.emit('rocks_filter', { meetingId, statusFilter: v });
+            }}
+            disabled={!isFacilitator}
+            className={`pl-3 pr-8 py-2 border border-border rounded-lg bg-background text-foreground text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50 hover:border-foreground/20'}`}
           >
             <option>All</option>
             <option>On-track</option>
             <option>Off-track</option>
           </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
         </div>
+        {isFacilitator && (
         <div className="relative">
           <button
             type="button"
             onClick={() => setMoreActionsOpen((o) => !o)}
-            className="p-2 rounded-md border border-border hover:bg-accent text-muted-foreground flex items-center gap-1"
+            className="p-2 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors cursor-pointer"
             title="More actions"
           >
             <MoreHorizontal className="w-4 h-4" />
@@ -214,6 +268,7 @@ export function RocksSegmentView({
             </>
           )}
         </div>
+        )}
         <div className="flex-1 min-w-[200px] flex justify-end">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -221,13 +276,21 @@ export function RocksSegmentView({
               type="search"
               placeholder={`Search ${sectionTitle}...`}
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full max-w-xs pl-9 pr-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
+              onChange={(e) => {
+                if (!isFacilitator) return;
+                const v = e.target.value;
+                setSearchQuery(v);
+                if (meetingId && socket) socket.emit('rocks_filter', { meetingId, searchQuery: v });
+              }}
+              disabled={!isFacilitator}
+              className={`w-full max-w-xs pl-9 pr-3 py-2 border border-border rounded-md bg-background text-foreground text-sm ${!isFacilitator ? 'cursor-not-allowed opacity-70' : ''}`}
             />
           </div>
         </div>
       </div>
 
+      {/* Content: padding after filter bar */}
+      <div className={`flex-1 flex flex-col min-h-0 mt-6 ${contentPad}`}>
       {/* Tabs — hover and transition for clickable UI */}
       <div className="flex gap-0 border-b border-border mb-4 shrink-0">
         {(
@@ -240,12 +303,17 @@ export function RocksSegmentView({
           <button
             key={tab.id}
             type="button"
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => {
+              if (!isFacilitator) return;
+              setActiveTab(tab.id);
+              if (meetingId && socket) socket.emit('rocks_filter', { meetingId, activeTab: tab.id });
+            }}
+            disabled={!isFacilitator}
             className={`px-4 py-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors rounded-t-md ${
               activeTab === tab.id
                 ? 'border-primary text-primary bg-primary/5'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
-            }`}
+            } ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
           >
             <tab.icon className="w-4 h-4" />
             {tab.label}
@@ -254,28 +322,26 @@ export function RocksSegmentView({
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-auto min-h-0">
+      <div className="flex-1 overflow-auto min-h-0 mt-6">
         {activeTab === 'rocks' && (
           <RocksTabContent
             companyRocks={companyRocks}
             userRocks={userRocks}
             vtoExpanded={vtoExpanded}
             onVtoToggle={() => setVtoExpanded((e) => !e)}
-            onAddRock={() =>
-              addRock({
+            onAddRock={() => {
+              if (onOpenCreate) onOpenCreate('rock');
+              else addRock({
                 title: 'New rock',
                 ownerName: 'John Doe',
                 ownerInitials: 'JD',
-                dueBy: new Date().toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                }),
+                dueBy: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
                 status: 'on_track',
                 column: 'current',
                 achieved: false,
                 isCompanyRock: false,
-              })
-            }
+              });
+            }}
           />
         )}
         {activeTab === 'planning' && (
@@ -292,6 +358,8 @@ export function RocksSegmentView({
         {activeTab === 'archive' && (
           <ArchiveTabContent rocks={archivedRocks} />
         )}
+      </div>
+
       </div>
     </div>
   );

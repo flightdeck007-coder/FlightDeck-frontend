@@ -1,16 +1,22 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { MeetingLayout } from '@/components/meeting/MeetingLayout';
 import { MeetingSidebar } from '@/components/meeting/MeetingSidebar';
 import { MeetingContent } from '@/components/meeting/MeetingContent';
+import { MeetingNotesSection } from '@/components/meeting/MeetingNotesSection';
 import { CreatePopup } from '@/components/meeting/CreatePopup';
 import { RocksProvider } from '@/contexts/RocksContext';
 import { HeadlinesProvider } from '@/contexts/HeadlinesContext';
-import { useParams, useRouter } from 'next/navigation';
+import { TodosProvider } from '@/contexts/TodosContext';
+import { IssuesProvider } from '@/contexts/IssuesContext';
+import { MeetingSocketProvider } from '@/contexts/MeetingSocketContext';
+import { MeetingRealtimeSync } from '@/components/meeting/MeetingRealtimeSync';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { meetingsService } from '@/lib/api/meetings.service';
+import type { Meeting } from '@/lib/api/meetings.service';
 import { ROUTES } from '@/lib/constants/routes';
-import { Menu, User, Plus } from 'lucide-react';
+import { Menu, User, Plus, Loader2 } from 'lucide-react';
 
 // L10 Meeting Format Sections: flight term (real term). 7 segments. IDs stay canonical for content lookup.
 const meetingSections = [
@@ -41,11 +47,23 @@ const sectionTitleToId: Record<string, string> = {
   'DEBRIEF': 'conclude', 'CONCLUDE': 'conclude',
 };
 
+const VALID_SEGMENT_IDS = ['segue', 'scorecard', 'rocks', 'headlines', 'todos', 'issues', 'conclude'];
+const SUSPENDED_STATE_KEY_PREFIX = 'meeting-app-suspended-';
+const RESUME_MEETING_KEY = 'meeting-app-resumeMeetingId';
+
+function getInitialSegment(): string {
+  if (typeof window === 'undefined') return 'segue';
+  const seg = new URL(window.location.href).searchParams.get('segment');
+  return seg && VALID_SEGMENT_IDS.includes(seg) ? seg : 'segue';
+}
+
 export default function MeetingPage() {
   const params = useParams();
   const meetingId = params.id as string;
   const router = useRouter();
-  const [currentSection, setCurrentSection] = useState<string>('segue');
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [currentSection, setCurrentSection] = useState<string>(getInitialSegment);
   const [isRunning, setIsRunning] = useState(false);
   const [elapsedTime, setElapsedTime] = useState('00:00');
   const [totalTime, setTotalTime] = useState('00:55');
@@ -54,13 +72,32 @@ export default function MeetingPage() {
   const [segmentElapsedSeconds, setSegmentElapsedSeconds] = useState(0);
   const [totalElapsedSeconds, setTotalElapsedSeconds] = useState(0);
   const [headerTitle, setHeaderTitle] = useState('Weekly Flight Review - Leadership Team');
+  const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [loadedSections, setLoadedSections] = useState(meetingSections);
   const [organizationId, setOrganizationId] = useState<string>('');
+  const [teamId, setTeamId] = useState<string>('');
   const [orgRole, setOrgRole] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [userInitials, setUserInitials] = useState('U');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isSuspended, setIsSuspended] = useState(false);
   const [createPopupOpen, setCreatePopupOpen] = useState(false);
+  const [createPopupInitialType, setCreatePopupInitialType] = useState<'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | undefined>(undefined);
+  const [finishLoading, setFinishLoading] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
+  const [showFinishConfirm, setShowFinishConfirm] = useState(false);
+  const [showNotesSection, setShowNotesSection] = useState(false);
+  const [suspendInProgress, setSuspendInProgress] = useState(false);
+  const [resumeInProgress, setResumeInProgress] = useState(false);
+  const segmentStateRef = useRef({ segmentId: 'segue', segmentElapsedSeconds: 0, totalElapsedSeconds: 0 });
+  const hasRunResumeRef = useRef(false);
+  const skipSegmentResetRef = useRef(false);
+  const previousSectionRef = useRef<string | null>(null);
+  const sectionDurationsRef = useRef<Array<{ sectionId: string; sectionTitle: string; durationSeconds: number }>>([]);
+  const syncEmitRef = useRef<{
+    emitSegmentChange: (segmentId: string) => void;
+    emitTimerSync: () => void;
+  } | null>(null);
 
   useEffect(() => {
     const storedOrgId = typeof window !== 'undefined' ? localStorage.getItem('organizationId') : null;
@@ -70,21 +107,40 @@ export default function MeetingPage() {
     if (storedRole) setOrgRole(storedRole);
     if (userStr) {
       try {
-        const u = JSON.parse(userStr);
+        const u = JSON.parse(userStr) as { id?: string; name?: string; email?: string };
+        setCurrentUserId(u?.id ?? null);
         const name = u?.name || u?.email || '';
         setUserInitials(name ? name.slice(0, 2).toUpperCase() : 'U');
       } catch {
         setUserInitials('U');
+        setCurrentUserId(null);
       }
     }
   }, []);
+
+  // Restore segment from URL on load (so refresh keeps you on e.g. ?segment=todos)
+  useEffect(() => {
+    const segment = searchParams.get('segment');
+    if (segment && VALID_SEGMENT_IDS.includes(segment)) {
+      setCurrentSection(segment);
+    }
+  }, [searchParams]);
+
+  // Reset meeting-specific refs when navigating to a different meeting (avoid reusing previous meeting data)
+  useEffect(() => {
+    sectionDurationsRef.current = [];
+    previousSectionRef.current = null;
+    hasRunResumeRef.current = false;
+  }, [meetingId]);
 
   useEffect(() => {
     if (!organizationId || !meetingId) return;
     (async () => {
       try {
         const meeting = await meetingsService.findOne(organizationId, meetingId);
+        setMeeting(meeting);
         setHeaderTitle(`Weekly Flight Review - ${meeting.team.name}`);
+        setTeamId(meeting.teamId);
         const suspended = !!(meeting.suspendedAt && !meeting.endedAt);
         setIsSuspended(suspended);
         if (meeting.sections?.length) {
@@ -101,13 +157,61 @@ export default function MeetingPage() {
               };
             });
           setLoadedSections(normalized);
-          setCurrentSection(normalized[0]?.id || 'segue');
+          // Only set section from API if current segment is not in loaded sections (e.g. invalid URL)
+          setCurrentSection((prev) =>
+            normalized.some((s) => s.id === prev) ? prev : (normalized[0]?.id || 'segue')
+          );
         }
       } catch {
         // keep static template
       }
     })();
   }, [organizationId, meetingId]);
+
+  // When landing on a suspended meeting with resume intent: restore position and resume
+  useEffect(() => {
+    if (!organizationId || !meetingId || !isSuspended || loadedSections.length === 0) return;
+    if (typeof window === 'undefined') return;
+    const resumeId = window.sessionStorage.getItem(RESUME_MEETING_KEY);
+    if (resumeId !== meetingId || hasRunResumeRef.current) return;
+    hasRunResumeRef.current = true;
+    setResumeInProgress(true);
+    (async () => {
+      try {
+        await meetingsService.resume(organizationId, meetingId);
+        const raw = window.localStorage.getItem(`${SUSPENDED_STATE_KEY_PREFIX}${meetingId}`);
+        if (raw) {
+          try {
+            const saved = JSON.parse(raw) as { segmentId?: string; segmentElapsedSeconds?: number; totalElapsedSeconds?: number };
+            const segmentId = saved.segmentId && VALID_SEGMENT_IDS.includes(saved.segmentId) ? saved.segmentId : loadedSections[0]?.id ?? 'segue';
+            skipSegmentResetRef.current = true;
+            setSegmentElapsedSeconds(Math.max(0, saved.segmentElapsedSeconds ?? 0));
+            setTotalElapsedSeconds(Math.max(0, saved.totalElapsedSeconds ?? 0));
+            setCurrentSection(segmentId);
+            router.replace(`${pathname}?segment=${segmentId}`, { scroll: false });
+          } finally {
+            window.localStorage.removeItem(`${SUSPENDED_STATE_KEY_PREFIX}${meetingId}`);
+          }
+        }
+        window.sessionStorage.removeItem(RESUME_MEETING_KEY);
+        setIsSuspended(false);
+        setIsRunning(true);
+      } catch {
+        // leave suspended state
+      } finally {
+        setResumeInProgress(false);
+      }
+    })();
+  }, [organizationId, meetingId, isSuspended, loadedSections.length, pathname, router]);
+
+  const handleSectionClick = useCallback(
+    (sectionId: string) => {
+      setCurrentSection(sectionId);
+      router.replace(`${pathname}?segment=${sectionId}`, { scroll: false });
+      syncEmitRef.current?.emitSegmentChange?.(sectionId);
+    },
+    [pathname, router]
+  );
 
   function formatMMSS(seconds: number): string {
     const m = Math.floor(seconds / 60);
@@ -119,12 +223,13 @@ export default function MeetingPage() {
     loadedSections.find((s) => s.id === currentSection) || loadedSections[0];
   const segmentDurationSeconds = (currentSectionData?.duration ?? 5) * 60;
 
-  // Timer: when running, tick every second; derive segment time, total time, and progress %
+  // Timer: total time always runs (meeting duration); segment time only when playing (for discussion pause)
   useEffect(() => {
-    if (!isRunning) return;
     const interval = setInterval(() => {
-      setSegmentElapsedSeconds((prev) => prev + 1);
       setTotalElapsedSeconds((prev) => prev + 1);
+      if (isRunning) {
+        setSegmentElapsedSeconds((prev) => prev + 1);
+      }
     }, 1000);
     return () => clearInterval(interval);
   }, [isRunning]);
@@ -139,10 +244,59 @@ export default function MeetingPage() {
     setSegmentProgressPercent(pct);
   }, [segmentElapsedSeconds, totalElapsedSeconds, segmentDurationSeconds]);
 
-  // Reset segment elapsed when switching segment
+  // When segment changes: record previous segment duration for recap, then reset elapsed
   useEffect(() => {
+    if (skipSegmentResetRef.current) {
+      skipSegmentResetRef.current = false;
+      previousSectionRef.current = currentSection;
+      setSegmentElapsedSeconds(0);
+      return;
+    }
+    const prev = previousSectionRef.current;
+    if (prev != null && loadedSections.length > 0) {
+      const title = loadedSections.find((s) => s.id === prev)?.title ?? '';
+      sectionDurationsRef.current.push({
+        sectionId: prev,
+        sectionTitle: title,
+        durationSeconds: segmentElapsedSeconds,
+      });
+    }
+    previousSectionRef.current = currentSection;
     setSegmentElapsedSeconds(0);
-  }, [currentSection]);
+  }, [currentSection, loadedSections, segmentElapsedSeconds]);
+
+  // Keep ref in sync for saving position on suspend
+  useEffect(() => {
+    segmentStateRef.current = {
+      segmentId: currentSection,
+      segmentElapsedSeconds,
+      totalElapsedSeconds,
+    };
+  }, [currentSection, segmentElapsedSeconds, totalElapsedSeconds]);
+
+  // When segment time completes: advance to next segment (save is handled by existing contexts)
+  useEffect(() => {
+    if (!isRunning || segmentDurationSeconds <= 0) return;
+    if (segmentElapsedSeconds < segmentDurationSeconds) return;
+    const idx = loadedSections.findIndex((s) => s.id === currentSection);
+    if (idx < 0 || idx >= loadedSections.length - 1) return;
+    const nextId = loadedSections[idx + 1].id;
+    setCurrentSection(nextId);
+    router.replace(`${pathname}?segment=${nextId}`, { scroll: false });
+    setSegmentElapsedSeconds(0);
+    syncEmitRef.current?.emitSegmentChange?.(nextId);
+  }, [isRunning, segmentElapsedSeconds, segmentDurationSeconds, currentSection, loadedSections, pathname, router]);
+
+  // Broadcast timer state every 10s while running so late joiners / reconnects stay in sync
+  useEffect(() => {
+    // When facilitator pauses/resumes, broadcast immediately so members stay in sync
+    syncEmitRef.current?.emitTimerSync?.();
+    if (!isRunning) return;
+    const interval = setInterval(() => {
+      syncEmitRef.current?.emitTimerSync?.();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [isRunning]);
 
   const handleStart = () => {
     setIsRunning(true);
@@ -156,42 +310,161 @@ export default function MeetingPage() {
     setIsRunning(true);
   };
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
     setIsRunning(false);
-    if (!organizationId) {
+    // Use meeting's org when available so recap/update use the correct org (avoids 404 from stale localStorage)
+    const orgId = meeting?.team?.organizationId || organizationId;
+    if (!orgId) {
       router.push(ROUTES.MEETINGS);
       return;
     }
-    (async () => {
-      try {
-        await meetingsService.update(organizationId, meetingId, {
-          endedAt: new Date().toISOString(),
+    setFinishLoading(true);
+    try {
+      // Record current segment duration before leaving
+      const currentSectionData = loadedSections.find((s) => s.id === currentSection);
+      if (currentSectionData) {
+        sectionDurationsRef.current.push({
+          sectionId: currentSection,
+          sectionTitle: currentSectionData.title,
+          durationSeconds: segmentElapsedSeconds,
         });
-      } finally {
-        router.push(ROUTES.MEETINGS);
       }
-    })();
+      // Build recap: ratings from localStorage, section durations from ref
+      const ratingsKey = `meeting-ratings-${meetingId}`;
+      let ratings: Array<{ attendanceId?: string; userName: string; rating: number | null }> = [];
+      if (typeof window !== 'undefined' && meeting?.attendances) {
+        try {
+          const raw = localStorage.getItem(ratingsKey);
+          if (raw) {
+            const parsed = JSON.parse(raw) as Array<{ id: string; rating: number | null; absent: boolean }>;
+            ratings = (meeting.attendances ?? []).map((a) => {
+              const saved = parsed.find((p) => p.id === a.id);
+              const userName = a.user?.name || a.user?.email || 'Attendee';
+              return {
+                attendanceId: a.id,
+                userName,
+                rating: saved?.rating ?? null,
+              };
+            });
+          } else {
+            ratings = (meeting.attendances ?? []).map((a) => ({
+              userName: a.user?.name || a.user?.email || 'Attendee',
+              rating: null as number | null,
+            }));
+          }
+        } catch {
+          ratings = (meeting?.attendances ?? []).map((a) => ({
+            userName: a.user?.name || a.user?.email || 'Attendee',
+            rating: null as number | null,
+          }));
+        }
+      }
+      const sectionDurations = sectionDurationsRef.current.map((d) => ({
+        sectionTitle: d.sectionTitle,
+        durationMMSS: `${String(Math.floor(d.durationSeconds / 60)).padStart(2, '0')}:${String(d.durationSeconds % 60).padStart(2, '0')}`,
+      }));
+      const recapPayload = {
+        ratings,
+        sectionDurations,
+        shortTermStats: {
+          totalTracked: 0,
+          solvedLastMeeting: 0,
+          solvedToday: 0,
+          solveRatePercent: 0,
+        },
+        todosCreated: [],
+        issuesSolved: [],
+      };
+
+      // Save recap with timeout so we don't hang if backend fails
+      const RECAP_TIMEOUT_MS = 15000;
+      try {
+        await Promise.race([
+          meetingsService.saveRecap(orgId, meetingId, recapPayload),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Recap request timed out')), RECAP_TIMEOUT_MS),
+          ),
+        ]);
+      } catch (recapErr) {
+        // Continue to end meeting even if recap fails
+        console.warn('Recap save failed, still ending meeting:', recapErr);
+      }
+
+      // Always end the meeting (this is what actually closes it)
+      await meetingsService.update(orgId, meetingId, {
+        endedAt: new Date().toISOString(),
+      });
+      router.push(ROUTES.MEETINGS);
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { message?: string }; status?: number } }).response?.data?.message
+        : null;
+      const status = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { status?: number } }).response?.status
+        : null;
+      if (status === 404) {
+        console.error('Recap 404: Meeting not found. Ensure backend is up to date and organizationId is correct.');
+      }
+      setFinishError(msg || (status === 404 ? 'Meeting not found. Try refreshing and finishing again.' : 'Failed to end meeting. Try again.'));
+    } finally {
+      setFinishLoading(false);
+    }
   };
+
+  const handleFinishFromSidebar = () => {
+    setShowFinishConfirm(true);
+  };
+
+  const handleExitMeeting = useCallback(async () => {
+    if (!organizationId || !meetingId) {
+      router.push(ROUTES.MEETINGS);
+      return;
+    }
+    try {
+      await meetingsService.leaveMeeting(organizationId, meetingId);
+    } finally {
+      router.push(ROUTES.MEETINGS);
+    }
+  }, [organizationId, meetingId, router]);
 
   const currentIndex = loadedSections.findIndex((s) => s.id === currentSection);
   const handlePrevSegment = useCallback(() => {
-    if (currentIndex > 0) setCurrentSection(loadedSections[currentIndex - 1].id);
-  }, [currentIndex, loadedSections]);
+    if (currentIndex > 0) {
+      const nextId = loadedSections[currentIndex - 1].id;
+      setCurrentSection(nextId);
+      router.replace(`${pathname}?segment=${nextId}`, { scroll: false });
+      syncEmitRef.current?.emitSegmentChange?.(nextId);
+    }
+  }, [currentIndex, loadedSections, pathname, router]);
   const handleNextSegment = useCallback(() => {
     if (currentIndex >= 0 && currentIndex < loadedSections.length - 1) {
-      setCurrentSection(loadedSections[currentIndex + 1].id);
+      const nextId = loadedSections[currentIndex + 1].id;
+      setCurrentSection(nextId);
+      router.replace(`${pathname}?segment=${nextId}`, { scroll: false });
+      syncEmitRef.current?.emitSegmentChange?.(nextId);
     }
-  }, [currentIndex, loadedSections]);
+  }, [currentIndex, loadedSections, pathname, router]);
   const handleSuspend = useCallback(async () => {
     if (!organizationId) return;
+    setSuspendInProgress(true);
     try {
+      const state = segmentStateRef.current;
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          `${SUSPENDED_STATE_KEY_PREFIX}${meetingId}`,
+          JSON.stringify({
+            segmentId: state.segmentId,
+            segmentElapsedSeconds: state.segmentElapsedSeconds,
+            totalElapsedSeconds: state.totalElapsedSeconds,
+          })
+        );
+      }
       await meetingsService.suspend(organizationId, meetingId);
       setIsSuspended(true);
       setIsRunning(false);
-      // Kick user out to meeting list; meeting status is now suspended
       router.push(ROUTES.MEETINGS);
     } catch {
-      // show error or keep state
+      setSuspendInProgress(false);
     }
   }, [organizationId, meetingId, router]);
 
@@ -207,28 +480,78 @@ export default function MeetingPage() {
   }, [organizationId, meetingId]);
 
   const headerSegmentLine = `${currentSectionData.title} | ${headerTitle}`;
+  const isFacilitator = Boolean(meeting?.facilitatorId && currentUserId && meeting.facilitatorId === currentUserId);
+
+  const getTimerState = useCallback(
+    () => ({
+      segmentElapsedSeconds,
+      totalElapsedSeconds,
+      isRunning,
+    }),
+    [segmentElapsedSeconds, totalElapsedSeconds, isRunning]
+  );
 
   return (
-    <RocksProvider>
-    <HeadlinesProvider>
+    <MeetingSocketProvider meetingId={meetingId} organizationId={organizationId || null}>
+    <MeetingRealtimeSync
+      meetingId={meetingId}
+      syncEmitRef={syncEmitRef}
+      setCurrentSection={setCurrentSection}
+      setSegmentElapsedSeconds={setSegmentElapsedSeconds}
+      setTotalElapsedSeconds={setTotalElapsedSeconds}
+      setIsRunning={setIsRunning}
+      getTimerState={getTimerState}
+      pathname={pathname}
+      router={router}
+      setMeeting={setMeeting}
+      onMeetingEnded={() => router.push(ROUTES.MEETINGS)}
+    />
+    <RocksProvider meetingId={meetingId}>
+    <HeadlinesProvider meetingId={meetingId}>
+    <TodosProvider meetingId={meetingId} organizationId={organizationId} teamId={teamId}>
+    <IssuesProvider organizationId={organizationId} teamId={teamId} meetingId={meetingId}>
     <MeetingLayout>
+      {/* Full-screen loader when suspending (save & redirect) */}
+      {suspendInProgress && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-12 h-12 text-primary animate-spin" />
+            <p className="text-sm font-medium text-foreground">Saving and leaving meeting…</p>
+          </div>
+        </div>
+      )}
+      {/* Full-screen loader when resuming from list */}
+      {resumeInProgress && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-12 h-12 text-primary animate-spin" />
+            <p className="text-sm font-medium text-foreground">Resuming meeting…</p>
+          </div>
+        </div>
+      )}
       {/* Sidebar - collapsible */}
       {sidebarOpen && (
         <div className="w-64 min-w-[240px] flex-shrink-0 overflow-hidden">
           <MeetingSidebar
             sections={loadedSections}
             currentSection={currentSection}
-            onSectionClick={setCurrentSection}
+            onSectionClick={handleSectionClick}
             totalTime={totalTime}
             segmentTime={segmentTime}
             segmentProgressPercent={segmentProgressPercent}
             isRunning={isRunning}
             isSuspended={isSuspended}
+            isFacilitator={isFacilitator}
             onStart={handleStart}
             onPause={handlePause}
             onResume={handleResume}
             onResumeFromSuspend={handleResumeFromSuspend}
-            onFinish={handleFinish}
+            onFinish={handleFinishFromSidebar}
+            finishLoading={finishLoading}
+            participantCount={meeting ? (meeting.attendances?.length ?? 0) : undefined}
+            notesVisible={showNotesSection}
+            onToggleNotes={() => setShowNotesSection((v) => !v)}
+            onExitMeeting={handleExitMeeting}
             onPrevSegment={handlePrevSegment}
             onNextSegment={handleNextSegment}
             onSuspend={handleSuspend}
@@ -238,12 +561,12 @@ export default function MeetingPage() {
 
       {/* Main: header row + component details row */}
       <div className="flex-1 overflow-hidden flex flex-col min-w-0">
-        {/* Header row: hamburger | Segment | Meeting - Team | user + Create */}
-        <header className="flex items-center gap-4 p-4 border-b border-border bg-card shrink-0">
+        {/* Header row: hamburger | Segment | Meeting - Team | user + Create — white bg */}
+        <header className="flex items-center gap-4 p-4 border-b border-border bg-white shrink-0">
           <button
             type="button"
             onClick={() => setSidebarOpen((o) => !o)}
-            className="p-2 rounded-md hover:bg-accent transition-colors"
+            className="p-2 rounded-md hover:bg-accent transition-colors cursor-pointer"
             aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
           >
             <Menu className="w-5 h-5 text-foreground/80" />
@@ -261,7 +584,7 @@ export default function MeetingPage() {
             <button
               type="button"
               onClick={() => setCreatePopupOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium"
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               Create
@@ -271,8 +594,13 @@ export default function MeetingPage() {
 
         <CreatePopup
           open={createPopupOpen}
-          onClose={() => setCreatePopupOpen(false)}
+          onClose={() => {
+            setCreatePopupOpen(false);
+            setCreatePopupInitialType(undefined);
+          }}
           teamName={headerTitle.replace(/^.*-\s*/, '').trim() || 'Leadership Team'}
+          teamId={teamId || undefined}
+          initialType={createPopupInitialType}
         />
 
         {/* Suspended banner */}
@@ -283,16 +611,88 @@ export default function MeetingPage() {
           </div>
         )}
 
-        {/* Component details row */}
-        <div className="flex-1 overflow-auto">
-          <MeetingContent
-            sectionId={currentSection}
-            sectionTitle={currentSectionData.title}
-          />
+        <div className="flex-1 overflow-auto flex flex-col">
+          <div className="flex-1 min-h-0">
+            <MeetingContent
+              sectionId={currentSection}
+              sectionTitle={currentSectionData.title}
+              meetingId={meetingId}
+              organizationId={organizationId}
+              meetingAttendances={meeting?.attendances}
+              isFacilitator={isFacilitator}
+              facilitatorId={meeting?.facilitatorId}
+              onOpenCreateIssue={() => {
+                setCreatePopupInitialType('issue');
+                setCreatePopupOpen(true);
+              }}
+              onOpenCreate={(type) => {
+                setCreatePopupInitialType(type);
+                setCreatePopupOpen(true);
+              }}
+              onFinishMeeting={handleFinish}
+              finishLoading={finishLoading}
+            />
+          </div>
+          {showNotesSection && meeting && organizationId && meeting.sections?.[0] && (
+            <div className="shrink-0 border-t border-border p-4 bg-muted/20">
+              <MeetingNotesSection
+                meetingId={meetingId}
+                organizationId={organizationId}
+                sectionId={meeting.sections[0].id}
+                initialContent={
+                  meeting.sections[0].notes?.find((n) => n.author?.id === currentUserId)?.content ?? ''
+                }
+                currentUserId={currentUserId}
+                onSaved={async () => {
+                  const updated = await meetingsService.findOne(organizationId, meetingId);
+                  setMeeting(updated);
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Finish meeting confirmation (sidebar) */}
+      {showFinishConfirm && (
+        <>
+          <div className="fixed inset-0 bg-black/20 z-40" onClick={() => { setShowFinishConfirm(false); setFinishError(null); }} aria-hidden />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-card border border-border rounded-lg shadow-xl max-w-sm w-full p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-2">End meeting?</h3>
+              <p className="text-sm text-muted-foreground mb-4">Are you sure you want to end this meeting?</p>
+              {finishError && (
+                <p className="text-sm text-destructive mb-4" role="alert">{finishError}</p>
+              )}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowFinishConfirm(false); setFinishError(null); }}
+                  className="px-4 py-2 border border-border rounded-md hover:bg-muted text-sm font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFinishError(null);
+                    handleFinish();
+                  }}
+                  disabled={finishLoading}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 text-sm font-medium"
+                >
+                  {finishLoading ? 'Ending…' : 'Yes, end meeting'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </MeetingLayout>
+    </IssuesProvider>
+    </TodosProvider>
     </HeadlinesProvider>
     </RocksProvider>
+    </MeetingSocketProvider>
   );
 }
