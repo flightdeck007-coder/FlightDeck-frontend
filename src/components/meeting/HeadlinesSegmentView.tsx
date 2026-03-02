@@ -37,6 +37,7 @@ import {
   type HeadlineItem,
   type CascadingMessageItem,
 } from '@/contexts/HeadlinesContext';
+import { ContentAreaLoader } from '@/components/ui/loaders';
 
 const MENU_WIDTH = 248;
 const MENU_GAP = 8;
@@ -70,6 +71,7 @@ export function HeadlinesSegmentView({
     addCascadingMessage,
     reorderHeadlines,
     reorderCascadingMessages,
+    isLoading,
   } = useHeadlines();
 
   const [isAddingHeadline, setIsAddingHeadline] = useState(false);
@@ -228,7 +230,10 @@ export function HeadlinesSegmentView({
         </div>
       </div>
 
-      {/* Content: padding after filter bar */}
+      {/* Content: padding after filter bar — or full-area loader when fetching */}
+      {isLoading ? (
+        <ContentAreaLoader label="Loading headlines…" />
+      ) : (
       <div className={`flex-1 overflow-auto min-h-0 mt-6 ${contentPad}`}>
         {archiveOn ? (
           <>
@@ -300,6 +305,7 @@ export function HeadlinesSegmentView({
           </>
         )}
       </div>
+      )}
     </div>
   );
 }

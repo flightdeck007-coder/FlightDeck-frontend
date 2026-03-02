@@ -7,6 +7,8 @@ export interface IssueApiItem {
   priority: number;
   termType: 'short_term' | 'long_term';
   resolvedAt: string | null;
+  resolvedById: string | null;
+  resolvedByName: string | null;
   createdAt: string;
   updatedAt: string;
   createdById: string | null;
@@ -18,13 +20,15 @@ export const issuesService = {
     organizationId: string,
     teamId: string,
     termType?: 'short_term' | 'long_term',
-    archived?: boolean
+    archived?: boolean,
+    meetingId?: string
   ): Promise<IssueApiItem[]> => {
     const params = new URLSearchParams({ organizationId, teamId });
     if (termType) params.set('termType', termType);
     if (typeof archived === 'boolean') {
       params.set('archived', String(archived));
     }
+    if (meetingId) params.set('meetingId', meetingId);
     const response = await apiClient.get<IssueApiItem[]>(`/issues?${params}`);
     return response.data;
   },
@@ -58,6 +62,7 @@ export const issuesService = {
       priority?: number;
       termType?: 'short_term' | 'long_term';
       resolvedAt?: string | null;
+      resolvedById?: string | null;
     },
     meetingId?: string
   ): Promise<IssueApiItem> => {

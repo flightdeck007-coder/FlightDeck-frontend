@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { useTodos, type TodoItem } from '@/contexts/TodosContext';
 import { RichTextEditor } from './RichTextEditor';
+import { ContentAreaLoader } from '@/components/ui/loaders';
 
 const MENU_WIDTH = 248;
 const MENU_GAP = 8;
@@ -129,9 +130,15 @@ export function TodosSegmentView({
 
   const filteredTodos = useMemo(() => {
     const list = archiveOn ? archivedTodos : activeTodos;
-    if (!searchQuery.trim()) return list;
+    const seen = new Set<string>();
+    const deduped = list.filter((t) => {
+      if (seen.has(t.id)) return false;
+      seen.add(t.id);
+      return true;
+    });
+    if (!searchQuery.trim()) return deduped;
     const q = searchQuery.toLowerCase();
-    return list.filter((t) => t.title.toLowerCase().includes(q));
+    return deduped.filter((t) => t.title.toLowerCase().includes(q));
   }, [archiveOn, activeTodos, archivedTodos, searchQuery]);
 
   const todoIds = useMemo(() => filteredTodos.map((t) => t.id), [filteredTodos]);
@@ -295,7 +302,10 @@ export function TodosSegmentView({
         </div>
       </div>
 
-      {/* Content: padding after filter bar */}
+      {/* Content: padding after filter bar — or full-area loader when fetching */}
+      {isLoading ? (
+        <ContentAreaLoader label="Loading to-dos…" />
+      ) : (
       <div className={`flex-1 overflow-auto min-h-0 mt-6 ${contentPad}`}>
       <div className="bg-card border border-border rounded-lg flex flex-col flex-1 min-h-0">
         <div className="p-4 border-b border-border flex items-center justify-between">
@@ -311,11 +321,6 @@ export function TodosSegmentView({
           </button>
         </div>
         <div className="overflow-x-auto flex-1 relative">
-          {isLoading && (
-            <div className="absolute inset-0 bg-background/60 flex items-center justify-center z-10">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" aria-label="Loading" />
-            </div>
-          )}
           <DndContext onDragEnd={handleDragEnd} collisionDetection={pointerWithin}>
             <table className="w-full text-sm">
               <thead>
@@ -496,6 +501,7 @@ export function TodosSegmentView({
         </div>
       </div>
       </div>
+      )}
 
       {/* Edit To-Do right panel */}
       {editTodoId && (

@@ -30,6 +30,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useIssues, type IssueItem } from '@/contexts/IssuesContext';
+import { ContentAreaLoader } from '@/components/ui/loaders';
 
 const MENU_WIDTH = 248;
 const MENU_GAP = 8;
@@ -84,7 +85,7 @@ export function IssuesSegmentView({
   const [teamFilter, setTeamFilter] = useState(teamName);
   const [archiveOn, setArchiveOn] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'short_term' | 'long_term'>('short_term');
+  const [activeTab, setActiveTab] = useState<'short_term' | 'long_term' | 'completed'>('short_term');
   const [statsVisible, setStatsVisible] = useState(true);
   const [topThreeOnly, setTopThreeOnly] = useState(false);
   const [layout, setLayout] = useState<'list' | 'column'>('list');
@@ -99,7 +100,7 @@ export function IssuesSegmentView({
       teamFilter?: string;
       archiveOn?: boolean;
       searchQuery?: string;
-      activeTab?: 'short_term' | 'long_term';
+      activeTab?: 'short_term' | 'long_term' | 'completed';
       statsVisible?: boolean;
       topThreeOnly?: boolean;
       layout?: 'list' | 'column';
@@ -122,6 +123,8 @@ export function IssuesSegmentView({
   const {
     shortTerm,
     longTerm,
+    shortTermResolved,
+    longTermResolved,
     updateIssue,
     deleteIssue,
     setResolved,
@@ -130,20 +133,28 @@ export function IssuesSegmentView({
     isLoading,
   } = useIssues();
 
-  const currentList = activeTab === 'short_term' ? shortTerm : longTerm;
+  const currentList = useMemo(() => {
+    if (activeTab === 'short_term') return shortTerm;
+    if (activeTab === 'long_term') return longTerm;
+    // Completed: all resolved for this meeting (short + long), newest first
+    const combined = [...shortTermResolved, ...longTermResolved];
+    combined.sort((a, b) => (b.resolvedAt && a.resolvedAt ? new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime() : 0));
+    return combined;
+  }, [activeTab, shortTerm, longTerm, shortTermResolved, longTermResolved]);
+
   const filteredList = useMemo(() => {
     let list = [...currentList];
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter((t) => t.title.toLowerCase().includes(q));
     }
-    if (topThreeOnly) {
+    if (activeTab !== 'completed' && topThreeOnly) {
       list = list
         .sort((a, b) => b.priority - a.priority)
         .slice(0, 3);
     }
     return list;
-  }, [currentList, searchQuery, topThreeOnly]);
+  }, [currentList, searchQuery, topThreeOnly, activeTab]);
 
   const totalItems = filteredList.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
@@ -153,11 +164,28 @@ export function IssuesSegmentView({
     return filteredList.slice(start, start + itemsPerPage);
   }, [filteredList, currentPage, itemsPerPage]);
 
-  const solvedLastMeeting = 0;
-  const solvedToday = 0;
-  const solveRate = currentList.length > 0
-    ? Math.round(((solvedLastMeeting + solvedToday) / currentList.length) * 100)
-    : 0;
+  const todayStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }, []);
+  const solvedToday = useMemo(
+    () =>
+      shortTermResolved.filter(
+        (i) => i.resolvedAt && new Date(i.resolvedAt).getTime() >= todayStart
+      ).length +
+      longTermResolved.filter(
+        (i) => i.resolvedAt && new Date(i.resolvedAt).getTime() >= todayStart
+      ).length,
+    [shortTermResolved, longTermResolved, todayStart]
+  );
+  const totalTrackedShort = shortTerm.length + shortTermResolved.length;
+  const solvedInThisMeeting = shortTermResolved.length + longTermResolved.length;
+  const solvedLastMeeting = solvedInThisMeeting; // "Solved in this meeting" when in meeting
+  const solveRate =
+    totalTrackedShort > 0
+      ? Math.round((shortTermResolved.length / totalTrackedShort) * 100)
+      : 0;
 
   const wrap = embedded ? 'pt-0 pb-4' : 'pt-0 pb-6';
   const contentPad = embedded ? 'px-4' : 'px-6';
@@ -263,7 +291,10 @@ export function IssuesSegmentView({
         </button>
       </div>
 
-      {/* Content: padding after filter bar */}
+      {/* Content: padding after filter bar — or full-area loader when fetching */}
+      {isLoading ? (
+        <ContentAreaLoader label="Loading issues…" />
+      ) : (
       <div className={`flex-1 overflow-auto min-h-0 mt-4 ${contentPad}`}>
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border shrink-0">
@@ -297,6 +328,23 @@ export function IssuesSegmentView({
         >
           Long-Term
         </button>
+        {meetingId && (
+          <button
+            type="button"
+            disabled={!isFacilitator}
+            onClick={() => {
+              setActiveTab('completed');
+              if (socket) socket.emit('issues_filter', { meetingId, activeTab: 'completed' });
+            }}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!isFacilitator ? 'cursor-not-allowed opacity-70' : ''} ${
+              activeTab === 'completed'
+                ? 'text-primary border-primary'
+                : 'text-muted-foreground border-transparent hover:text-foreground'
+            }`}
+          >
+            Completed ({shortTermResolved.length + longTermResolved.length})
+          </button>
+        )}
       </div>
 
       {/* Short-Term only: stats row above the Short-Term card, controlled by Show/Hide */}
@@ -304,11 +352,13 @@ export function IssuesSegmentView({
         <div className="grid grid-cols-4 gap-4 py-4 shrink-0">
           <div className="border border-border rounded-lg p-4 bg-card">
             <p className="text-sm text-muted-foreground">Total Tracked Issues</p>
-            <p className="text-2xl font-bold text-foreground mt-1">{currentList.length}</p>
+            <p className="text-2xl font-bold text-foreground mt-1">{totalTrackedShort}</p>
           </div>
           <div className="border border-border rounded-lg p-4 bg-card">
-            <p className="text-sm text-muted-foreground">Issues Solved Last Meeting</p>
-            <p className="text-2xl font-bold text-muted-foreground mt-1">{solvedLastMeeting}</p>
+            <p className="text-sm text-muted-foreground">
+              {meetingId ? 'Solved in this meeting' : 'Issues Solved Last Meeting'}
+            </p>
+            <p className="text-2xl font-bold text-foreground mt-1">{solvedLastMeeting}</p>
           </div>
           <div className="border border-border rounded-lg p-4 bg-card">
             <p className="text-sm text-muted-foreground">Issues Solved Today</p>
@@ -325,7 +375,12 @@ export function IssuesSegmentView({
       <div className="flex-1 overflow-auto min-h-0 mt-4 bg-card border border-border rounded-lg flex flex-col">
         <div className="p-4 border-b border-border flex items-center justify-between flex-wrap gap-2">
           <h3 className="font-semibold text-foreground">
-            {activeTab === 'short_term' ? 'Short-Term' : 'Long-Term'} {currentList.length}
+            {activeTab === 'short_term'
+              ? 'Short-Term'
+              : activeTab === 'long_term'
+                ? 'Long-Term'
+                : 'Completed'}{' '}
+            {currentList.length}
           </h3>
           <div className="flex items-center gap-3">
             <button
@@ -512,6 +567,7 @@ export function IssuesSegmentView({
         </div>
       </div>
       </div>
+      )}
     </div>
   );
 }
@@ -561,13 +617,18 @@ function IssueRow({
           </button>
         </td>
         <td className="px-4 py-2 font-medium text-foreground align-middle">
-          <div className="flex items-center gap-2">
-            <span>{item.title}</span>
-            {(item.attachmentCount ?? 0) > 0 && (
-              <span className="flex items-center gap-0.5 text-muted-foreground text-xs">
-                <Paperclip className="w-3 h-3" />
-                {item.attachmentCount}
-              </span>
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-2">
+              <span>{item.title}</span>
+              {(item.attachmentCount ?? 0) > 0 && (
+                <span className="flex items-center gap-0.5 text-muted-foreground text-xs">
+                  <Paperclip className="w-3 h-3" />
+                  {item.attachmentCount}
+                </span>
+              )}
+            </div>
+            {resolved && item.resolvedByName && (
+              <span className="text-xs text-muted-foreground">Resolved by {item.resolvedByName}</span>
             )}
           </div>
         </td>

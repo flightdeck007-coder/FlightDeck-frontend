@@ -93,7 +93,7 @@ export function MeetingSidebar({
             type="button"
             onClick={onPrevSegment}
             disabled={!canGoPrev || isSuspended}
-            className="p-2 rounded-md hover:bg-accent transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            className="p-2 rounded-md hover:bg-foreground/10 transition-colors disabled:opacity-40 disabled:pointer-events-none"
             aria-label="Previous segment"
             title={!isFacilitator ? 'Only the facilitator can change segment' : undefined}
           >
@@ -137,7 +137,7 @@ export function MeetingSidebar({
             type="button"
             onClick={onNextSegment}
             disabled={!canGoNext || isSuspended}
-            className="p-2 rounded-md hover:bg-accent transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            className="p-2 rounded-md hover:bg-foreground/10 transition-colors disabled:opacity-40 disabled:pointer-events-none"
             aria-label="Next segment"
             title={!isFacilitator ? 'Only the facilitator can change segment' : undefined}
           >
@@ -148,7 +148,7 @@ export function MeetingSidebar({
               type="button"
               onClick={onSuspend}
               disabled={!canFinishOrSuspend}
-              className="px-3 py-2 text-sm text-foreground/80 hover:bg-accent rounded-md transition-colors disabled:opacity-40 disabled:pointer-events-none"
+              className="px-3 py-2 text-sm text-foreground/80 hover:bg-foreground/10 rounded-md transition-colors disabled:opacity-40 disabled:pointer-events-none"
               title={!isFacilitator ? 'Only the facilitator can suspend' : undefined}
             >
               SUSPEND
@@ -172,7 +172,7 @@ export function MeetingSidebar({
                 className={`w-full text-left pl-3 pr-4 py-2 transition-colors border-l-[3px] rounded-none ${
                   isActive
                     ? 'border-primary bg-primary/5 text-primary font-semibold'
-                    : 'border-transparent text-foreground/70 hover:bg-accent hover:text-foreground'
+                    : 'border-transparent text-foreground/70 hover:bg-foreground/10 hover:text-foreground'
                 } ${!isFacilitator ? 'cursor-default opacity-90' : ''} disabled:opacity-90 disabled:cursor-default`}
                 title={!isFacilitator ? 'Only the facilitator can change segment' : undefined}
               >
@@ -194,14 +194,14 @@ export function MeetingSidebar({
         <div className="flex flex-col gap-1.5">
           <button
             type="button"
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-md hover:bg-accent transition-colors text-sm bg-background"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-md hover:bg-foreground/10 transition-colors text-sm bg-background text-foreground"
           >
             <AlertTriangle className="w-4 h-4 text-foreground/70" />
             Tangent
           </button>
           <button
             type="button"
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-md hover:bg-accent transition-colors text-sm bg-background"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-md hover:bg-foreground/10 transition-colors text-sm bg-background text-foreground"
           >
             <Eye className="w-4 h-4 text-foreground/70" />
             View tools
@@ -209,7 +209,7 @@ export function MeetingSidebar({
           <button
             type="button"
             onClick={onToggleNotes}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-md hover:bg-accent transition-colors text-sm bg-background"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-md hover:bg-foreground/10 transition-colors text-sm bg-background text-foreground"
           >
             {notesVisible ? (
               <>
@@ -245,7 +245,7 @@ export function MeetingSidebar({
             <button
               type="button"
               onClick={() => setExitConfirmOpen(true)}
-              className="w-full px-4 py-3 border border-border rounded-md hover:bg-accent transition-colors text-sm font-medium flex items-center justify-center gap-2"
+              className="w-full px-4 py-3 border border-border rounded-md hover:bg-foreground/10 transition-colors text-sm font-medium flex items-center justify-center gap-2 text-foreground"
             >
               <LogOut className="w-4 h-4" />
               Exit meeting

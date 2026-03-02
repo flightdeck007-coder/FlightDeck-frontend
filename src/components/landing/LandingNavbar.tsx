@@ -4,7 +4,9 @@ import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { ROUTES } from '@/lib/constants/routes';
 import { useAuth } from '@/hooks/useAuth';
-import { Plane, LayoutDashboard, LogOut } from 'lucide-react';
+import { Plane, LayoutDashboard, LogOut, Settings } from 'lucide-react';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { useSettings } from '@/contexts/SettingsContext';
 
 function getInitials(name?: string | null, email?: string) {
   if (name && name.trim()) {
@@ -22,6 +24,7 @@ function getInitials(name?: string | null, email?: string) {
 
 export function LandingNavbar() {
   const { user, isAuthenticated, logout } = useAuth();
+  const { openSettings } = useSettings();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -86,15 +89,23 @@ export function LandingNavbar() {
                     <Link
                       href={ROUTES.DASHBOARD}
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-foreground/10 transition-colors"
                     >
                       <LayoutDashboard className="w-4 h-4" />
                       Dashboard
                     </Link>
                     <button
                       type="button"
+                      onClick={() => { setMenuOpen(false); openSettings(); }}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-foreground/10 transition-colors text-left"
+                    >
+                      <Settings className="w-4 h-4" />
+                      Settings
+                    </button>
+                    <button
+                      type="button"
                       onClick={handleLogout}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-foreground/10 transition-colors text-left"
                     >
                       <LogOut className="w-4 h-4" />
                       Logout
@@ -104,6 +115,7 @@ export function LandingNavbar() {
               </div>
             ) : (
               <>
+                <ThemeToggle size="sm" />
                 <Link
                   href={ROUTES.LOGIN}
                   className="px-4 py-2 text-foreground hover:text-primary transition-colors"

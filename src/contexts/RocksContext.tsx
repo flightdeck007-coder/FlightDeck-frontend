@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useMeetingSocket } from './MeetingSocketContext';
+import { meetingsService } from '@/lib/api/meetings.service';
 
 export type RockStatus = 'on_track' | 'off_track' | 'at_risk' | 'done';
 export type RockColumnId =
@@ -40,22 +41,31 @@ const COLUMN_ORDER: RockColumnId[] = [
   'long_term',
 ];
 
-function createRock(
-  overrides: Partial<Rock> & { id: string; title: string }
-): Rock {
+function apiToRock(r: {
+  id: string;
+  title: string;
+  ownerName: string;
+  ownerInitials: string;
+  dueBy: string;
+  status: string;
+  column: string;
+  achieved: boolean;
+  isCompanyRock?: boolean;
+  milestoneLabel?: string | null;
+}): Rock {
   return {
-    ownerName: 'John Doe',
-    ownerInitials: 'JD',
-    dueBy: 'May 23',
-    status: 'on_track',
-    column: 'current',
-    achieved: false,
-    ...overrides,
+    id: r.id,
+    title: r.title,
+    ownerName: r.ownerName,
+    ownerInitials: r.ownerInitials,
+    dueBy: r.dueBy,
+    status: r.status as RockStatus,
+    column: r.column as RockColumnId,
+    achieved: r.achieved,
+    isCompanyRock: r.isCompanyRock,
+    milestoneLabel: r.milestoneLabel ?? undefined,
   };
 }
-
-// No hardcoded rocks — rocks come from Create or API
-const initialRocks: Rock[] = [];
 
 interface RocksContextValue {
   rocks: Rock[];
@@ -68,54 +78,56 @@ interface RocksContextValue {
   getActiveRocks: () => Rock[];
   getArchivedRocks: () => Rock[];
   columnOrder: RockColumnId[];
+  isLoading: boolean;
 }
-
-const STORAGE_KEY = (meetingId: string) => `meeting-${meetingId}-rocks`;
 
 const RocksContext = createContext<RocksContextValue | null>(null);
 
 export function RocksProvider({
   children,
   meetingId,
-}: { children: ReactNode; meetingId?: string }) {
+  organizationId,
+}: { children: ReactNode; meetingId?: string; organizationId?: string }) {
   const { socket } = useMeetingSocket();
-  const [rocks, setRocks] = useState<Rock[]>(initialRocks);
+  const [rocks, setRocks] = useState<Rock[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const fetchRocks = useCallback(async () => {
+    if (!organizationId || !meetingId || typeof window === 'undefined') {
+      setRocks([]);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const list = await meetingsService.getRocks(organizationId, meetingId);
+      setRocks(list.map(apiToRock));
+    } catch {
+      setRocks([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [organizationId, meetingId]);
 
   useEffect(() => {
-    if (!meetingId || typeof window === 'undefined') return;
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY(meetingId));
-      if (raw) {
-        const parsed = JSON.parse(raw) as Rock[];
-        if (Array.isArray(parsed) && parsed.length >= 0) setRocks(parsed);
-      }
-    } catch {
-      // ignore invalid stored data
-    }
+    fetchRocks();
+  }, [fetchRocks]);
+
+  useEffect(() => {
+    if (!meetingId) setRocks([]);
   }, [meetingId]);
 
-  useEffect(() => {
-    if (!meetingId || typeof window === 'undefined') return;
-    try {
-      localStorage.setItem(STORAGE_KEY(meetingId), JSON.stringify(rocks));
-    } catch {
-      // ignore quota etc.
-    }
-  }, [meetingId, rocks]);
-
-  // Live sync: receive rock_created, rock_updated, rock_deleted from other participants
   useEffect(() => {
     if (!socket || !meetingId) return;
     const onRockCreated = (payload: { meetingId: string; rock: Rock }) => {
       if (payload.meetingId !== meetingId || !payload.rock?.id) return;
-      const rock = payload.rock as Rock;
+      const rock = apiToRock(payload.rock as Parameters<typeof apiToRock>[0]);
       setRocks((prev) =>
         prev.some((r) => r.id === rock.id) ? prev : [...prev, rock]
       );
     };
     const onRockUpdated = (payload: { meetingId: string; rock: Rock }) => {
       if (payload.meetingId !== meetingId || !payload.rock?.id) return;
-      const rock = payload.rock as Rock;
+      const rock = apiToRock(payload.rock as Parameters<typeof apiToRock>[0]);
       setRocks((prev) =>
         prev.map((r) => (r.id === rock.id ? rock : r))
       );
@@ -135,48 +147,72 @@ export function RocksProvider({
   }, [socket, meetingId]);
 
   const addRock = useCallback(
-    (rock: Omit<Rock, 'id'> & { id?: string }) => {
-      const id = rock.id ?? `rock-${Date.now()}`;
-      const newRock = { ...rock, id } as Rock;
-      setRocks((prev) => [...prev, newRock]);
-      if (socket && meetingId) socket.emit('rock_created', { meetingId, rock: newRock });
+    async (rock: Omit<Rock, 'id'> & { id?: string }) => {
+      if (!organizationId || !meetingId) return;
+      try {
+        const created = await meetingsService.createRock(organizationId, meetingId, {
+          title: rock.title,
+          ownerName: rock.ownerName,
+          ownerInitials: rock.ownerInitials,
+          dueBy: rock.dueBy,
+          status: rock.status,
+          column: rock.column,
+          achieved: rock.achieved,
+          isCompanyRock: rock.isCompanyRock,
+          milestoneLabel: rock.milestoneLabel,
+        });
+        const newRock = apiToRock(created);
+        setRocks((prev) =>
+          prev.some((r) => r.id === newRock.id) ? prev : [...prev, newRock]
+        );
+      } catch {
+        // keep UI unchanged on error
+      }
     },
-    [socket, meetingId]
+    [organizationId, meetingId]
   );
 
-  const updateRock = useCallback((id: string, updates: Partial<Rock>) => {
-    setRocks((prev) => {
-      const next = prev.map((r) => (r.id === id ? { ...r, ...updates } : r));
-      const updated = next.find((r) => r.id === id);
-      if (updated && socket && meetingId) socket.emit('rock_updated', { meetingId, rock: updated });
-      return next;
-    });
-  }, [socket, meetingId]);
-
-  const moveRockToColumn = useCallback((rockId: string, column: RockColumnId) => {
-    setRocks((prev) => {
-      const next = prev.map((r) => (r.id === rockId ? { ...r, column } : r));
-      const updated = next.find((r) => r.id === rockId);
-      if (updated && socket && meetingId) socket.emit('rock_updated', { meetingId, rock: updated });
-      return next;
-    });
-  }, [socket, meetingId]);
-
-  const archiveRock = useCallback((id: string) => {
-    setRocks((prev) => {
-      const next = prev.map((r) =>
-        r.id === id ? { ...r, achieved: true, status: 'done' as RockStatus } : r
+  const updateRock = useCallback(
+    async (id: string, updates: Partial<Rock>) => {
+      if (!organizationId || !meetingId) return;
+      setRocks((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, ...updates } : r))
       );
-      const updated = next.find((r) => r.id === id);
-      if (updated && socket && meetingId) socket.emit('rock_updated', { meetingId, rock: updated });
-      return next;
-    });
-  }, [socket, meetingId]);
+      try {
+        await meetingsService.updateRock(organizationId, meetingId, id, updates);
+      } catch {
+        fetchRocks();
+      }
+    },
+    [organizationId, meetingId, fetchRocks]
+  );
 
-  const deleteRock = useCallback((id: string) => {
-    setRocks((prev) => prev.filter((r) => r.id !== id));
-    if (socket && meetingId) socket.emit('rock_deleted', { meetingId, rockId: id });
-  }, [socket, meetingId]);
+  const moveRockToColumn = useCallback(
+    (rockId: string, column: RockColumnId) => {
+      updateRock(rockId, { column });
+    },
+    [updateRock]
+  );
+
+  const archiveRock = useCallback(
+    (id: string) => {
+      updateRock(id, { achieved: true, status: 'done' });
+    },
+    [updateRock]
+  );
+
+  const deleteRock = useCallback(
+    async (id: string) => {
+      if (!organizationId || !meetingId) return;
+      setRocks((prev) => prev.filter((r) => r.id !== id));
+      try {
+        await meetingsService.deleteRock(organizationId, meetingId, id);
+      } catch {
+        fetchRocks();
+      }
+    },
+    [organizationId, meetingId, fetchRocks]
+  );
 
   const getRocksByColumn = useCallback(
     (column: RockColumnId) => rocks.filter((r) => !r.achieved && r.column === column),
@@ -205,6 +241,7 @@ export function RocksProvider({
       getActiveRocks,
       getArchivedRocks,
       columnOrder: COLUMN_ORDER,
+      isLoading,
     }),
     [
       rocks,
@@ -216,6 +253,7 @@ export function RocksProvider({
       getRocksByColumn,
       getActiveRocks,
       getArchivedRocks,
+      isLoading,
     ]
   );
 

@@ -5,13 +5,14 @@ export interface CreateMeetingDto {
   meetingSeriesId?: string;
   meetingSeriesName?: string;
   scheduledAt: string;
+  facilitatorId?: string;
   sectionTitles?: string[];
 }
 
 /** Recap data saved when meeting ends; loaded for past meeting panel */
 export interface MeetingRecapData {
   todosCreated?: Array<{ id: string; title: string; assigneeInitials?: string }>;
-  issuesSolved?: Array<{ id: string; title: string }>;
+  issuesSolved?: Array<{ id: string; title: string; resolvedByName?: string | null }>;
   shortTermStats?: {
     totalTracked: number;
     solvedLastMeeting: number;
@@ -32,6 +33,7 @@ export interface Meeting {
   startedAt?: string;
   endedAt?: string;
   suspendedAt?: string | null;
+  cancelledAt?: string | null;
   team: {
     id: string;
     name: string;
@@ -115,6 +117,20 @@ export const meetingsService = {
     return response.data;
   },
 
+  cancel: async (organizationId: string, meetingId: string): Promise<Meeting> => {
+    const response = await apiClient.post<Meeting>(
+      `/meetings/${meetingId}/cancel?organizationId=${organizationId}`,
+    );
+    return response.data;
+  },
+
+  remove: async (organizationId: string, meetingId: string): Promise<{ deleted: boolean }> => {
+    const response = await apiClient.delete<{ deleted: boolean }>(
+      `/meetings/${meetingId}?organizationId=${organizationId}`,
+    );
+    return response.data;
+  },
+
   resume: async (organizationId: string, meetingId: string): Promise<Meeting> => {
     const response = await apiClient.post<Meeting>(
       `/meetings/${meetingId}/resume?organizationId=${organizationId}`,
@@ -184,6 +200,187 @@ export const meetingsService = {
       data,
     );
     return response.data;
+  },
+
+  getRocks: async (organizationId: string, meetingId: string) => {
+    const response = await apiClient.get(
+      `/meetings/${meetingId}/rocks?organizationId=${organizationId}`,
+    );
+    return response.data as Array<{
+      id: string;
+      title: string;
+      ownerName: string;
+      ownerInitials: string;
+      dueBy: string;
+      status: string;
+      column: string;
+      achieved: boolean;
+      isCompanyRock?: boolean;
+      milestoneLabel?: string | null;
+    }>;
+  },
+  createRock: async (
+    organizationId: string,
+    meetingId: string,
+    data: {
+      title: string;
+      ownerName?: string;
+      ownerInitials?: string;
+      dueBy?: string;
+      status?: string;
+      column?: string;
+      achieved?: boolean;
+      isCompanyRock?: boolean;
+      milestoneLabel?: string;
+    },
+  ) => {
+    const response = await apiClient.post(
+      `/meetings/${meetingId}/rocks?organizationId=${organizationId}`,
+      data,
+    );
+    return response.data;
+  },
+  updateRock: async (
+    organizationId: string,
+    meetingId: string,
+    rockId: string,
+    data: Partial<{
+      title: string;
+      ownerName: string;
+      ownerInitials: string;
+      dueBy: string;
+      status: string;
+      column: string;
+      achieved: boolean;
+      isCompanyRock: boolean;
+      milestoneLabel: string | null;
+    }>,
+  ) => {
+    const response = await apiClient.put(
+      `/meetings/${meetingId}/rocks/${rockId}?organizationId=${organizationId}`,
+      data,
+    );
+    return response.data;
+  },
+  deleteRock: async (organizationId: string, meetingId: string, rockId: string) => {
+    await apiClient.delete(
+      `/meetings/${meetingId}/rocks/${rockId}?organizationId=${organizationId}`,
+    );
+  },
+
+  getHeadlines: async (organizationId: string, meetingId: string) => {
+    const response = await apiClient.get(
+      `/meetings/${meetingId}/headlines?organizationId=${organizationId}`,
+    );
+    return response.data as Array<{
+      id: string;
+      title: string;
+      createdAt: string;
+      createdAgo: string;
+      ownerInitials: string;
+      archived: boolean;
+    }>;
+  },
+  createHeadline: async (
+    organizationId: string,
+    meetingId: string,
+    data: { title: string; ownerInitials?: string },
+  ) => {
+    const response = await apiClient.post(
+      `/meetings/${meetingId}/headlines?organizationId=${organizationId}`,
+      data,
+    );
+    return response.data;
+  },
+  updateHeadline: async (
+    organizationId: string,
+    meetingId: string,
+    headlineId: string,
+    data: { archived?: boolean; order?: number },
+  ) => {
+    const response = await apiClient.put(
+      `/meetings/${meetingId}/headlines/${headlineId}?organizationId=${organizationId}`,
+      data,
+    );
+    return response.data;
+  },
+  reorderHeadlines: async (
+    organizationId: string,
+    meetingId: string,
+    ids: string[],
+  ) => {
+    const response = await apiClient.post(
+      `/meetings/${meetingId}/headlines/reorder?organizationId=${organizationId}`,
+      { ids },
+    );
+    return response.data;
+  },
+  deleteHeadline: async (
+    organizationId: string,
+    meetingId: string,
+    headlineId: string,
+  ) => {
+    await apiClient.delete(
+      `/meetings/${meetingId}/headlines/${headlineId}?organizationId=${organizationId}`,
+    );
+  },
+
+  getCascadingMessages: async (organizationId: string, meetingId: string) => {
+    const response = await apiClient.get(
+      `/meetings/${meetingId}/cascading-messages?organizationId=${organizationId}`,
+    );
+    return response.data as Array<{
+      id: string;
+      title: string;
+      from: string;
+      createdAt: string;
+      createdAgo: string;
+      ownerInitials: string;
+      archived: boolean;
+    }>;
+  },
+  createCascadingMessage: async (
+    organizationId: string,
+    meetingId: string,
+    data: { title: string; from: string; ownerInitials?: string },
+  ) => {
+    const response = await apiClient.post(
+      `/meetings/${meetingId}/cascading-messages?organizationId=${organizationId}`,
+      data,
+    );
+    return response.data;
+  },
+  updateCascadingMessage: async (
+    organizationId: string,
+    meetingId: string,
+    messageId: string,
+    data: { archived?: boolean; order?: number },
+  ) => {
+    const response = await apiClient.put(
+      `/meetings/${meetingId}/cascading-messages/${messageId}?organizationId=${organizationId}`,
+      data,
+    );
+    return response.data;
+  },
+  reorderCascadingMessages: async (
+    organizationId: string,
+    meetingId: string,
+    ids: string[],
+  ) => {
+    const response = await apiClient.post(
+      `/meetings/${meetingId}/cascading-messages/reorder?organizationId=${organizationId}`,
+      { ids },
+    );
+    return response.data;
+  },
+  deleteCascadingMessage: async (
+    organizationId: string,
+    meetingId: string,
+    messageId: string,
+  ) => {
+    await apiClient.delete(
+      `/meetings/${meetingId}/cascading-messages/${messageId}?organizationId=${organizationId}`,
+    );
   },
 
   downloadAttachment: async (

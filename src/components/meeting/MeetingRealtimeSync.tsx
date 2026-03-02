@@ -10,7 +10,7 @@ interface MeetingRealtimeSyncProps {
   meetingId: string;
   syncEmitRef: React.MutableRefObject<{
     emitSegmentChange: (segmentId: string) => void;
-    emitTimerSync: () => void;
+    emitTimerSync: (override?: { segmentElapsedSeconds: number; totalElapsedSeconds: number; isRunning: boolean }) => void;
   } | null>;
   setCurrentSection: (id: string) => void;
   setSegmentElapsedSeconds: (n: number) => void;
@@ -21,6 +21,7 @@ interface MeetingRealtimeSyncProps {
   router: { replace: (url: string, opts?: { scroll: boolean }) => void };
   setMeeting?: React.Dispatch<React.SetStateAction<Meeting | null>>;
   onMeetingEnded?: () => void;
+  onTimerSynced?: (segmentElapsedSeconds: number, totalElapsedSeconds: number) => void;
 }
 
 export function MeetingRealtimeSync({
@@ -35,6 +36,7 @@ export function MeetingRealtimeSync({
   router,
   setMeeting,
   onMeetingEnded,
+  onTimerSynced,
 }: MeetingRealtimeSyncProps) {
   const { socket } = useMeetingSocket();
   const getTimerStateRef = useRef(getTimerState);
@@ -52,8 +54,8 @@ export function MeetingRealtimeSync({
           socket.emit('segment_change', { meetingId, segmentId });
         }
       },
-      emitTimerSync: () => {
-        const state = getTimerStateRef.current();
+      emitTimerSync: (override) => {
+        const state = override ?? getTimerStateRef.current();
         socket.emit('timer_sync', {
           meetingId,
           segmentElapsedSeconds: state.segmentElapsedSeconds,
@@ -105,6 +107,8 @@ export function MeetingRealtimeSync({
       if (segmentId && VALID_SEGMENT_IDS.includes(segmentId)) {
         setCurrentSection(segmentId);
         setSegmentElapsedSeconds(0);
+        const state = getTimerStateRef.current();
+        if (onTimerSynced) onTimerSynced(0, state.totalElapsedSeconds);
         router.replace(`${pathname}?segment=${segmentId}`, { scroll: false });
       }
     };
@@ -113,14 +117,15 @@ export function MeetingRealtimeSync({
       totalElapsedSeconds?: number;
       isRunning?: boolean;
     }) => {
-      if (typeof payload.segmentElapsedSeconds === 'number') {
-        setSegmentElapsedSeconds(Math.max(0, payload.segmentElapsedSeconds));
-      }
-      if (typeof payload.totalElapsedSeconds === 'number') {
-        setTotalElapsedSeconds(Math.max(0, payload.totalElapsedSeconds));
-      }
+      const segment = typeof payload.segmentElapsedSeconds === 'number' ? Math.max(0, payload.segmentElapsedSeconds) : undefined;
+      const total = typeof payload.totalElapsedSeconds === 'number' ? Math.max(0, payload.totalElapsedSeconds) : undefined;
+      if (segment !== undefined) setSegmentElapsedSeconds(segment);
+      if (total !== undefined) setTotalElapsedSeconds(total);
       if (typeof payload.isRunning === 'boolean') {
         setIsRunning(payload.isRunning);
+      }
+      if (segment !== undefined && total !== undefined && onTimerSynced) {
+        onTimerSynced(segment, total);
       }
     };
     socket.on('segment_changed', onSegmentChanged);
@@ -135,6 +140,7 @@ export function MeetingRealtimeSync({
     setSegmentElapsedSeconds,
     setTotalElapsedSeconds,
     setIsRunning,
+    onTimerSynced,
     pathname,
     router,
   ]);

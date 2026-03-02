@@ -80,10 +80,13 @@ export function TodosProvider({
     setIsLoading(true);
     try {
       const [active, archived] = await Promise.all([
-        todosService.findAll(organizationId, teamId, false),
-        todosService.findAll(organizationId, teamId, true),
+        todosService.findAll(organizationId, teamId, false, meetingId),
+        todosService.findAll(organizationId, teamId, true, meetingId),
       ]);
-      const combined = [...active.map(apiToItem), ...archived.map(apiToItem)];
+      const activeItems = active.map(apiToItem);
+      const activeIds = new Set(activeItems.map((t) => t.id));
+      const archivedOnly = archived.map(apiToItem).filter((t) => !activeIds.has(t.id));
+      const combined = [...activeItems, ...archivedOnly];
       combined.sort((a, b) => (a.archived ? 1 : 0) - (b.archived ? 1 : 0) || a.order - b.order);
       setTodos(combined);
     } catch {
@@ -91,7 +94,12 @@ export function TodosProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [organizationId, teamId]);
+  }, [organizationId, teamId, meetingId]);
+
+  // When meetingId changes (new meeting), clear and refetch so we don't show previous meeting's stale list
+  useEffect(() => {
+    setTodos([]);
+  }, [meetingId]);
 
   useEffect(() => {
     fetchTodos();
@@ -118,8 +126,10 @@ export function TodosProvider({
     };
     const onTodoReordered = (list: TodoApiItem[]) => {
       setTodos((prev) => {
-        const archived = prev.filter((t) => t.archived);
-        return [...list.map(apiToItem), ...archived];
+        const fromList = list.map(apiToItem);
+        const listIds = new Set(fromList.map((t) => t.id));
+        const archivedOnly = prev.filter((t) => t.archived && !listIds.has(t.id));
+        return [...fromList, ...archivedOnly];
       });
     };
     const onTodoListChanged = () => {

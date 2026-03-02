@@ -36,6 +36,7 @@ interface ConcludeSegmentViewProps {
   meetingId?: string;
   isFacilitator?: boolean;
   facilitatorId?: string | null;
+  currentUserId?: string | null;
   attendances?: Array<{
     id: string;
     present: boolean;
@@ -66,6 +67,7 @@ export function ConcludeSegmentView({
   meetingId,
   isFacilitator = true,
   facilitatorId,
+  currentUserId,
   attendances: meetingAttendances,
 }: ConcludeSegmentViewProps) {
   const wrap = embedded ? 'pt-0 pb-4' : 'pt-0 pb-6';
@@ -155,9 +157,31 @@ export function ConcludeSegmentView({
     socket.on('conclude_attendances', onConcludeAttendances);
     return () => {
       socket.off('conclude_attendances', onConcludeAttendances);
-      return;
     };
   }, [socket, meetingId]);
+
+  // Sync rating from any participant so everyone (including facilitator) has full ratings for recap
+  useEffect(() => {
+    if (!socket || !RATINGS_STORAGE_KEY) return;
+    const onConcludeRating = (payload: { attendanceId: string; rating: number | null }) => {
+      if (!payload.attendanceId) return;
+      setAttendees((prev) => {
+        const next = prev.map((a) => (a.id === payload.attendanceId ? { ...a, rating: payload.rating } : a));
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(RATINGS_STORAGE_KEY!, JSON.stringify(next.map((a) => ({ id: a.id, rating: a.rating, absent: a.absent }))));
+          } catch {
+            // ignore
+          }
+        }
+        return next;
+      });
+    };
+    socket.on('conclude_rating', onConcludeRating);
+    return () => {
+      socket.off('conclude_rating', onConcludeRating);
+    };
+  }, [socket, RATINGS_STORAGE_KEY]);
 
   useEffect(() => {
     if (!RATINGS_STORAGE_KEY || typeof window === 'undefined') return;
@@ -379,21 +403,28 @@ export function ConcludeSegmentView({
                     )}
                   </td>
                   <td className="px-4 py-2">
-                    <input
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={a.rating ?? ''}
-                      onChange={(e) => {
-                        const v = e.target.value ? Number(e.target.value) : null;
-                        setAttendees((prev) => {
-                          const next = prev.map((x) => (x.id === a.id ? { ...x, rating: v } : x));
-                          saveRatings(next);
-                          return next;
-                        });
-                      }}
-                      className="w-20 px-2 py-1.5 border border-border rounded bg-background text-foreground text-sm"
-                    />
+                    {a.userId === currentUserId ? (
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={a.rating ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value ? Number(e.target.value) : null;
+                          setAttendees((prev) => {
+                            const next = prev.map((x) => (x.id === a.id ? { ...x, rating: v } : x));
+                            saveRatings(next);
+                            if (meetingId && socket) {
+                              socket.emit('conclude_rating', { meetingId, attendanceId: a.id, rating: v });
+                            }
+                            return next;
+                          });
+                        }}
+                        className="w-20 px-2 py-1.5 border border-border rounded bg-background text-foreground text-sm"
+                      />
+                    ) : (
+                      <span className="text-foreground font-medium">{a.rating != null ? a.rating : '—'}</span>
+                    )}
                   </td>
                   <td className="px-4 py-2">
                     {a.userId === facilitatorId ? (
@@ -468,9 +499,10 @@ export function ConcludeSegmentView({
             </label>
             <button
               type="button"
-              onClick={onFinishMeeting ? openFinishFlow : undefined}
-              disabled={isFinishing}
-              className="ml-auto flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-70 text-sm font-medium"
+              onClick={isFacilitator && onFinishMeeting ? openFinishFlow : undefined}
+              disabled={isFinishing || !isFacilitator}
+              className="ml-auto flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-70 disabled:cursor-not-allowed text-sm font-medium"
+              title={!isFacilitator ? 'Only the facilitator can end the meeting' : undefined}
             >
               {isFinishing ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

@@ -12,7 +12,9 @@ import {
   Download,
   FileText,
   User,
+  Trash2,
 } from 'lucide-react';
+import { ContentAreaLoader } from '@/components/ui/loaders';
 import type { Meeting } from '@/lib/api/meetings.service';
 import { meetingsService } from '@/lib/api/meetings.service';
 import { ROUTES } from '@/lib/constants/routes';
@@ -26,6 +28,7 @@ export interface MeetingRecapTodo {
 export interface MeetingRecapIssue {
   id: string;
   title: string;
+  resolvedByName?: string | null;
 }
 
 export interface MeetingRecapData {
@@ -48,7 +51,9 @@ interface PastMeetingRecapPanelProps {
   recapLoading?: boolean;
   organizationId: string;
   teamId: string;
+  orgRole?: string | null;
   onClose: () => void;
+  onDeleted?: () => void;
 }
 
 /** Notes by participant: from meeting.sections[].notes, grouped by author */
@@ -75,13 +80,21 @@ export function PastMeetingRecapPanel({
   recapLoading = false,
   organizationId,
   teamId,
+  orgRole,
   onClose,
+  onDeleted,
 }: PastMeetingRecapPanelProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [localAttachments, setLocalAttachments] = useState<Array<{ id: string; name: string; url?: string }>>([]);
   const [apiAttachments, setApiAttachments] = useState<Array<{ id: string; fileName: string }>>([]);
   const [loadingAttachments, setLoadingAttachments] = useState(true);
+
+  const isCancelled = Boolean(meeting.cancelledAt);
+  const isAdmin = orgRole === 'ADMIN';
 
   useEffect(() => {
     if (!organizationId || !meeting.id) return;
@@ -112,15 +125,18 @@ export function PastMeetingRecapPanel({
     .slice()
     .sort((a, b) => a.order - b.order)
     .map((s) => ({ sectionTitle: s.title, durationMMSS: '00:00' }));
-  const ratings = recap?.ratings ?? meeting.attendances.map((a) => ({
-    userName: a.user.name || a.user.email || 'Attendee',
+  const ratings = recap?.ratings ?? (meeting.attendances ?? []).map((a) => ({
+    userName: a.user?.name || a.user?.email || 'Attendee',
     rating: null as number | null,
   }));
   const attachmentsFromApi = apiAttachments.map((a) => ({ id: a.id, name: a.fileName, fromApi: true as const }));
   const attachmentsFromRecap = (recap?.attachments?.length ? recap.attachments : localAttachments) ?? [];
+  const apiIds = new Set(attachmentsFromApi.map((a) => a.id));
   const allAttachments = [
     ...attachmentsFromApi,
-    ...attachmentsFromRecap.map((a) => ({ id: a.id, name: a.name, fromApi: false as const })),
+    ...attachmentsFromRecap
+      .filter((a) => !apiIds.has(a.id))
+      .map((a) => ({ id: a.id, name: a.name, fromApi: false as const })),
   ];
 
   const notesByParticipant = useMemo(() => getNotesByParticipant(meeting), [meeting]);
@@ -153,10 +169,7 @@ export function PastMeetingRecapPanel({
       <div className="fixed inset-y-0 right-0 w-full max-w-md bg-card border-l border-border shadow-xl z-50 flex flex-col">
         <header className="flex items-center justify-between p-4 border-b border-border shrink-0">
           <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            Past Level 10 Meeting™
-            {recapLoading && (
-              <span className="text-xs font-normal text-muted-foreground animate-pulse">Loading recap…</span>
-            )}
+            {isCancelled ? 'Cancelled meeting' : 'Past Level 10 Meeting™'}
           </h2>
           <div className="flex items-center gap-1">
             <button
@@ -200,7 +213,19 @@ export function PastMeetingRecapPanel({
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        <div className="flex-1 min-h-0 flex flex-col">
+          {recapLoading && !isCancelled ? (
+            <ContentAreaLoader label="Loading summary…" />
+          ) : isCancelled ? (
+            <div className="p-4">
+              <div className="rounded-lg border border-border bg-muted/30 p-6 text-center">
+                <p className="text-foreground font-medium">This meeting was cancelled.</p>
+                <p className="text-sm text-foreground/70 mt-1">No summary is available.</p>
+              </div>
+            </div>
+          ) : (
+          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          <>
           {/* To-Dos Created */}
           <section>
             <h3 className="text-sm font-semibold text-foreground mb-2">To-Dos Created</h3>
@@ -249,7 +274,10 @@ export function PastMeetingRecapPanel({
               <ul className="space-y-1.5">
                 {issuesSolved.map((issue) => (
                   <li key={issue.id} className="text-sm text-foreground py-1">
-                    {issue.title}
+                    <span>{issue.title}</span>
+                    {issue.resolvedByName && (
+                      <span className="block text-xs text-muted-foreground mt-0.5">Solved by {issue.resolvedByName}</span>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -271,7 +299,6 @@ export function PastMeetingRecapPanel({
               <div className="bg-muted/40 rounded-lg p-3 border border-border">
                 <p className="text-xs text-muted-foreground mb-0.5">Issues Solved Today</p>
                 <p className="text-xl font-bold text-foreground">{stats.solvedToday}</p>
-                <span className="text-xs text-muted-foreground">↓ 0</span>
               </div>
               <div className="bg-muted/40 rounded-lg p-3 border border-border">
                 <p className="text-xs text-muted-foreground mb-0.5">Solve Rate</p>
@@ -390,8 +417,88 @@ export function PastMeetingRecapPanel({
               ))}
             </ul>
           </section>
+          </>
+          {/* Delete this meeting (admin only) */}
+          {isAdmin && onDeleted && (
+            <section className="pt-4 border-t border-border">
+              <button
+                type="button"
+                onClick={() => { setDeleteError(null); setDeleteConfirmOpen(true); }}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-md border border-red-500/50 text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors text-sm font-medium"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete this meeting
+              </button>
+            </section>
+          )}
+          </div>
+          )}
         </div>
       </div>
+
+      {/* Delete confirmation */}
+      {deleteConfirmOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/40 z-[60]" onClick={() => setDeleteConfirmOpen(false)} aria-hidden />
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <div className="bg-card border border-border rounded-lg shadow-xl max-w-sm w-full p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-2">Delete this meeting?</h3>
+              <p className="text-sm text-foreground/70 mb-4">
+                This will permanently remove the meeting and its summary from the database. This cannot be undone.
+              </p>
+              {deleteError && (
+                <p className="text-sm text-red-600 dark:text-red-400 mb-3" role="alert">
+                  {deleteError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmOpen(false)}
+                  className="px-4 py-2 border border-border rounded-md hover:bg-foreground/10 text-sm font-medium"
+                >
+                  Keep
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setDeleteError(null);
+                    const orgId = meeting.team?.organizationId ?? organizationId;
+                    if (!orgId) {
+                      setDeleteError('Organization not found for this meeting.');
+                      return;
+                    }
+                    try {
+                      setDeleting(true);
+                      await meetingsService.remove(orgId, meeting.id);
+                      setDeleteConfirmOpen(false);
+                      onDeleted?.();
+                    } catch (err: unknown) {
+                      const status = err && typeof err === 'object' && 'response' in err
+                        ? (err as { response?: { status?: number } }).response?.status
+                        : null;
+                      const msg = err && typeof err === 'object' && 'response' in err
+                        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+                        : null;
+                      setDeleteError(
+                        status === 404
+                          ? 'Meeting not found. It may have been deleted already.'
+                          : msg || 'Failed to delete meeting. Try again.'
+                      );
+                    } finally {
+                      setDeleting(false);
+                    }
+                  }}
+                  disabled={deleting}
+                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-70 text-sm font-medium"
+                >
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

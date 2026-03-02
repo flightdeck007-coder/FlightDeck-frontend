@@ -21,6 +21,7 @@ interface MeetingContentProps {
   organizationId?: string;
   isFacilitator?: boolean;
   facilitatorId?: string | null;
+  currentUserId?: string | null;
   meetingAttendances?: Array<{
     id: string;
     present: boolean;
@@ -81,7 +82,7 @@ const demoData: Record<string, any> = {
   },
 };
 
-export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onOpenCreate, onFinishMeeting, finishLoading, meetingId, organizationId, isFacilitator, facilitatorId, meetingAttendances }: MeetingContentProps) {
+export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onOpenCreate, onFinishMeeting, finishLoading, meetingId, organizationId, isFacilitator, facilitatorId, currentUserId, meetingAttendances }: MeetingContentProps) {
   const data = demoData[sectionId.toLowerCase()] || demoData.segue;
   const isMinimalPrompt = data.type === 'prompt' && data.empty; // Segue, Headlines: prompt + empty only
   const hasFilterBar = ['scorecard', 'rocks', 'headlines', 'todos', 'issues', 'conclude'].includes(sectionId);
@@ -171,6 +172,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
             meetingId={meetingId}
             isFacilitator={isFacilitator}
             facilitatorId={facilitatorId}
+            currentUserId={currentUserId}
             attendances={meetingAttendances}
           />
         )}

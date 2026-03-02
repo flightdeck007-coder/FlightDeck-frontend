@@ -39,6 +39,7 @@ import {
   type Rock,
   type RockColumnId,
 } from '@/contexts/RocksContext';
+import { ContentAreaLoader } from '@/components/ui/loaders';
 
 const COLUMN_LABELS: Record<RockColumnId, string> = {
   current: 'Current',
@@ -113,6 +114,7 @@ export function RocksSegmentView({
     getActiveRocks,
     getArchivedRocks,
     columnOrder,
+    isLoading,
   } = useRocks();
 
   const activeRocks = getActiveRocks();
@@ -289,7 +291,10 @@ export function RocksSegmentView({
         </div>
       </div>
 
-      {/* Content: padding after filter bar */}
+      {/* Content: padding after filter bar — or full-area loader when fetching */}
+      {isLoading ? (
+        <ContentAreaLoader label="Loading rocks…" />
+      ) : (
       <div className={`flex-1 flex flex-col min-h-0 mt-6 ${contentPad}`}>
       {/* Tabs — hover and transition for clickable UI */}
       <div className="flex gap-0 border-b border-border mb-4 shrink-0">
@@ -361,6 +366,7 @@ export function RocksSegmentView({
       </div>
 
       </div>
+    )}
     </div>
   );
 }

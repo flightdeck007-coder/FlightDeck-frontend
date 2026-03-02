@@ -15,8 +15,10 @@ import { MeetingRealtimeSync } from '@/components/meeting/MeetingRealtimeSync';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { meetingsService } from '@/lib/api/meetings.service';
 import type { Meeting } from '@/lib/api/meetings.service';
+import { issuesService } from '@/lib/api/issues.service';
 import { ROUTES } from '@/lib/constants/routes';
 import { Menu, User, Plus, Loader2 } from 'lucide-react';
+import { FullScreenLoaderWithText } from '@/components/ui/loaders';
 
 // L10 Meeting Format Sections: flight term (real term). 7 segments. IDs stay canonical for content lookup.
 const meetingSections = [
@@ -89,6 +91,7 @@ export default function MeetingPage() {
   const [showNotesSection, setShowNotesSection] = useState(false);
   const [suspendInProgress, setSuspendInProgress] = useState(false);
   const [resumeInProgress, setResumeInProgress] = useState(false);
+  const [meetingLoading, setMeetingLoading] = useState(false);
   const segmentStateRef = useRef({ segmentId: 'segue', segmentElapsedSeconds: 0, totalElapsedSeconds: 0 });
   const hasRunResumeRef = useRef(false);
   const skipSegmentResetRef = useRef(false);
@@ -96,8 +99,13 @@ export default function MeetingPage() {
   const sectionDurationsRef = useRef<Array<{ sectionId: string; sectionTitle: string; durationSeconds: number }>>([]);
   const syncEmitRef = useRef<{
     emitSegmentChange: (segmentId: string) => void;
-    emitTimerSync: () => void;
+    emitTimerSync: (override?: { segmentElapsedSeconds: number; totalElapsedSeconds: number; isRunning: boolean }) => void;
   } | null>(null);
+  const lastTimerSyncRef = useRef<{ segment: number; total: number; ts: number }>({ segment: 0, total: 0, ts: 0 });
+  const facilitatorTimerRef = useRef<{ segmentElapsedSeconds: number; totalElapsedSeconds: number; isRunning: boolean }>({ segmentElapsedSeconds: 0, totalElapsedSeconds: 0, isRunning: false });
+  const lastEmittedRunningRef = useRef<boolean | null>(null);
+  const lastTimerSyncEmitTsRef = useRef(0);
+  const SYNC_EMIT_INTERVAL_MS = 2500;
 
   useEffect(() => {
     const storedOrgId = typeof window !== 'undefined' ? localStorage.getItem('organizationId') : null;
@@ -135,6 +143,7 @@ export default function MeetingPage() {
 
   useEffect(() => {
     if (!organizationId || !meetingId) return;
+    setMeetingLoading(true);
     (async () => {
       try {
         const meeting = await meetingsService.findOne(organizationId, meetingId);
@@ -164,6 +173,8 @@ export default function MeetingPage() {
         }
       } catch {
         // keep static template
+      } finally {
+        setMeetingLoading(false);
       }
     })();
   }, [organizationId, meetingId]);
@@ -223,16 +234,26 @@ export default function MeetingPage() {
     loadedSections.find((s) => s.id === currentSection) || loadedSections[0];
   const segmentDurationSeconds = (currentSectionData?.duration ?? 5) * 60;
 
-  // Timer: total time always runs (meeting duration); segment time only when playing (for discussion pause)
+  // Timer: only facilitator runs the interval; keep a ref in sync so broadcast sends correct values (avoids 1-2-1-2 from stale state)
+  const isFacilitatorForTimer = Boolean(meeting?.facilitatorId && currentUserId && meeting.facilitatorId === currentUserId);
   useEffect(() => {
+    if (!isFacilitatorForTimer) return;
+    facilitatorTimerRef.current = { segmentElapsedSeconds: segmentElapsedSeconds, totalElapsedSeconds: totalElapsedSeconds, isRunning };
     const interval = setInterval(() => {
-      setTotalElapsedSeconds((prev) => prev + 1);
-      if (isRunning) {
-        setSegmentElapsedSeconds((prev) => prev + 1);
+      const ref = facilitatorTimerRef.current;
+      const nextTotal = ref.totalElapsedSeconds + 1;
+      const nextSegment = ref.isRunning ? ref.segmentElapsedSeconds + 1 : ref.segmentElapsedSeconds;
+      facilitatorTimerRef.current = { segmentElapsedSeconds: nextSegment, totalElapsedSeconds: nextTotal, isRunning: ref.isRunning };
+      setTotalElapsedSeconds(nextTotal);
+      setSegmentElapsedSeconds(nextSegment);
+      const now = Date.now();
+      if (now - lastTimerSyncEmitTsRef.current >= SYNC_EMIT_INTERVAL_MS) {
+        lastTimerSyncEmitTsRef.current = now;
+        syncEmitRef.current?.emitTimerSync?.(facilitatorTimerRef.current);
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [isRunning]);
+  }, [isRunning, isFacilitatorForTimer]);
 
   // Derive segment time display and progress (0% = 00:00, 100% = segment duration e.g. 05:00)
   useEffect(() => {
@@ -244,7 +265,7 @@ export default function MeetingPage() {
     setSegmentProgressPercent(pct);
   }, [segmentElapsedSeconds, totalElapsedSeconds, segmentDurationSeconds]);
 
-  // When segment changes: record previous segment duration for recap, then reset elapsed
+  // When segment *id* actually changes only: record previous segment duration for recap, then reset elapsed (never run on loadedSections ref change or segment stays 00:00)
   useEffect(() => {
     if (skipSegmentResetRef.current) {
       skipSegmentResetRef.current = false;
@@ -253,17 +274,20 @@ export default function MeetingPage() {
       return;
     }
     const prev = previousSectionRef.current;
+    if (prev === currentSection) return;
     if (prev != null && loadedSections.length > 0) {
       const title = loadedSections.find((s) => s.id === prev)?.title ?? '';
+      const duration = segmentStateRef.current.segmentElapsedSeconds;
       sectionDurationsRef.current.push({
         sectionId: prev,
         sectionTitle: title,
-        durationSeconds: segmentElapsedSeconds,
+        durationSeconds: duration,
       });
     }
     previousSectionRef.current = currentSection;
     setSegmentElapsedSeconds(0);
-  }, [currentSection, loadedSections, segmentElapsedSeconds]);
+    facilitatorTimerRef.current = { ...facilitatorTimerRef.current, segmentElapsedSeconds: 0 };
+  }, [currentSection, loadedSections]);
 
   // Keep ref in sync for saving position on suspend
   useEffect(() => {
@@ -274,9 +298,9 @@ export default function MeetingPage() {
     };
   }, [currentSection, segmentElapsedSeconds, totalElapsedSeconds]);
 
-  // When segment time completes: advance to next segment (save is handled by existing contexts)
+  // When segment time completes: only facilitator advances and broadcasts (members follow via segment_changed)
   useEffect(() => {
-    if (!isRunning || segmentDurationSeconds <= 0) return;
+    if (!isFacilitatorForTimer || !isRunning || segmentDurationSeconds <= 0) return;
     if (segmentElapsedSeconds < segmentDurationSeconds) return;
     const idx = loadedSections.findIndex((s) => s.id === currentSection);
     if (idx < 0 || idx >= loadedSections.length - 1) return;
@@ -285,18 +309,30 @@ export default function MeetingPage() {
     router.replace(`${pathname}?segment=${nextId}`, { scroll: false });
     setSegmentElapsedSeconds(0);
     syncEmitRef.current?.emitSegmentChange?.(nextId);
-  }, [isRunning, segmentElapsedSeconds, segmentDurationSeconds, currentSection, loadedSections, pathname, router]);
+  }, [isFacilitatorForTimer, isRunning, segmentElapsedSeconds, segmentDurationSeconds, currentSection, loadedSections, pathname, router]);
 
-  // Broadcast timer state every 10s while running so late joiners / reconnects stay in sync
+  // When facilitator starts or pauses, send one immediate sync so members get current values (ref guard prevents double emit in strict mode)
   useEffect(() => {
-    // When facilitator pauses/resumes, broadcast immediately so members stay in sync
-    syncEmitRef.current?.emitTimerSync?.();
-    if (!isRunning) return;
+    if (!isFacilitatorForTimer) return;
+    if (lastEmittedRunningRef.current === isRunning) return;
+    lastEmittedRunningRef.current = isRunning;
+    facilitatorTimerRef.current = { segmentElapsedSeconds, totalElapsedSeconds, isRunning };
+    lastTimerSyncEmitTsRef.current = Date.now();
+    syncEmitRef.current?.emitTimerSync?.(facilitatorTimerRef.current);
+  }, [isFacilitatorForTimer, isRunning]);
+
+  // Members: tick only segment from last sync so segment runs smoothly; total comes only from socket to avoid 1-2-1-2 glitch
+  useEffect(() => {
+    if (isFacilitatorForTimer) return;
+    if (!isRunning || lastTimerSyncRef.current.ts === 0) return;
     const interval = setInterval(() => {
-      syncEmitRef.current?.emitTimerSync?.();
-    }, 10000);
+      const ref = lastTimerSyncRef.current;
+      if (ref.ts === 0) return;
+      const elapsed = Math.floor((Date.now() - ref.ts) / 1000);
+      setSegmentElapsedSeconds(Math.max(0, ref.segment + elapsed));
+    }, 1000);
     return () => clearInterval(interval);
-  }, [isRunning]);
+  }, [isRunning, isFacilitatorForTimer]);
 
   const handleStart = () => {
     setIsRunning(true);
@@ -320,60 +356,128 @@ export default function MeetingPage() {
     }
     setFinishLoading(true);
     try {
-      // Record current segment duration before leaving
+      // Record current segment duration so it's in the ref before we build the full list (update if already present)
       const currentSectionData = loadedSections.find((s) => s.id === currentSection);
       if (currentSectionData) {
-        sectionDurationsRef.current.push({
-          sectionId: currentSection,
-          sectionTitle: currentSectionData.title,
-          durationSeconds: segmentElapsedSeconds,
-        });
+        const existing = sectionDurationsRef.current.find((d) => d.sectionId === currentSection);
+        if (existing) {
+          existing.durationSeconds = segmentElapsedSeconds;
+        } else {
+          sectionDurationsRef.current.push({
+            sectionId: currentSection,
+            sectionTitle: currentSectionData.title,
+            durationSeconds: segmentElapsedSeconds,
+          });
+        }
       }
-      // Build recap: ratings from localStorage, section durations from ref
+
+      // Fresh meeting fetch so we have latest attendances (and any join-after-load)
+      let meetingForRecap = meeting;
+      try {
+        meetingForRecap = await meetingsService.findOne(orgId, meetingId);
+      } catch {
+        // keep existing meeting state
+      }
+
+      // Build recap: ratings from localStorage (keyed by attendance id)
       const ratingsKey = `meeting-ratings-${meetingId}`;
       let ratings: Array<{ attendanceId?: string; userName: string; rating: number | null }> = [];
-      if (typeof window !== 'undefined' && meeting?.attendances) {
+      const attendances = meetingForRecap?.attendances ?? [];
+      if (typeof window !== 'undefined' && attendances.length > 0) {
         try {
           const raw = localStorage.getItem(ratingsKey);
-          if (raw) {
-            const parsed = JSON.parse(raw) as Array<{ id: string; rating: number | null; absent: boolean }>;
-            ratings = (meeting.attendances ?? []).map((a) => {
-              const saved = parsed.find((p) => p.id === a.id);
-              const userName = a.user?.name || a.user?.email || 'Attendee';
-              return {
-                attendanceId: a.id,
-                userName,
-                rating: saved?.rating ?? null,
-              };
-            });
-          } else {
-            ratings = (meeting.attendances ?? []).map((a) => ({
-              userName: a.user?.name || a.user?.email || 'Attendee',
-              rating: null as number | null,
-            }));
-          }
+          const parsed = raw ? (JSON.parse(raw) as Array<{ id: string; rating: number | null; absent: boolean }>) : null;
+          ratings = attendances.map((a) => {
+            const saved = parsed?.find((p) => p.id === a.id);
+            const userName = a.user?.name || a.user?.email || 'Attendee';
+            return {
+              attendanceId: a.id,
+              userName,
+              rating: saved?.rating ?? null,
+            };
+          });
         } catch {
-          ratings = (meeting?.attendances ?? []).map((a) => ({
+          ratings = attendances.map((a) => ({
+            attendanceId: a.id,
             userName: a.user?.name || a.user?.email || 'Attendee',
             rating: null as number | null,
           }));
         }
       }
-      const sectionDurations = sectionDurationsRef.current.map((d) => ({
-        sectionTitle: d.sectionTitle,
-        durationMMSS: `${String(Math.floor(d.durationSeconds / 60)).padStart(2, '0')}:${String(d.durationSeconds % 60).padStart(2, '0')}`,
-      }));
+
+      // Section durations: one row per loaded section in order; use ref when we have it, else current segment time, else 0
+      const sectionDurations = loadedSections.map((section) => {
+        const fromRef = sectionDurationsRef.current.find((d) => d.sectionId === section.id);
+        const seconds =
+          fromRef != null
+            ? fromRef.durationSeconds
+            : section.id === currentSection
+              ? segmentElapsedSeconds
+              : 0;
+        return {
+          sectionTitle: section.title,
+          durationMMSS: `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`,
+        };
+      });
+
+      // Attachments: fetch current list so recap has them for the summary
+      let attachments: Array<{ id: string; name: string; url?: string }> = [];
+      try {
+        const list = await meetingsService.getAttachments(orgId, meetingId);
+        attachments = (list || []).map((a: { id: string; fileName: string }) => ({
+          id: a.id,
+          name: a.fileName,
+        }));
+      } catch {
+        // continue without attachments in recap
+      }
+
+      // Issues: fetch short-term active + resolved and long-term resolved for this meeting to build real stats and issues solved
+      let shortTermStats = {
+        totalTracked: 0,
+        solvedLastMeeting: 0,
+        solvedToday: 0,
+        solveRatePercent: 0,
+      };
+      let issuesSolved: Array<{ id: string; title: string; resolvedByName?: string | null }> = [];
+      const teamId = meetingForRecap?.teamId;
+      if (orgId && teamId) {
+        try {
+          const [shortActive, shortResolved, longResolved] = await Promise.all([
+            issuesService.findAll(orgId, teamId, 'short_term', false, meetingId),
+            issuesService.findAll(orgId, teamId, 'short_term', true, meetingId),
+            issuesService.findAll(orgId, teamId, 'long_term', true, meetingId),
+          ]);
+          const totalTracked = shortActive.length + shortResolved.length;
+          const solvedInMeeting = shortResolved.length + longResolved.length;
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+          const solvedTodayCount = [...shortResolved, ...longResolved].filter(
+            (i) => i.resolvedAt && new Date(i.resolvedAt).getTime() >= todayStart.getTime()
+          ).length;
+          shortTermStats = {
+            totalTracked,
+            solvedLastMeeting: solvedInMeeting,
+            solvedToday: solvedTodayCount,
+            solveRatePercent: totalTracked > 0 ? Math.round((shortResolved.length / totalTracked) * 100) : 0,
+          };
+          issuesSolved = [...shortResolved, ...longResolved].map((i) => ({
+            id: i.id,
+            title: i.title,
+            resolvedByName: i.resolvedByName ?? null,
+          }));
+        } catch {
+          // keep default zeros and empty list
+        }
+      }
+
       const recapPayload = {
         ratings,
         sectionDurations,
-        shortTermStats: {
-          totalTracked: 0,
-          solvedLastMeeting: 0,
-          solvedToday: 0,
-          solveRatePercent: 0,
-        },
-        todosCreated: [],
-        issuesSolved: [],
+        shortTermStats,
+        todosCreated: [] as Array<{ id: string; title: string; assigneeInitials?: string }>,
+        issuesSolved,
+        attachments,
       };
 
       // Save recap with timeout so we don't hang if backend fails
@@ -394,6 +498,10 @@ export default function MeetingPage() {
       await meetingsService.update(orgId, meetingId, {
         endedAt: new Date().toISOString(),
       });
+      // Clear meeting-specific localStorage so we don't leave stale data (recap is persisted to API)
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(`meeting-ratings-${meetingId}`);
+      }
       router.push(ROUTES.MEETINGS);
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'response' in err
@@ -491,6 +599,10 @@ export default function MeetingPage() {
     [segmentElapsedSeconds, totalElapsedSeconds, isRunning]
   );
 
+  if (meetingLoading) {
+    return <FullScreenLoaderWithText text="Setting up meeting" />;
+  }
+
   return (
     <MeetingSocketProvider meetingId={meetingId} organizationId={organizationId || null}>
     <MeetingRealtimeSync
@@ -505,9 +617,12 @@ export default function MeetingPage() {
       router={router}
       setMeeting={setMeeting}
       onMeetingEnded={() => router.push(ROUTES.MEETINGS)}
+      onTimerSynced={(segment, total) => {
+        lastTimerSyncRef.current = { segment, total, ts: Date.now() };
+      }}
     />
-    <RocksProvider meetingId={meetingId}>
-    <HeadlinesProvider meetingId={meetingId}>
+    <RocksProvider meetingId={meetingId} organizationId={organizationId}>
+    <HeadlinesProvider meetingId={meetingId} organizationId={organizationId}>
     <TodosProvider meetingId={meetingId} organizationId={organizationId} teamId={teamId}>
     <IssuesProvider organizationId={organizationId} teamId={teamId} meetingId={meetingId}>
     <MeetingLayout>
@@ -562,7 +677,7 @@ export default function MeetingPage() {
       {/* Main: header row + component details row */}
       <div className="flex-1 overflow-hidden flex flex-col min-w-0">
         {/* Header row: hamburger | Segment | Meeting - Team | user + Create — white bg */}
-        <header className="flex items-center gap-4 p-4 border-b border-border bg-white shrink-0">
+        <header className="flex items-center gap-4 p-4 border-b border-border bg-card shrink-0">
           <button
             type="button"
             onClick={() => setSidebarOpen((o) => !o)}
@@ -621,6 +736,7 @@ export default function MeetingPage() {
               meetingAttendances={meeting?.attendances}
               isFacilitator={isFacilitator}
               facilitatorId={meeting?.facilitatorId}
+              currentUserId={currentUserId}
               onOpenCreateIssue={() => {
                 setCreatePopupInitialType('issue');
                 setCreatePopupOpen(true);

@@ -19,12 +19,14 @@ export const todosService = {
   findAll: async (
     organizationId: string,
     teamId: string,
-    archived?: boolean
+    archived?: boolean,
+    meetingId?: string
   ): Promise<TodoApiItem[]> => {
     const params = new URLSearchParams({ organizationId, teamId });
     if (typeof archived === 'boolean') {
       params.set('archived', String(archived));
     }
+    if (meetingId) params.set('meetingId', meetingId);
     const response = await apiClient.get<TodoApiItem[]>(`/todos?${params}`);
     return response.data;
   },

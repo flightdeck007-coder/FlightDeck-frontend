@@ -19,6 +19,7 @@ export interface IssueItem {
   priority: number;
   termType: 'short_term' | 'long_term';
   resolvedAt: string | null;
+  resolvedByName: string | null;
   createdAt: string;
   updatedAt: string;
   createdById: string | null;
@@ -34,6 +35,7 @@ function apiToItem(i: IssueApiItem): IssueItem {
     priority: i.priority,
     termType: i.termType,
     resolvedAt: i.resolvedAt,
+    resolvedByName: i.resolvedByName ?? null,
     createdAt: i.createdAt,
     updatedAt: i.updatedAt,
     createdById: i.createdById,
@@ -44,6 +46,8 @@ function apiToItem(i: IssueApiItem): IssueItem {
 interface IssuesContextValue {
   shortTerm: IssueItem[];
   longTerm: IssueItem[];
+  shortTermResolved: IssueItem[];
+  longTermResolved: IssueItem[];
   addIssue: (data: {
     title: string;
     description?: string;
@@ -74,29 +78,57 @@ export function IssuesProvider({
   const { socket } = useMeetingSocket();
   const [shortTerm, setShortTerm] = useState<IssueItem[]>([]);
   const [longTerm, setLongTerm] = useState<IssueItem[]>([]);
+  const [shortTermResolved, setShortTermResolved] = useState<IssueItem[]>([]);
+  const [longTermResolved, setLongTermResolved] = useState<IssueItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchIssues = useCallback(async () => {
     if (!organizationId || !teamId || typeof window === 'undefined') {
       setShortTerm([]);
       setLongTerm([]);
+      setShortTermResolved([]);
+      setLongTermResolved([]);
       return;
     }
     setIsLoading(true);
     try {
-      const [short, long] = await Promise.all([
-        issuesService.findAll(organizationId, teamId, 'short_term', false),
-        issuesService.findAll(organizationId, teamId, 'long_term', false),
-      ]);
-      setShortTerm(short.map(apiToItem));
-      setLongTerm(long.map(apiToItem));
+      const fetches: Promise<IssueApiItem[]>[] = [
+        issuesService.findAll(organizationId, teamId, 'short_term', false, meetingId),
+        issuesService.findAll(organizationId, teamId, 'long_term', false, meetingId),
+      ];
+      if (meetingId) {
+        fetches.push(
+          issuesService.findAll(organizationId, teamId, 'short_term', true, meetingId),
+          issuesService.findAll(organizationId, teamId, 'long_term', true, meetingId)
+        );
+      }
+      const results = await Promise.all(fetches);
+      setShortTerm(results[0].map(apiToItem));
+      setLongTerm(results[1].map(apiToItem));
+      if (meetingId && results.length >= 4) {
+        setShortTermResolved(results[2].map(apiToItem));
+        setLongTermResolved(results[3].map(apiToItem));
+      } else {
+        setShortTermResolved([]);
+        setLongTermResolved([]);
+      }
     } catch {
       setShortTerm([]);
       setLongTerm([]);
+      setShortTermResolved([]);
+      setLongTermResolved([]);
     } finally {
       setIsLoading(false);
     }
-  }, [organizationId, teamId]);
+  }, [organizationId, teamId, meetingId]);
+
+  // When meetingId changes (new meeting), clear and refetch so we don't show previous meeting's stale list
+  useEffect(() => {
+    setShortTerm([]);
+    setLongTerm([]);
+    setShortTermResolved([]);
+    setLongTermResolved([]);
+  }, [meetingId]);
 
   useEffect(() => {
     fetchIssues();
@@ -122,8 +154,21 @@ export function IssuesProvider({
       if (item.resolvedAt) {
         setShortTerm((prev) => prev.filter((t) => t.id !== item.id));
         setLongTerm((prev) => prev.filter((t) => t.id !== item.id));
+        if (item.termType === 'short_term') {
+          setShortTermResolved((prev) =>
+            prev.some((i) => i.id === item.id) ? prev.map((i) => (i.id === item.id ? item : i)) : [...prev, item]
+          );
+          setLongTermResolved((prev) => prev.filter((t) => t.id !== item.id));
+        } else {
+          setLongTermResolved((prev) =>
+            prev.some((i) => i.id === item.id) ? prev.map((i) => (i.id === item.id ? item : i)) : [...prev, item]
+          );
+          setShortTermResolved((prev) => prev.filter((t) => t.id !== item.id));
+        }
         return;
       }
+      setShortTermResolved((prev) => prev.filter((t) => t.id !== item.id));
+      setLongTermResolved((prev) => prev.filter((t) => t.id !== item.id));
       if (item.termType === 'short_term') {
         setShortTerm((prev) =>
           prev.some((t) => t.id === item.id)
@@ -145,6 +190,8 @@ export function IssuesProvider({
       if (id) {
         setShortTerm((prev) => prev.filter((t) => t.id !== id));
         setLongTerm((prev) => prev.filter((t) => t.id !== id));
+        setShortTermResolved((prev) => prev.filter((t) => t.id !== id));
+        setLongTermResolved((prev) => prev.filter((t) => t.id !== id));
       }
     };
     const onIssueListChanged = () => {
@@ -212,8 +259,21 @@ export function IssuesProvider({
         if (item.resolvedAt) {
           setShortTerm((prev) => prev.filter((t) => t.id !== id));
           setLongTerm((prev) => prev.filter((t) => t.id !== id));
+          if (item.termType === 'short_term') {
+            setShortTermResolved((prev) =>
+              prev.some((i) => i.id === id) ? prev.map((i) => (i.id === id ? item : i)) : [...prev, item]
+            );
+            setLongTermResolved((prev) => prev.filter((t) => t.id !== id));
+          } else {
+            setLongTermResolved((prev) =>
+              prev.some((i) => i.id === id) ? prev.map((i) => (i.id === id ? item : i)) : [...prev, item]
+            );
+            setShortTermResolved((prev) => prev.filter((t) => t.id !== id));
+          }
           return;
         }
+        setShortTermResolved((prev) => prev.filter((t) => t.id !== id));
+        setLongTermResolved((prev) => prev.filter((t) => t.id !== id));
         if (item.termType === 'short_term') {
           setShortTerm((prev) =>
             prev.some((t) => t.id === id)
@@ -280,6 +340,8 @@ export function IssuesProvider({
     () => ({
       shortTerm,
       longTerm,
+      shortTermResolved,
+      longTermResolved,
       addIssue,
       updateIssue,
       deleteIssue,
@@ -291,6 +353,8 @@ export function IssuesProvider({
     [
       shortTerm,
       longTerm,
+      shortTermResolved,
+      longTermResolved,
       addIssue,
       updateIssue,
       deleteIssue,
