@@ -13,6 +13,8 @@ import {
   FileText,
   User,
   Trash2,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react';
 import { ContentAreaLoader } from '@/components/ui/loaders';
 import type { Meeting } from '@/lib/api/meetings.service';
@@ -23,6 +25,7 @@ export interface MeetingRecapTodo {
   id: string;
   title: string;
   assigneeInitials?: string;
+  completed?: boolean;
 }
 
 export interface MeetingRecapIssue {
@@ -56,22 +59,32 @@ interface PastMeetingRecapPanelProps {
   onDeleted?: () => void;
 }
 
-/** Notes by participant: from meeting.sections[].notes, grouped by author */
-function getNotesByParticipant(meeting: Meeting): Array<{ authorName: string; content: string }> {
-  const byAuthor = new Map<string, { authorName: string; content: string }>();
-  for (const section of meeting.sections ?? []) {
+/** Notes by participant: from meeting.sections[].notes, grouped by author with segment title per note */
+function getNotesByParticipantWithSegments(meeting: Meeting): Array<{
+  authorName: string;
+  segments: Array<{ sectionTitle: string; content: string }>;
+}> {
+  const sections = (meeting.sections ?? []).slice().sort((a, b) => a.order - b.order);
+  const byAuthor = new Map<
+    string,
+    { authorName: string; segments: Array<{ sectionTitle: string; content: string }> }
+  >();
+  for (const section of sections) {
     for (const note of section.notes ?? []) {
       const authorId = note.author?.id ?? '';
       const name = note.author?.name ?? note.author?.email ?? 'Unknown';
+      const content = (note.content || '').trim();
+      if (!content) continue;
+      const segment = { sectionTitle: section.title, content };
       const existing = byAuthor.get(authorId);
       if (existing) {
-        existing.content += '\n\n' + (note.content || '').trim();
+        existing.segments.push(segment);
       } else {
-        byAuthor.set(authorId, { authorName: name, content: (note.content || '').trim() });
+        byAuthor.set(authorId, { authorName: name, segments: [segment] });
       }
     }
   }
-  return Array.from(byAuthor.values()).filter((n) => n.content.length > 0);
+  return Array.from(byAuthor.values()).filter((n) => n.segments.length > 0);
 }
 
 export function PastMeetingRecapPanel({
@@ -139,7 +152,7 @@ export function PastMeetingRecapPanel({
       .map((a) => ({ id: a.id, name: a.name, fromApi: false as const })),
   ];
 
-  const notesByParticipant = useMemo(() => getNotesByParticipant(meeting), [meeting]);
+  const notesByParticipant = useMemo(() => getNotesByParticipantWithSegments(meeting), [meeting]);
 
   const handleDownloadAttachment = (attachmentId: string, fileName: string) => {
     if (!organizationId || !meeting.id) return;
@@ -226,7 +239,7 @@ export function PastMeetingRecapPanel({
           ) : (
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
           <>
-          {/* To-Dos Created */}
+          {/* To-Dos Created (with checked/unchecked) */}
           <section>
             <h3 className="text-sm font-semibold text-foreground mb-2">To-Dos Created</h3>
             {todosCreated.length === 0 ? (
@@ -236,9 +249,18 @@ export function PastMeetingRecapPanel({
                 {todosCreated.map((todo) => (
                   <li
                     key={todo.id}
-                    className="flex items-center justify-between gap-2 py-1.5 border-b border-border/50 last:border-0"
+                    className="flex items-center gap-2 py-1.5 border-b border-border/50 last:border-0"
                   >
-                    <span className="text-sm text-foreground truncate flex-1">{todo.title}</span>
+                    <span className="shrink-0 text-muted-foreground" aria-hidden>
+                      {todo.completed ? (
+                        <CheckCircle2 className="w-5 h-5 text-primary" />
+                      ) : (
+                        <Circle className="w-5 h-5" />
+                      )}
+                    </span>
+                    <span className={`text-sm truncate flex-1 ${todo.completed ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                      {todo.title}
+                    </span>
                     <div className="flex items-center gap-2 shrink-0">
                       <Link
                         href={todosPageUrl}
@@ -307,16 +329,20 @@ export function PastMeetingRecapPanel({
             </div>
           </section>
 
-          {/* Meeting Notes by participant */}
+          {/* Meeting Notes by participant — each segment as bold heading + content; scroll if >3 members */}
           <section>
             <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
               <FileText className="w-4 h-4" />
-              Meeting Notes
+              Notes
             </h3>
             {notesByParticipant.length === 0 ? (
               <p className="text-sm text-muted-foreground">No notes from participants in this meeting.</p>
             ) : (
-              <div className="space-y-4">
+              <div
+                className={`space-y-4 ${notesByParticipant.length > 3 ? 'max-h-[320px] overflow-y-auto pr-1' : ''}`}
+                role="region"
+                aria-label="Meeting notes by participant"
+              >
                 {notesByParticipant.map((item, i) => (
                   <div
                     key={i}
@@ -326,8 +352,15 @@ export function PastMeetingRecapPanel({
                       <User className="w-4 h-4 text-muted-foreground shrink-0" />
                       <span className="font-medium text-foreground text-sm">{item.authorName}</span>
                     </div>
-                    <div className="p-3 text-sm text-foreground whitespace-pre-wrap break-words">
-                      {item.content}
+                    <div className="p-3 text-sm text-foreground space-y-3">
+                      {item.segments.map((seg, j) => (
+                        <div key={j}>
+                          <p className="font-semibold text-foreground mb-1">{seg.sectionTitle}</p>
+                          <p className="text-muted-foreground whitespace-pre-wrap break-words pl-0">
+                            {seg.content}
+                          </p>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}

@@ -16,6 +16,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigat
 import { meetingsService } from '@/lib/api/meetings.service';
 import type { Meeting } from '@/lib/api/meetings.service';
 import { issuesService } from '@/lib/api/issues.service';
+import { todosService } from '@/lib/api/todos.service';
 import { ROUTES } from '@/lib/constants/routes';
 import { Menu, User, Plus, Loader2 } from 'lucide-react';
 import { FullScreenLoaderWithText } from '@/components/ui/loaders';
@@ -471,11 +472,31 @@ export default function MeetingPage() {
         }
       }
 
+      // Todos: fetch all todos created in this meeting (active + archived) so recap shows created list with checked state
+      let todosCreated: Array<{ id: string; title: string; assigneeInitials?: string; completed: boolean }> = [];
+      if (orgId && teamId) {
+        try {
+          const [activeTodos, archivedTodos] = await Promise.all([
+            todosService.findAll(orgId, teamId, false, meetingId),
+            todosService.findAll(orgId, teamId, true, meetingId),
+          ]);
+          const allFromMeeting = [...activeTodos, ...archivedTodos];
+          todosCreated = allFromMeeting.map((t) => ({
+            id: t.id,
+            title: t.title,
+            assigneeInitials: t.ownerInitials,
+            completed: t.status === 'done' || !!t.completedAt,
+          }));
+        } catch {
+          // keep empty list
+        }
+      }
+
       const recapPayload = {
         ratings,
         sectionDurations,
         shortTermStats,
-        todosCreated: [] as Array<{ id: string; title: string; assigneeInitials?: string }>,
+        todosCreated,
         issuesSolved,
         attachments,
       };

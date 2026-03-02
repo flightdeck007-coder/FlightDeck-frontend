@@ -26,6 +26,7 @@ export default function MeetingsPage() {
   const [orgRole, setOrgRole] = useState<string | null>(null);
   const [schedulingMeeting, setSchedulingMeeting] = useState(false);
   const [selectedPastMeeting, setSelectedPastMeeting] = useState<Meeting | null>(null);
+  const [selectedPastMeetingFull, setSelectedPastMeetingFull] = useState<Meeting | null>(null);
   const [selectedRecap, setSelectedRecap] = useState<MeetingRecapData | null>(null);
   const [recapLoading, setRecapLoading] = useState(false);
   const [continueMeetingModal, setContinueMeetingModal] = useState<Meeting | null>(null);
@@ -77,10 +78,14 @@ export default function MeetingsPage() {
     }
     let cancelled = false;
     setRecapLoading(true);
-    meetingsService
-      .getRecap(organizationId, selectedPastMeeting.id)
-      .then((data) => {
+    setSelectedPastMeetingFull(null);
+    Promise.all([
+      meetingsService.getRecap(organizationId, selectedPastMeeting.id),
+      meetingsService.findOne(organizationId, selectedPastMeeting.id),
+    ])
+      .then(([data, meetingFull]) => {
         if (!cancelled && data) setSelectedRecap(data);
+        if (!cancelled && meetingFull) setSelectedPastMeetingFull(meetingFull);
       })
       .catch(() => {
         if (!cancelled) setSelectedRecap(null);
@@ -400,7 +405,7 @@ export default function MeetingsPage() {
 
         {selectedPastMeeting && organizationId && selectedPastMeeting.teamId && (
           <PastMeetingRecapPanel
-            meeting={selectedPastMeeting}
+            meeting={selectedPastMeetingFull ?? selectedPastMeeting}
             recap={selectedRecap ?? getDefaultRecap(selectedPastMeeting)}
             recapLoading={recapLoading}
             organizationId={organizationId}
@@ -408,10 +413,12 @@ export default function MeetingsPage() {
             orgRole={orgRole}
             onClose={() => {
               setSelectedPastMeeting(null);
+              setSelectedPastMeetingFull(null);
               setSelectedRecap(null);
             }}
             onDeleted={async () => {
               setSelectedPastMeeting(null);
+              setSelectedPastMeetingFull(null);
               setSelectedRecap(null);
               if (organizationId && selectedTeamId) {
                 const data = await meetingsService.findAll(organizationId, selectedTeamId);
@@ -492,6 +499,7 @@ export default function MeetingsPage() {
                         setDeleteMeetingTarget(null);
                         if (selectedPastMeeting?.id === meeting.id) {
                           setSelectedPastMeeting(null);
+                          setSelectedPastMeetingFull(null);
                           setSelectedRecap(null);
                         }
                         if (organizationId && selectedTeamId) {

@@ -11,7 +11,7 @@ export interface CreateMeetingDto {
 
 /** Recap data saved when meeting ends; loaded for past meeting panel */
 export interface MeetingRecapData {
-  todosCreated?: Array<{ id: string; title: string; assigneeInitials?: string }>;
+  todosCreated?: Array<{ id: string; title: string; assigneeInitials?: string; completed?: boolean }>;
   issuesSolved?: Array<{ id: string; title: string; resolvedByName?: string | null }>;
   shortTermStats?: {
     totalTracked: number;
