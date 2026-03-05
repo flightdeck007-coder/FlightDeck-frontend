@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { Select } from 'antd';
 import {
   CheckCircle2,
   Circle,
@@ -307,20 +308,14 @@ export function ConcludeSegmentView({
               <div className="flex items-center justify-between px-4 py-2 border-t border-border text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
                   <span>Items per page:</span>
-                  <select
+                  <Select<number>
                     value={itemsPerPage}
-                    onChange={(e) => {
-                      setItemsPerPage(Number(e.target.value));
-                      setPage(0);
+                    onChange={(v) => {
+                      if (v != null) { setItemsPerPage(v); setPage(0); }
                     }}
-                    className="px-2 py-1 border border-border rounded bg-background text-foreground"
-                  >
-                    {PAGE_SIZES.map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
+                    options={PAGE_SIZES.map((n) => ({ label: String(n), value: n }))}
+                    className="min-w-[80px]"
+                  />
                 </div>
                 <div className="flex items-center gap-2">
                   <span>

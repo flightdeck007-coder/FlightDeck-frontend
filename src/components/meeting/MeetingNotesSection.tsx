@@ -11,6 +11,8 @@ interface MeetingNotesSectionProps {
   sectionId: string;
   initialContent: string;
   currentUserId?: string | null;
+  /** Only facilitator or scribe can add/edit notes */
+  canEdit?: boolean;
   onSaved?: () => void;
 }
 
@@ -20,6 +22,7 @@ export function MeetingNotesSection({
   sectionId,
   initialContent,
   currentUserId,
+  canEdit = true,
   onSaved,
 }: MeetingNotesSectionProps) {
   const [content, setContent] = useState(initialContent);
@@ -52,7 +55,7 @@ export function MeetingNotesSection({
   }, [organizationId, meetingId]);
 
   const handleSave = async () => {
-    if (!organizationId || !meetingId || !sectionId) return;
+    if (!canEdit || !organizationId || !meetingId || !sectionId) return;
     setSaving(true);
     try {
       await meetingsService.saveNote(organizationId, meetingId, sectionId, content);
@@ -99,22 +102,27 @@ export function MeetingNotesSection({
       </button>
       {!collapsed && (
         <div className="p-4">
-          <div className="flex items-center justify-end gap-2 mb-2">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-70"
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Save
-            </button>
-          </div>
+          {canEdit && (
+            <div className="flex items-center justify-end gap-2 mb-2">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-70"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save
+              </button>
+            </div>
+          )}
+          {!canEdit && (
+            <p className="text-xs text-muted-foreground mb-2">Only the facilitator or scribe can add or edit meeting notes.</p>
+          )}
           <RichTextEditor
             value={content}
-            onChange={setContent}
+            onChange={canEdit ? setContent : () => {}}
             placeholder="Meeting Notes..."
-            className="min-h-[200px] border border-border rounded-md"
+            className={`min-h-[200px] border border-border rounded-md ${!canEdit ? 'opacity-80 pointer-events-none bg-muted/30' : ''}`}
           />
           <div className="mt-4">
             <div className="flex items-center justify-between gap-2 mb-2">

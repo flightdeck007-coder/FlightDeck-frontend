@@ -15,8 +15,8 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { Select, Input } from 'antd';
 import {
-  Search,
   MoreHorizontal,
   GripVertical,
   Mountain,
@@ -27,7 +27,6 @@ import {
   Archive,
   Link2,
   Trash2,
-  ChevronDown,
   X,
   Check,
   Loader2,
@@ -38,6 +37,7 @@ import {
   type CascadingMessageItem,
 } from '@/contexts/HeadlinesContext';
 import { ContentAreaLoader } from '@/components/ui/loaders';
+import { formatDateTime, formatRelativeTime } from '@/lib/formatDate';
 
 const MENU_WIDTH = 248;
 const MENU_GAP = 8;
@@ -49,6 +49,8 @@ interface HeadlinesSegmentViewProps {
   embedded?: boolean;
   meetingId?: string;
   isFacilitator?: boolean;
+  /** Scribe or facilitator can change filters and create (recording) */
+  canRecord?: boolean;
   onOpenCreate?: (type: CreatePopupType) => void;
 }
 
@@ -57,8 +59,10 @@ export function HeadlinesSegmentView({
   embedded = false,
   meetingId,
   isFacilitator = true,
+  canRecord,
   onOpenCreate,
 }: HeadlinesSegmentViewProps) {
+  const canUseFilters = canRecord ?? isFacilitator;
   const [teamFilter, setTeamFilter] = useState(teamName);
   const [archiveOn, setArchiveOn] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -169,32 +173,29 @@ export function HeadlinesSegmentView({
     <div className={`flex flex-col min-h-0 h-full ${wrap}`}>
       {/* Filter row — full width; facilitator-only with sync */}
       <div className="flex flex-wrap items-center gap-3 py-3 -mx-6 px-4 border-t border-b border-border bg-muted/30 shrink-0">
-        <div className={`relative ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
-          <span className="text-muted-foreground text-sm mr-1">Team:</span>
-          <select
+        <div className={`flex items-center gap-1 ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''}`}>
+          <span className="text-muted-foreground text-sm">Team:</span>
+          <Select
             value={teamFilter}
-            onChange={(e) => {
-              if (!isFacilitator) return;
-              const v = e.target.value;
+            onChange={(v) => {
+              if (!canUseFilters) return;
               setTeamFilter(v);
               if (meetingId && socket) socket.emit('headlines_filter', { meetingId, teamFilter: v });
             }}
-            disabled={!isFacilitator}
-            className={`pl-3 pr-8 py-2 border border-border rounded-lg bg-background text-foreground text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50 hover:border-foreground/20'}`}
-          >
-            <option>Leadership Team</option>
-          </select>
-          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            disabled={!canUseFilters}
+            options={[{ label: 'Leadership Team', value: 'Leadership Team' }]}
+            className="w-[160px]"
+          />
         </div>
-        <label className={`flex items-center gap-2 group ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
+        <label className={`flex items-center gap-2 group ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
           <span className="text-sm text-foreground group-hover:text-foreground/90">Archive</span>
           <button
             type="button"
             role="switch"
             aria-checked={archiveOn}
-            disabled={!isFacilitator}
+            disabled={!canUseFilters}
             onClick={() => {
-              if (!isFacilitator) return;
+              if (!canUseFilters) return;
               setArchiveOn((o) => {
                 const next = !o;
                 if (meetingId && socket) socket.emit('headlines_filter', { meetingId, archiveOn: next });
@@ -205,28 +206,25 @@ export function HeadlinesSegmentView({
               archiveOn
                 ? 'bg-primary border-primary justify-end'
                 : 'bg-muted border-border justify-start hover:bg-muted/80'
-            } ${!isFacilitator ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+            } ${!canUseFilters ? 'cursor-not-allowed' : 'cursor-pointer'}`}
           >
             <span className="w-4 h-4 rounded-full bg-white shadow border border-border shrink-0 m-0.5" />
           </button>
         </label>
         <div className="flex-1 min-w-[200px] flex justify-end">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="search"
-              placeholder="Search Headlines..."
-              value={searchQuery}
-              onChange={(e) => {
-                if (!isFacilitator) return;
-                const v = e.target.value;
-                setSearchQuery(v);
-                if (meetingId && socket) socket.emit('headlines_filter', { meetingId, searchQuery: v });
-              }}
-              disabled={!isFacilitator}
-              className={`w-full max-w-xs pl-9 pr-3 py-2 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'hover:border-foreground/20'}`}
-            />
-          </div>
+          <Input.Search
+            placeholder="Search Headlines..."
+            value={searchQuery}
+            onChange={(e) => {
+              if (!canUseFilters) return;
+              const v = e.target.value;
+              setSearchQuery(v);
+              if (meetingId && socket) socket.emit('headlines_filter', { meetingId, searchQuery: v });
+            }}
+            disabled={!canUseFilters}
+            allowClear
+            className="max-w-xs w-full"
+          />
         </div>
       </div>
 
@@ -534,8 +532,8 @@ function HeadlineRow({ item }: { item: HeadlineItem }) {
           {item.title}
         </td>
         <td className="px-4 py-2 text-muted-foreground align-middle">
-          <div>{item.createdAt}</div>
-          <div className="text-xs">{item.createdAgo}</div>
+          <div>{formatDateTime(item.createdAt)}</div>
+          <div className="text-xs">{formatRelativeTime(item.createdAt)}</div>
         </td>
         <td className="px-4 py-2 align-middle">
           <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
@@ -689,8 +687,8 @@ function CascadingRow({ item }: { item: CascadingMessageItem }) {
           {item.from}
         </td>
         <td className="px-4 py-2 text-muted-foreground align-middle">
-          <div>{item.createdAt}</div>
-          <div className="text-xs">{item.createdAgo}</div>
+          <div>{formatDateTime(item.createdAt)}</div>
+          <div className="text-xs">{formatRelativeTime(item.createdAt)}</div>
         </td>
         <td className="px-4 py-2 align-middle">
           <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">

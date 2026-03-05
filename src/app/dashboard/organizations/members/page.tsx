@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { organizationsService, OrganizationMember } from '@/lib/api/organizations.service';
+import { Select } from 'antd';
 import { Users, Shield, UserCheck, User } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -152,21 +153,17 @@ export default function MembersPage() {
                         {isAdmin && (
                           <td className="px-6 py-4 whitespace-nowrap">
                             {!isCurrentUser ? (
-                              <select
-                                value={member.role}
-                                onChange={(e) =>
-                                  handleRoleChange(
-                                    member.user.id,
-                                    e.target.value as 'ADMIN' | 'MANAGER' | 'MEMBER',
-                                  )
-                                }
+                              <Select<'ADMIN' | 'MANAGER' | 'MEMBER'>
+                                value={member.role as 'ADMIN' | 'MANAGER' | 'MEMBER'}
+                                onChange={(v) => v && handleRoleChange(member.user.id, v)}
                                 disabled={updatingRole === member.user.id}
-                                className="px-3 py-1.5 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                              >
-                                <option value="MEMBER">Member</option>
-                                <option value="MANAGER">Manager</option>
-                                <option value="ADMIN">Admin</option>
-                              </select>
+                                options={[
+                                  { label: 'Member', value: 'MEMBER' },
+                                  { label: 'Manager', value: 'MANAGER' },
+                                  { label: 'Admin', value: 'ADMIN' },
+                                ]}
+                                className="min-w-[120px]"
+                              />
                             ) : (
                               <span className="text-sm text-foreground/50">Cannot change own role</span>
                             )}

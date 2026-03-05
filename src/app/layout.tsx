@@ -5,6 +5,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { SettingsModal } from "@/components/SettingsModal";
+import { AntdProvider } from "@/components/AntdProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -55,12 +56,14 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <ThemeProvider>
-          <AuthProvider>
-            <SettingsProvider>
-              {children}
-              <SettingsModal />
-            </SettingsProvider>
-          </AuthProvider>
+          <AntdProvider>
+            <AuthProvider>
+              <SettingsProvider>
+                {children}
+                <SettingsModal />
+              </SettingsProvider>
+            </AuthProvider>
+          </AntdProvider>
         </ThemeProvider>
       </body>
     </html>

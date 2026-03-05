@@ -1,5 +1,6 @@
 'use client';
 
+import { Select, Input } from 'antd';
 import { CheckCircle2, Circle, Plus, User } from 'lucide-react';
 import { InstrumentsSegmentView } from './InstrumentsSegmentView';
 import { RocksSegmentView } from './RocksSegmentView';
@@ -7,6 +8,7 @@ import { HeadlinesSegmentView } from './HeadlinesSegmentView';
 import { TodosSegmentView } from './TodosSegmentView';
 import { IssuesSegmentView } from './IssuesSegmentView';
 import { ConcludeSegmentView } from './ConcludeSegmentView';
+import { formatDateOrPass } from '@/lib/formatDate';
 
 export type CreatePopupType = 'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message';
 
@@ -20,6 +22,8 @@ interface MeetingContentProps {
   meetingId?: string;
   organizationId?: string;
   isFacilitator?: boolean;
+  /** Facilitator or scribe: can use filters and create todos, issues, rocks, headlines */
+  canRecord?: boolean;
   facilitatorId?: string | null;
   currentUserId?: string | null;
   meetingAttendances?: Array<{
@@ -82,7 +86,8 @@ const demoData: Record<string, any> = {
   },
 };
 
-export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onOpenCreate, onFinishMeeting, finishLoading, meetingId, organizationId, isFacilitator, facilitatorId, currentUserId, meetingAttendances }: MeetingContentProps) {
+export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onOpenCreate, onFinishMeeting, finishLoading, meetingId, organizationId, isFacilitator, canRecord, facilitatorId, currentUserId, meetingAttendances }: MeetingContentProps) {
+  const canRecordOrFacilitator = canRecord ?? isFacilitator;
   const data = demoData[sectionId.toLowerCase()] || demoData.segue;
   const isMinimalPrompt = data.type === 'prompt' && data.empty; // Segue, Headlines: prompt + empty only
   const hasFilterBar = ['scorecard', 'rocks', 'headlines', 'todos', 'issues', 'conclude'].includes(sectionId);
@@ -95,9 +100,11 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-foreground">{sectionTitle}</h2>
             <div className="flex items-center gap-2">
-              <select className="px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground">
-                <option>Leadership Team</option>
-              </select>
+              <Select
+                value="Leadership Team"
+                options={[{ label: 'Leadership Team', value: 'Leadership Team' }]}
+                className="min-w-[140px]"
+              />
               <label className="flex items-center gap-2 text-sm text-foreground/70">
                 <input type="checkbox" className="rounded" />
                 Archive
@@ -115,10 +122,9 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </button>
-            <input
-              type="text"
+            <Input
               placeholder={`Search ${sectionTitle}...`}
-              className="flex-1 px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground"
+              className="flex-1"
             />
             <button className="px-4 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm" type="button">
               Create
@@ -136,13 +142,13 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
           </>
         )}
         {sectionId === 'scorecard' && (
-          <InstrumentsSegmentView embedded teamName="Leadership Team" meetingId={meetingId} organizationId={organizationId} isFacilitator={isFacilitator} />
+          <InstrumentsSegmentView embedded teamName="Leadership Team" meetingId={meetingId} organizationId={organizationId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} />
         )}
         {sectionId === 'rocks' && (
-          <RocksSegmentView embedded sectionTitle={sectionTitle} meetingId={meetingId} isFacilitator={isFacilitator} onOpenCreate={onOpenCreate} />
+          <RocksSegmentView embedded sectionTitle={sectionTitle} meetingId={meetingId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} onOpenCreate={onOpenCreate} />
         )}
         {sectionId === 'headlines' && (
-          <HeadlinesSegmentView embedded teamName="Leadership Team" meetingId={meetingId} isFacilitator={isFacilitator} onOpenCreate={onOpenCreate} />
+          <HeadlinesSegmentView embedded teamName="Leadership Team" meetingId={meetingId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} onOpenCreate={onOpenCreate} />
         )}
         {sectionId === 'todos' && (
           <TodosSegmentView
@@ -150,6 +156,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
             teamName="Leadership Team"
             meetingId={meetingId}
             isFacilitator={isFacilitator}
+            canRecord={canRecordOrFacilitator}
             onOpenCreate={onOpenCreate}
           />
         )}
@@ -159,6 +166,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
             teamName="Leadership Team"
             meetingId={meetingId}
             isFacilitator={isFacilitator}
+            canRecord={canRecordOrFacilitator}
             onOpenCreate={onOpenCreate}
             onOpenCreateIssue={onOpenCreateIssue}
           />
@@ -251,7 +259,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
                             <span>{item.assignee}</span>
                           </div>
                         )}
-                        {item.created && <span>Created: {item.created}</span>}
+                        {item.created && <span>Created: {formatDateOrPass(item.created)}</span>}
                         {item.dueDate && <span>Due: {item.dueDate}</span>}
                         {item.status && (
                           <span className={`px-2 py-0.5 rounded text-xs ${
@@ -280,9 +288,11 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
             <div className="mt-6 flex items-center justify-between text-sm text-foreground/70">
               <div className="flex items-center gap-2">
                 <span>Items per page:</span>
-                <select className="px-2 py-1 border border-border rounded bg-background">
-                  <option>50</option>
-                </select>
+                <Select
+                  value={50}
+                  options={[{ label: '50', value: 50 }]}
+                  className="min-w-[80px]"
+                />
               </div>
               <div className="flex items-center gap-2">
                 <span>1-{data.items.length} of {data.items.length}</span>

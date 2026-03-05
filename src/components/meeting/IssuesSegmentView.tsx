@@ -3,8 +3,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
+import { Select, Input } from 'antd';
 import {
-  Search,
   MoreVertical,
   CheckCircle2,
   Circle,
@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { useIssues, type IssueItem } from '@/contexts/IssuesContext';
 import { ContentAreaLoader } from '@/components/ui/loaders';
+import { formatDate } from '@/lib/formatDate';
 
 const MENU_WIDTH = 248;
 const MENU_GAP = 8;
@@ -43,13 +44,10 @@ interface IssuesSegmentViewProps {
   embedded?: boolean;
   meetingId?: string;
   isFacilitator?: boolean;
+  /** Scribe or facilitator can change filters and create (recording) */
+  canRecord?: boolean;
   onOpenCreate?: (type: CreatePopupType) => void;
   onOpenCreateIssue?: () => void;
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function FilterIconButton({
@@ -79,9 +77,11 @@ export function IssuesSegmentView({
   embedded = false,
   meetingId,
   isFacilitator = true,
+  canRecord,
   onOpenCreate,
   onOpenCreateIssue,
 }: IssuesSegmentViewProps) {
+  const canUseFilters = canRecord ?? isFacilitator;
   const [teamFilter, setTeamFilter] = useState(teamName);
   const [archiveOn, setArchiveOn] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -193,29 +193,26 @@ export function IssuesSegmentView({
     <div className={`flex flex-col min-h-0 h-full ${wrap}`}>
       {/* Filter bar — full width */}
       <div className="flex flex-wrap items-center gap-3 py-3 -mx-6 px-4 border-t border-b border-border bg-muted/30 shrink-0">
-        <div className="relative">
-          <span className="text-muted-foreground text-sm mr-1">Team:</span>
-          <select
+        <div className="flex items-center gap-1">
+          <span className="text-muted-foreground text-sm">Team:</span>
+          <Select
             value={teamFilter}
-            onChange={(e) => {
-              const v = e.target.value;
+            onChange={(v) => {
               setTeamFilter(v);
               if (meetingId && socket) socket.emit('issues_filter', { meetingId, teamFilter: v });
             }}
-            disabled={!isFacilitator}
-            className={`pl-3 pr-8 py-2 border border-border rounded-lg bg-background text-foreground text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:bg-muted/50 hover:border-foreground/20 transition-colors'}`}
-          >
-            <option>{teamName}</option>
-          </select>
-          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            disabled={!canUseFilters}
+            options={[{ label: teamName, value: teamName }]}
+            className="w-[160px]"
+          />
         </div>
-        <label className={`flex items-center gap-2 group ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
+        <label className={`flex items-center gap-2 group ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
           <span className="text-sm text-foreground group-hover:text-foreground/90">Archive</span>
           <button
             type="button"
             role="switch"
             aria-checked={archiveOn}
-            disabled={!isFacilitator}
+            disabled={!canUseFilters}
             onClick={() => {
               setArchiveOn((o) => {
                 const next = !o;
@@ -223,7 +220,7 @@ export function IssuesSegmentView({
                 return next;
               });
             }}
-            className={`relative w-11 h-6 rounded-full transition-colors border-2 flex items-center ${!isFacilitator ? 'cursor-not-allowed' : ''} ${
+            className={`relative w-11 h-6 rounded-full transition-colors border-2 flex items-center ${!canUseFilters ? 'cursor-not-allowed' : ''} ${
               archiveOn
                 ? 'bg-primary border-primary justify-end'
                 : 'bg-muted border-border justify-start hover:bg-muted/80'
@@ -235,41 +232,39 @@ export function IssuesSegmentView({
         <span className="flex-1" />
         <button
           type="button"
-          onClick={isFacilitator ? () => refetch() : undefined}
-          disabled={!isFacilitator}
-          className={`p-2 rounded-lg transition-colors ${!isFacilitator ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
+          onClick={canUseFilters ? () => refetch() : undefined}
+          disabled={!canUseFilters}
+          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
           aria-label="Refresh"
         >
           <RotateCw className="w-4 h-4" />
         </button>
         <button
           type="button"
-          disabled={!isFacilitator}
-          className={`p-2 rounded-lg transition-colors ${!isFacilitator ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
+          disabled={!canUseFilters}
+          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
           aria-label="Export PDF"
         >
           <FileDown className="w-4 h-4" />
         </button>
         <button
           type="button"
-          disabled={!isFacilitator}
-          className={`p-2 rounded-lg transition-colors ${!isFacilitator ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
+          disabled={!canUseFilters}
+          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
           aria-label="Download"
         >
           <Download className="w-4 h-4" />
         </button>
         <button
           type="button"
-          disabled={!isFacilitator}
-          className={`p-2 rounded-lg transition-colors ${!isFacilitator ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
+          disabled={!canUseFilters}
+          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
           aria-label="Archive all completed"
         >
           <Package className="w-4 h-4" />
         </button>
-        <div className="relative min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="search"
+        <div className="min-w-[200px]">
+          <Input.Search
             placeholder="Search IDS™ | Level 10 Meeting™..."
             value={searchQuery}
             onChange={(e) => {
@@ -277,14 +272,15 @@ export function IssuesSegmentView({
               setSearchQuery(v);
               if (meetingId && socket) socket.emit('issues_filter', { meetingId, searchQuery: v });
             }}
-            disabled={!isFacilitator}
-            className={`w-full pl-9 pr-3 py-2 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'hover:border-foreground/20'}`}
+            disabled={!canUseFilters}
+            allowClear
+            className="w-full"
           />
         </div>
         <button
           type="button"
-          disabled={!isFacilitator}
-          className={`p-2 rounded-lg transition-colors ${!isFacilitator ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
+          disabled={!canUseFilters}
+          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
           aria-label="Settings"
         >
           <Settings className="w-4 h-4" />
@@ -300,12 +296,12 @@ export function IssuesSegmentView({
       <div className="flex gap-1 border-b border-border shrink-0">
         <button
           type="button"
-          disabled={!isFacilitator}
+          disabled={!canUseFilters}
           onClick={() => {
             setActiveTab('short_term');
             if (meetingId && socket) socket.emit('issues_filter', { meetingId, activeTab: 'short_term' });
           }}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!isFacilitator ? 'cursor-not-allowed opacity-70' : ''} ${
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''} ${
             activeTab === 'short_term'
               ? 'text-primary border-primary'
               : 'text-muted-foreground border-transparent hover:text-foreground'
@@ -315,12 +311,12 @@ export function IssuesSegmentView({
         </button>
         <button
           type="button"
-          disabled={!isFacilitator}
+          disabled={!canUseFilters}
           onClick={() => {
             setActiveTab('long_term');
             if (meetingId && socket) socket.emit('issues_filter', { meetingId, activeTab: 'long_term' });
           }}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!isFacilitator ? 'cursor-not-allowed opacity-70' : ''} ${
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''} ${
             activeTab === 'long_term'
               ? 'text-primary border-primary'
               : 'text-muted-foreground border-transparent hover:text-foreground'
@@ -331,12 +327,12 @@ export function IssuesSegmentView({
         {meetingId && (
           <button
             type="button"
-            disabled={!isFacilitator}
+            disabled={!canUseFilters}
             onClick={() => {
               setActiveTab('completed');
               if (socket) socket.emit('issues_filter', { meetingId, activeTab: 'completed' });
             }}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!isFacilitator ? 'cursor-not-allowed opacity-70' : ''} ${
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''} ${
               activeTab === 'completed'
                 ? 'text-primary border-primary'
                 : 'text-muted-foreground border-transparent hover:text-foreground'
@@ -385,7 +381,7 @@ export function IssuesSegmentView({
           <div className="flex items-center gap-3">
             <button
               type="button"
-              disabled={!isFacilitator}
+              disabled={!canUseFilters}
               onClick={() => {
                 setStatsVisible((v) => {
                   const next = !v;
@@ -393,7 +389,7 @@ export function IssuesSegmentView({
                   return next;
                 });
               }}
-              className={`flex items-center gap-1.5 text-sm transition-colors ${!isFacilitator ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`flex items-center gap-1.5 text-sm transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'text-muted-foreground hover:text-foreground'}`}
             >
               {statsVisible ? (
                 <>
@@ -409,7 +405,7 @@ export function IssuesSegmentView({
             </button>
             <button
               type="button"
-              disabled={!isFacilitator}
+              disabled={!canUseFilters}
               onClick={() => {
                 setTopThreeOnly((v) => {
                   const next = !v;
@@ -417,7 +413,7 @@ export function IssuesSegmentView({
                   return next;
                 });
               }}
-              className={`p-1.5 rounded transition-colors ${!isFacilitator ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground'}`}
+              className={`p-1.5 rounded transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground'}`}
               title="Selected top 3 priority issues"
             >
               <LayoutList className="w-4 h-4" />
@@ -425,12 +421,12 @@ export function IssuesSegmentView({
             <div className="flex items-center gap-0.5 border border-border rounded-lg p-0.5">
               <button
                 type="button"
-                disabled={!isFacilitator}
+                disabled={!canUseFilters}
                 onClick={() => {
                   setLayout('list');
                   if (meetingId && socket) socket.emit('issues_filter', { meetingId, layout: 'list' });
                 }}
-                className={`p-1.5 rounded transition-colors ${!isFacilitator ? 'cursor-not-allowed opacity-70' : ''} ${
+                className={`p-1.5 rounded transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''} ${
                   layout === 'list' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'
                 }`}
                 title="List view"
@@ -439,12 +435,12 @@ export function IssuesSegmentView({
               </button>
               <button
                 type="button"
-                disabled={!isFacilitator}
+                disabled={!canUseFilters}
                 onClick={() => {
                   setLayout('column');
                   if (meetingId && socket) socket.emit('issues_filter', { meetingId, layout: 'column' });
                 }}
-                className={`p-1.5 rounded transition-colors ${!isFacilitator ? 'cursor-not-allowed opacity-70' : ''} ${
+                className={`p-1.5 rounded transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''} ${
                   layout === 'column' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'
                 }`}
                 title="Column view"
@@ -499,23 +495,15 @@ export function IssuesSegmentView({
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-2">
               Items per page:
-              <span className="relative inline-flex items-center">
-                <select
-                  value={itemsPerPage}
-                  onChange={(e) => {
-                    setItemsPerPage(Number(e.target.value));
-                    setPage(0);
-                  }}
-                  className="pl-2 pr-7 py-1 border border-border rounded-lg bg-background text-foreground appearance-none cursor-pointer"
-                >
-                  {PAGE_SIZES.map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              </span>
+              <Select
+                value={itemsPerPage}
+                onChange={(v) => {
+                  setItemsPerPage(v);
+                  setPage(0);
+                }}
+                options={PAGE_SIZES.map((n) => ({ label: String(n), value: n }))}
+                className="w-[70px]"
+              />
             </span>
             <span>
               {totalItems === 0
@@ -633,20 +621,12 @@ function IssueRow({
           </div>
         </td>
         <td className="px-4 py-2 align-middle">
-          <span className="relative inline-flex items-center">
-            <select
-              value={item.priority}
-              onChange={(e) => onPriorityChange(Number(e.target.value))}
-              className="pl-2 pr-6 py-1 border border-border rounded bg-background text-foreground text-sm appearance-none cursor-pointer"
-            >
-              {[1, 2, 3, 4, 5].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-1.5 w-4 h-4 text-muted-foreground pointer-events-none" />
-          </span>
+          <Select
+            value={item.priority}
+            onChange={onPriorityChange}
+            options={[1, 2, 3, 4, 5].map((n) => ({ label: String(n), value: n }))}
+            className="w-[60px]"
+          />
         </td>
         <td className="px-4 py-2 text-muted-foreground align-middle">
           {formatDate(item.createdAt)}

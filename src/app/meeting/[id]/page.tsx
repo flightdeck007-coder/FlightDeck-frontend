@@ -15,6 +15,7 @@ import { MeetingRealtimeSync } from '@/components/meeting/MeetingRealtimeSync';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { meetingsService } from '@/lib/api/meetings.service';
 import type { Meeting } from '@/lib/api/meetings.service';
+import { teamsService, type Team } from '@/lib/api/teams.service';
 import { issuesService } from '@/lib/api/issues.service';
 import { todosService } from '@/lib/api/todos.service';
 import { ROUTES } from '@/lib/constants/routes';
@@ -38,7 +39,7 @@ const sectionTitleToId: Record<string, string> = {
   'INSTRUMENTS (Scorecard)': 'scorecard', 'INSTRUMENTS (SCORECARD)': 'scorecard',
   'WAYPOINT REVIEW (Rocks)': 'rocks', 'WAYPOINT REVIEW (ROCKS)': 'rocks',
   'HEADLINES (Customer/Employee)': 'headlines', 'HEADLINES (CUSTOMER/EMPLOYEE)': 'headlines',
-  'CUSTOMER/EMPLOYEE HEADLINES': 'headlines',
+  'CUSTOMER/EMPLOYEE HEADLINES': 'headlines', 'CUSTOMER / EMPLOYEE HEADLINES': 'headlines',
   'CLEARANCES (To-Dos)': 'todos', 'CLEARANCES (TO-DOS)': 'todos',
   'TURBULENCE (Issues)': 'issues', 'TURBULENCE (ISSUES)': 'issues',
   'DEBRIEF (Conclude)': 'conclude', 'DEBRIEF (CONCLUDE)': 'conclude',
@@ -86,6 +87,7 @@ export default function MeetingPage() {
   const [isSuspended, setIsSuspended] = useState(false);
   const [createPopupOpen, setCreatePopupOpen] = useState(false);
   const [createPopupInitialType, setCreatePopupInitialType] = useState<'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | undefined>(undefined);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [finishLoading, setFinishLoading] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const [showFinishConfirm, setShowFinishConfirm] = useState(false);
@@ -179,6 +181,15 @@ export default function MeetingPage() {
       }
     })();
   }, [organizationId, meetingId]);
+
+  // Load teams for CreatePopup (issue Who, rock Other team, etc.)
+  useEffect(() => {
+    if (!organizationId) {
+      setTeams([]);
+      return;
+    }
+    teamsService.list(organizationId).then(setTeams).catch(() => setTeams([]));
+  }, [organizationId]);
 
   // When landing on a suspended meeting with resume intent: restore position and resume
   useEffect(() => {
@@ -352,7 +363,7 @@ export default function MeetingPage() {
     // Use meeting's org when available so recap/update use the correct org (avoids 404 from stale localStorage)
     const orgId = meeting?.team?.organizationId || organizationId;
     if (!orgId) {
-      router.push(ROUTES.MEETINGS);
+      router.push(ROUTES.MEETINGS_UPCOMING);
       return;
     }
     setFinishLoading(true);
@@ -523,7 +534,7 @@ export default function MeetingPage() {
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(`meeting-ratings-${meetingId}`);
       }
-      router.push(ROUTES.MEETINGS);
+      router.push(ROUTES.MEETINGS_UPCOMING);
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { message?: string }; status?: number } }).response?.data?.message
@@ -546,13 +557,13 @@ export default function MeetingPage() {
 
   const handleExitMeeting = useCallback(async () => {
     if (!organizationId || !meetingId) {
-      router.push(ROUTES.MEETINGS);
+      router.push(ROUTES.MEETINGS_UPCOMING);
       return;
     }
     try {
       await meetingsService.leaveMeeting(organizationId, meetingId);
     } finally {
-      router.push(ROUTES.MEETINGS);
+      router.push(ROUTES.MEETINGS_UPCOMING);
     }
   }, [organizationId, meetingId, router]);
 
@@ -591,7 +602,7 @@ export default function MeetingPage() {
       await meetingsService.suspend(organizationId, meetingId);
       setIsSuspended(true);
       setIsRunning(false);
-      router.push(ROUTES.MEETINGS);
+      router.push(ROUTES.MEETINGS_UPCOMING);
     } catch {
       setSuspendInProgress(false);
     }
@@ -610,6 +621,8 @@ export default function MeetingPage() {
 
   const headerSegmentLine = `${currentSectionData.title} | ${headerTitle}`;
   const isFacilitator = Boolean(meeting?.facilitatorId && currentUserId && meeting.facilitatorId === currentUserId);
+  const isScribe = Boolean(meeting?.scribeId && currentUserId && meeting.scribeId === currentUserId);
+  const canRecord = isFacilitator || isScribe; // scribe can add/edit notes, todos, issues (recording); facilitator can do everything
 
   const getTimerState = useCallback(
     () => ({
@@ -637,7 +650,7 @@ export default function MeetingPage() {
       pathname={pathname}
       router={router}
       setMeeting={setMeeting}
-      onMeetingEnded={() => router.push(ROUTES.MEETINGS)}
+      onMeetingEnded={() => router.push(ROUTES.MEETINGS_UPCOMING)}
       onTimerSynced={(segment, total) => {
         lastTimerSyncRef.current = { segment, total, ts: Date.now() };
       }}
@@ -736,6 +749,8 @@ export default function MeetingPage() {
           }}
           teamName={headerTitle.replace(/^.*-\s*/, '').trim() || 'Leadership Team'}
           teamId={teamId || undefined}
+          teams={teams}
+          organizationId={organizationId || undefined}
           initialType={createPopupInitialType}
         />
 
@@ -756,6 +771,7 @@ export default function MeetingPage() {
               organizationId={organizationId}
               meetingAttendances={meeting?.attendances}
               isFacilitator={isFacilitator}
+              canRecord={canRecord}
               facilitatorId={meeting?.facilitatorId}
               currentUserId={currentUserId}
               onOpenCreateIssue={() => {
@@ -780,6 +796,7 @@ export default function MeetingPage() {
                   meeting.sections[0].notes?.find((n) => n.author?.id === currentUserId)?.content ?? ''
                 }
                 currentUserId={currentUserId}
+                canEdit={canRecord}
                 onSaved={async () => {
                   const updated = await meetingsService.findOne(organizationId, meetingId);
                   setMeeting(updated);

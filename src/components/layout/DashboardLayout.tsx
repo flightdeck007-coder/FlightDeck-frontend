@@ -31,12 +31,12 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="h-screen flex overflow-hidden bg-background">
-      {/* Sidebar - 20% */}
-      <div className="w-1/5 min-w-[200px] flex-shrink-0">
+      {/* Sidebar - 20% width, max 25% */}
+      <div className="w-[20%] min-w-[160px] max-w-[280px] flex-shrink-0">
         <Sidebar />
       </div>
-      
-      {/* Main Content - 80% */}
+
+      {/* Main Content */}
       <div className="flex-1 overflow-y-auto">
         {children}
       </div>

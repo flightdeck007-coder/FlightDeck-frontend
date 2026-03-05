@@ -11,11 +11,11 @@ import {
   pointerWithin,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
+import { Select, Input } from 'antd';
 import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
-  Search,
   MoreHorizontal,
   RefreshCw,
   FileDown,
@@ -60,6 +60,8 @@ interface RocksSegmentViewProps {
   embedded?: boolean;
   meetingId?: string;
   isFacilitator?: boolean;
+  /** Scribe or facilitator can change filters and create (recording) */
+  canRecord?: boolean;
   onOpenCreate?: (type: CreatePopupType) => void;
 }
 
@@ -68,8 +70,10 @@ export function RocksSegmentView({
   embedded = false,
   meetingId,
   isFacilitator = true,
+  canRecord,
   onOpenCreate,
 }: RocksSegmentViewProps) {
+  const canUseFilters = canRecord ?? isFacilitator;
   const [teamFilter, setTeamFilter] = useState('Leadership Team');
   const [ownerFilter, setOwnerFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -165,61 +169,56 @@ export function RocksSegmentView({
     <div className={`flex flex-col min-h-0 h-full ${wrap}`}>
       {/* Filters row — full width like main header */}
       <div className="flex flex-wrap items-center gap-3 py-3 -mx-6 px-4 border-t border-b border-border bg-muted/30 shrink-0">
-        <div className={`relative ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
-          <span className="text-muted-foreground text-sm mr-1">Team:</span>
-          <select
+        <div className={`flex items-center gap-1 ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''}`}>
+          <span className="text-muted-foreground text-sm">Team:</span>
+          <Select
             value={teamFilter}
-            onChange={(e) => {
-              if (!isFacilitator) return;
-              const v = e.target.value;
+            onChange={(v) => {
+              if (!canUseFilters) return;
               setTeamFilter(v);
               if (meetingId && socket) socket.emit('rocks_filter', { meetingId, teamFilter: v });
             }}
-            disabled={!isFacilitator}
-            className={`pl-3 pr-8 py-2 border border-border rounded-lg bg-background text-foreground text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50 hover:border-foreground/20'}`}
-          >
-            <option>Leadership Team</option>
-          </select>
-          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            disabled={!canUseFilters}
+            options={[{ label: 'Leadership Team', value: 'Leadership Team' }]}
+            className="w-[160px]"
+          />
         </div>
-        <div className={`relative ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
-          <span className="text-muted-foreground text-sm mr-1">Owner:</span>
-          <select
+        <div className={`flex items-center gap-1 ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''}`}>
+          <span className="text-muted-foreground text-sm">Owner:</span>
+          <Select
             value={ownerFilter}
-            onChange={(e) => {
-              if (!isFacilitator) return;
-              const v = e.target.value;
+            onChange={(v) => {
+              if (!canUseFilters) return;
               setOwnerFilter(v);
               if (meetingId && socket) socket.emit('rocks_filter', { meetingId, ownerFilter: v });
             }}
-            disabled={!isFacilitator}
-            className={`pl-3 pr-8 py-2 border border-border rounded-lg bg-background text-foreground text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50 hover:border-foreground/20'}`}
-          >
-            <option>All</option>
-            <option>John Doe</option>
-          </select>
-          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            disabled={!canUseFilters}
+            options={[
+              { label: 'All', value: 'All' },
+              { label: 'John Doe', value: 'John Doe' },
+            ]}
+            className="w-[120px]"
+          />
         </div>
-        <div className={`relative ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
-          <span className="text-muted-foreground text-sm mr-1">Status:</span>
-          <select
+        <div className={`flex items-center gap-1 ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''}`}>
+          <span className="text-muted-foreground text-sm">Status:</span>
+          <Select
             value={statusFilter}
-            onChange={(e) => {
-              if (!isFacilitator) return;
-              const v = e.target.value;
+            onChange={(v) => {
+              if (!canUseFilters) return;
               setStatusFilter(v);
               if (meetingId && socket) socket.emit('rocks_filter', { meetingId, statusFilter: v });
             }}
-            disabled={!isFacilitator}
-            className={`pl-3 pr-8 py-2 border border-border rounded-lg bg-background text-foreground text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50 hover:border-foreground/20'}`}
-          >
-            <option>All</option>
-            <option>On-track</option>
-            <option>Off-track</option>
-          </select>
-          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            disabled={!canUseFilters}
+            options={[
+              { label: 'All', value: 'All' },
+              { label: 'On-track', value: 'On-track' },
+              { label: 'Off-track', value: 'Off-track' },
+            ]}
+            className="w-[120px]"
+          />
         </div>
-        {isFacilitator && (
+        {canUseFilters && (
         <div className="relative">
           <button
             type="button"
@@ -272,22 +271,24 @@ export function RocksSegmentView({
         </div>
         )}
         <div className="flex-1 min-w-[200px] flex justify-end">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="search"
-              placeholder={`Search ${sectionTitle}...`}
-              value={searchQuery}
-              onChange={(e) => {
-                if (!isFacilitator) return;
-                const v = e.target.value;
-                setSearchQuery(v);
-                if (meetingId && socket) socket.emit('rocks_filter', { meetingId, searchQuery: v });
-              }}
-              disabled={!isFacilitator}
-              className={`w-full max-w-xs pl-9 pr-3 py-2 border border-border rounded-md bg-background text-foreground text-sm ${!isFacilitator ? 'cursor-not-allowed opacity-70' : ''}`}
-            />
-          </div>
+          <Input.Search
+            placeholder={`Search ${sectionTitle}...`}
+            value={searchQuery}
+            onChange={(e) => {
+              if (!canUseFilters) return;
+              const v = e.target.value;
+              setSearchQuery(v);
+              if (meetingId && socket) socket.emit('rocks_filter', { meetingId, searchQuery: v });
+            }}
+            disabled={!canUseFilters}
+            allowClear
+            className="max-w-xs"
+            onSearch={(v) => {
+              if (!canUseFilters) return;
+              setSearchQuery(v);
+              if (meetingId && socket) socket.emit('rocks_filter', { meetingId, searchQuery: v });
+            }}
+          />
         </div>
       </div>
 
@@ -309,16 +310,16 @@ export function RocksSegmentView({
             key={tab.id}
             type="button"
             onClick={() => {
-              if (!isFacilitator) return;
+              if (!canUseFilters) return;
               setActiveTab(tab.id);
               if (meetingId && socket) socket.emit('rocks_filter', { meetingId, activeTab: tab.id });
             }}
-            disabled={!isFacilitator}
+            disabled={!canUseFilters}
             className={`px-4 py-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors rounded-t-md ${
               activeTab === tab.id
                 ? 'border-primary text-primary bg-primary/5'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
-            } ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
+            } ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
           >
             <tab.icon className="w-4 h-4" />
             {tab.label}

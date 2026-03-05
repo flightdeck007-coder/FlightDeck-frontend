@@ -6,6 +6,7 @@ export interface CreateMeetingDto {
   meetingSeriesName?: string;
   scheduledAt: string;
   facilitatorId?: string;
+  scribeId?: string;
   sectionTitles?: string[];
 }
 
@@ -29,6 +30,7 @@ export interface Meeting {
   teamId: string;
   meetingSeriesId: string;
   facilitatorId?: string | null;
+  scribeId?: string | null;
   scheduledAt: string;
   startedAt?: string;
   endedAt?: string;
@@ -91,7 +93,13 @@ export const meetingsService = {
   update: async (
     organizationId: string,
     meetingId: string,
-    data: { startedAt?: string; endedAt?: string },
+    data: {
+      startedAt?: string;
+      endedAt?: string;
+      scheduledAt?: string;
+      facilitatorId?: string | null;
+      scribeId?: string | null;
+    },
   ): Promise<Meeting> => {
     const response = await apiClient.put<Meeting>(
       `/meetings/${meetingId}?organizationId=${organizationId}`,

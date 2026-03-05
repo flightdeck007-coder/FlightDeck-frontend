@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { teamsService, Team } from '@/lib/api/teams.service';
+import { Select } from 'antd';
 import { Users, Edit2, Trash2, Check, UserPlus, UserMinus } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -196,18 +197,13 @@ export default function TeamsPage() {
             <label className="block text-sm font-medium text-foreground mb-2">
               Current Flight Crew (for flight reviews)
             </label>
-            <select
-              value={currentTeamId || ''}
-              onChange={(e) => handleTeamSelect(e.target.value)}
-              className="px-3 py-2 border border-border rounded-md bg-background text-foreground max-w-xs"
-            >
-              <option value="">Select team</option>
-              {teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={currentTeamId || undefined}
+              onChange={(v) => handleTeamSelect(v ?? '')}
+              placeholder="Select team"
+              options={teams.map((team) => ({ label: team.name, value: team.id }))}
+              className="max-w-xs w-full"
+            />
             {currentTeamId && (
               <p className="text-xs text-foreground/60 mt-2">
                 Flight reviews will be shown for: <strong>{teams.find((t) => t.id === currentTeamId)?.name}</strong>

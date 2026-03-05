@@ -25,6 +25,7 @@
     "@tiptap/pm": "^3.19.0",
     "@tiptap/react": "^3.19.0",
     "@tiptap/starter-kit": "^3.19.0",
+    "antd": "^6.3.1",
     "axios": "^1.7.9",
     "dayjs": "^1.11.19",
     "lucide-react": "^0.468.0",

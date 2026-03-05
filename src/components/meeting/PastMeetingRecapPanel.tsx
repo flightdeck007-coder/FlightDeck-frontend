@@ -20,6 +20,7 @@ import { ContentAreaLoader } from '@/components/ui/loaders';
 import type { Meeting } from '@/lib/api/meetings.service';
 import { meetingsService } from '@/lib/api/meetings.service';
 import { ROUTES } from '@/lib/constants/routes';
+import { formatSegmentDuration } from '@/lib/formatDate';
 
 export interface MeetingRecapTodo {
   id: string;
@@ -445,7 +446,7 @@ export function PastMeetingRecapPanel({
                   className="flex items-center justify-between px-3 py-2 text-sm bg-card hover:bg-muted/30"
                 >
                   <span className="text-foreground font-medium">{s.sectionTitle}</span>
-                  <span className="text-muted-foreground tabular-nums">{s.durationMMSS}</span>
+                  <span className="text-muted-foreground tabular-nums">{formatSegmentDuration(s.durationMMSS)}</span>
                 </li>
               ))}
             </ul>

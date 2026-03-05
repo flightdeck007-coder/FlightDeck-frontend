@@ -8,9 +8,9 @@ import {
   flexRender,
   type ColumnDef,
 } from '@tanstack/react-table';
+import { Select, Input } from 'antd';
 import {
   ChevronDown,
-  Search,
   RotateCcw,
   RotateCw,
   Plus,
@@ -285,6 +285,8 @@ interface InstrumentsSegmentViewProps {
   meetingId?: string;
   organizationId?: string;
   isFacilitator?: boolean;
+  /** Scribe or facilitator: can change scorecard filters and create groups/measurables */
+  canRecord?: boolean;
 }
 
 export function InstrumentsSegmentView({
@@ -293,7 +295,9 @@ export function InstrumentsSegmentView({
   meetingId,
   organizationId,
   isFacilitator = true,
+  canRecord,
 }: InstrumentsSegmentViewProps) {
+  const canUseFilters = canRecord ?? isFacilitator;
   const [timeframe, setTimeframe] = useState<TimeframeTab>('weekly');
   const [viewBy, setViewBy] = useState<ViewBy>('week');
   const [dateRange, setDateRange] = useState<DateRangeKey>('last13weeks');
@@ -373,8 +377,6 @@ export function InstrumentsSegmentView({
   const [measurables, setMeasurables] = useState<MeasurableRow[]>(MOCK_MEASURABLES);
   const [addExistingSearch, setAddExistingSearch] = useState('');
   const [addExistingPersonFilter, setAddExistingPersonFilter] = useState<string>('All');
-  const [addExistingPersonOpen, setAddExistingPersonOpen] = useState(false);
-  const [addExistingPersonSearch, setAddExistingPersonSearch] = useState('');
   const MOCK_PERSONS = ['Unassigned', 'Gulraiz Saeed'];
   const [savedMeasurables, setSavedMeasurables] = useState<MeasurableRow[]>([]);
   const [createMeasurableTitle, setCreateMeasurableTitle] = useState('');
@@ -478,72 +480,63 @@ export function InstrumentsSegmentView({
               key={tab}
               type="button"
               onClick={() => {
-                if (!isFacilitator) return;
+                if (!canUseFilters) return;
                 setTimeframe(tab);
                 if (meetingId && socket) socket.emit('scorecard_filter', { meetingId, timeframe: tab });
               }}
-              disabled={!isFacilitator}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors rounded-t-md ${timeframe === tab ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'} ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
+              disabled={!canUseFilters}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors rounded-t-md ${timeframe === tab ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'} ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-3 py-3 shrink-0">
-          <div className="relative">
-            <select defaultValue={teamName} className="pl-3 pr-8 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary appearance-none cursor-pointer">
-              <option>Leadership Team</option>
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-          </div>
+          <Select
+            value={teamName}
+            options={[{ label: 'Leadership Team', value: teamName }]}
+            className="w-[160px]"
+          />
           <span className="text-muted-foreground text-sm">View by:</span>
-          <div className="relative">
-            <select
-              value={viewBy}
-              onChange={(e) => {
-                if (!isFacilitator) return;
-                const v = e.target.value as ViewBy;
-                setViewBy(v);
-                if (meetingId && socket) socket.emit('scorecard_filter', { meetingId, viewBy: v });
-              }}
-              disabled={!isFacilitator}
-              className={`pl-3 pr-8 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary appearance-none min-w-[100px] ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
-            >
-              <option value="week">Week</option>
-              <option value="month">Month</option>
-              <option value="quarter">Quarter</option>
-              <option value="year">Year</option>
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-          </div>
+          <Select<ViewBy>
+            value={viewBy}
+            onChange={(v) => {
+              if (!canUseFilters) return;
+              if (v) setViewBy(v);
+              if (meetingId && socket && v) socket.emit('scorecard_filter', { meetingId, viewBy: v });
+            }}
+            disabled={!canUseFilters}
+            options={[
+              { label: 'Week', value: 'week' },
+              { label: 'Month', value: 'month' },
+              { label: 'Quarter', value: 'quarter' },
+              { label: 'Year', value: 'year' },
+            ]}
+            className="min-w-[100px]"
+          />
           <span className="text-muted-foreground text-sm">Date Range:</span>
-          <div className="relative">
-            <select
-              value={dateRange}
-              onChange={(e) => {
-                if (!isFacilitator) return;
-                const v = e.target.value as DateRangeKey;
-                setDateRange(v);
-                if (meetingId && socket) socket.emit('scorecard_filter', { meetingId, dateRange: v });
-              }}
-              disabled={!isFacilitator}
-              className={`pl-3 pr-8 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary min-w-[180px] appearance-none ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
-            >
-              {DATE_RANGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-          </div>
+          <Select<DateRangeKey>
+            value={dateRange}
+            onChange={(v) => {
+              if (!canUseFilters) return;
+              if (v) setDateRange(v);
+              if (meetingId && socket && v) socket.emit('scorecard_filter', { meetingId, dateRange: v });
+            }}
+            disabled={!canUseFilters}
+            options={DATE_RANGE_OPTIONS}
+            className="min-w-[180px]"
+          />
           {/* LTR / RTL display toggle — immediately after date range */}
           <div className="flex rounded-lg border border-border overflow-hidden bg-muted/30">
             <button
               type="button"
               onClick={() => {
-                if (!isFacilitator) return;
+                if (!canUseFilters) return;
                 setDisplayDirection('rtl');
                 if (meetingId && socket) socket.emit('scorecard_filter', { meetingId, displayDirection: 'rtl' });
               }}
-              disabled={!isFacilitator}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${displayDirection === 'rtl' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'} ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
+              disabled={!canUseFilters}
+              className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${displayDirection === 'rtl' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'} ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
               title="Right to left"
             >
               <BarChart2 className="w-4 h-4" />
@@ -552,12 +545,12 @@ export function InstrumentsSegmentView({
             <button
               type="button"
               onClick={() => {
-                if (!isFacilitator) return;
+                if (!canUseFilters) return;
                 setDisplayDirection('ltr');
                 if (meetingId && socket) socket.emit('scorecard_filter', { meetingId, displayDirection: 'ltr' });
               }}
-              disabled={!isFacilitator}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${displayDirection === 'ltr' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'} ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
+              disabled={!canUseFilters}
+              className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${displayDirection === 'ltr' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'} ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
               title="Left to right"
             >
               <BarChart2 className="w-4 h-4" />
@@ -568,9 +561,9 @@ export function InstrumentsSegmentView({
         <div className="flex flex-wrap items-center gap-2 pb-3 shrink-0">
           <button type="button" className="p-2 rounded-md border border-border hover:bg-accent text-muted-foreground hover:text-foreground" title="Undo score change"><RotateCcw className="w-4 h-4" /></button>
           <button type="button" className="p-2 rounded-md border border-border hover:bg-accent text-muted-foreground hover:text-foreground" title="Redo score change"><RotateCw className="w-4 h-4" /></button>
-          <button type="button" onClick={() => isFacilitator && setCreateGroupOpen(true)} disabled={!isFacilitator} className={`flex items-center gap-2 px-3 py-2 border border-border rounded-md text-sm font-medium text-primary ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'hover:bg-accent cursor-pointer'}`}><Plus className="w-4 h-4" /> New group</button>
+          <button type="button" onClick={() => canUseFilters && setCreateGroupOpen(true)} disabled={!canUseFilters} className={`flex items-center gap-2 px-3 py-2 border border-border rounded-md text-sm font-medium text-primary ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'hover:bg-accent cursor-pointer'}`}><Plus className="w-4 h-4" /> New group</button>
           <button type="button" className="px-3 py-2 border border-border rounded-md hover:bg-accent text-sm font-medium text-primary">Go to Measurable Manager</button>
-          {isFacilitator && (
+          {canUseFilters && (
             <div className="relative">
               <button
                 ref={moreMenuBtnRef}
@@ -600,10 +593,13 @@ export function InstrumentsSegmentView({
               )}
             </div>
           )}
-          <div className="relative flex-shrink-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input type="search" placeholder="Search KPIs..." value={searchKpis} onChange={(e) => setSearchKpis(e.target.value)} className="w-full min-w-[180px] max-w-xs pl-9 pr-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
-          </div>
+          <Input.Search
+            placeholder="Search KPIs..."
+            value={searchKpis}
+            onChange={(e) => setSearchKpis(e.target.value)}
+            allowClear
+            className="min-w-[180px] max-w-xs"
+          />
         </div>
       </div>
 
@@ -832,33 +828,26 @@ export function InstrumentsSegmentView({
               <p className="text-sm text-muted-foreground mt-0.5">All the {timeframe.charAt(0).toUpperCase() + timeframe.slice(1)} Measurables in your company</p>
             </header>
             <div className="p-4 border-b border-border shrink-0 flex flex-col sm:flex-row gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input type="search" placeholder="Search measurables..." value={addExistingSearch} onChange={(e) => setAddExistingSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
-              </div>
-              <div className="relative w-auto max-w-[220px]">
-                <button type="button" onClick={() => setAddExistingPersonOpen((o) => !o)} className="flex items-center gap-2 w-full min-w-[140px] px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm text-left hover:bg-muted/50 cursor-pointer">
-                  <span className="text-muted-foreground shrink-0">Person:</span>
-                  <span className="truncate">{addExistingPersonFilter}</span>
-                  <ChevronDown className={`w-4 h-4 ml-auto shrink-0 transition-transform ${addExistingPersonOpen ? 'rotate-180' : ''}`} />
-                </button>
-                {addExistingPersonOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setAddExistingPersonOpen(false)} aria-hidden />
-                    <div className="absolute left-0 right-0 top-full mt-1 py-2 bg-card border border-border rounded-md shadow-lg z-20">
-                      <div className="relative px-2 pb-2">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <input type="search" placeholder="Search..." value={addExistingPersonSearch} onChange={(e) => setAddExistingPersonSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-border rounded-md text-sm" />
-                      </div>
-                      {['All', 'Unassigned', ...MOCK_PERSONS.filter((p) => p !== 'Unassigned')]
-                        .filter((opt) => opt.toLowerCase().includes(addExistingPersonSearch.toLowerCase()))
-                        .map((opt) => (
-                        <button key={opt} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-muted/60 cursor-pointer" onClick={() => { setAddExistingPersonFilter(opt); setAddExistingPersonOpen(false); setAddExistingPersonSearch(''); }}>{opt}</button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
+              <Input.Search
+                placeholder="Search measurables..."
+                value={addExistingSearch}
+                onChange={(e) => setAddExistingSearch(e.target.value)}
+                allowClear
+                className="flex-1 min-w-[200px]"
+              />
+              <Select
+                placeholder="Person"
+                value={addExistingPersonFilter}
+                onChange={(v) => setAddExistingPersonFilter(v ?? 'All')}
+                options={[
+                  { label: 'All', value: 'All' },
+                  { label: 'Unassigned', value: 'Unassigned' },
+                  ...MOCK_PERSONS.filter((p) => p !== 'Unassigned').map((p) => ({ label: p, value: p })),
+                ]}
+                showSearch
+                filterOption={(input, opt) => (opt?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())}
+                className="w-auto min-w-[140px] max-w-[220px]"
+              />
             </div>
             <div className="flex-1 overflow-y-auto p-4 min-h-[120px]">
               {(() => {
@@ -912,18 +901,26 @@ export function InstrumentsSegmentView({
 
               <section>
                 <label className="block text-sm font-medium text-foreground mb-2">Period Interval</label>
-                <select className="w-full px-3 py-2.5 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary">
-                  <option>Weekly</option>
-                  <option>Monthly</option>
-                  <option>Quarterly</option>
-                </select>
+                <Select
+                  className="w-full"
+                  options={[
+                    { label: 'Weekly', value: 'Weekly' },
+                    { label: 'Monthly', value: 'Monthly' },
+                    { label: 'Quarterly', value: 'Quarterly' },
+                  ]}
+                  placeholder="Select interval"
+                />
               </section>
               <section>
                 <label className="block text-sm font-medium text-foreground mb-2">Owner</label>
-                <select className="w-full px-3 py-2.5 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary">
-                  <option>Owner</option>
-                  {MOCK_PERSONS.map((p) => (p !== 'Unassigned' ? <option key={p}>{p}</option> : <option key={p}>Unassigned</option>))}
-                </select>
+                <Select
+                  className="w-full"
+                  placeholder="Owner"
+                  options={[
+                    { label: 'Unassigned', value: 'Unassigned' },
+                    ...MOCK_PERSONS.filter((p) => p !== 'Unassigned').map((p) => ({ label: p, value: p })),
+                  ]}
+                />
               </section>
 
               <hr className="border-border" />
@@ -959,19 +956,29 @@ export function InstrumentsSegmentView({
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1.5">Unit</label>
-                    <select value={createMeasurableUnit} onChange={(e) => setCreateMeasurableUnit(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary">
-                      <option>Number</option>
-                      <option>Percentage</option>
-                      <option>Currency</option>
-                    </select>
+                    <Select
+                      value={createMeasurableUnit}
+                      onChange={(v) => v && setCreateMeasurableUnit(v)}
+                      options={[
+                        { label: 'Number', value: 'Number' },
+                        { label: 'Percentage', value: 'Percentage' },
+                        { label: 'Currency', value: 'Currency' },
+                      ]}
+                      className="w-full"
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1.5">Orientation rule</label>
-                    <select value={createMeasurableOrientation} onChange={(e) => setCreateMeasurableOrientation(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary">
-                      <option>Greater than or equal to goal</option>
-                      <option>Less than or equal to goal</option>
-                      <option>Equal to goal</option>
-                    </select>
+                    <Select
+                      value={createMeasurableOrientation}
+                      onChange={(v) => v && setCreateMeasurableOrientation(v)}
+                      options={[
+                        { label: 'Greater than or equal to goal', value: 'Greater than or equal to goal' },
+                        { label: 'Less than or equal to goal', value: 'Less than or equal to goal' },
+                        { label: 'Equal to goal', value: 'Equal to goal' },
+                      ]}
+                      className="w-full"
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1.5">Value</label>
@@ -985,12 +992,17 @@ export function InstrumentsSegmentView({
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1.5">Show rollup data as</label>
-                    <select value={createMeasurableRollup} onChange={(e) => setCreateMeasurableRollup(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary">
-                      <option>Total (default)</option>
-                      <option>Average</option>
-                      <option>Min</option>
-                      <option>Max</option>
-                    </select>
+                    <Select
+                      value={createMeasurableRollup}
+                      onChange={(v) => v && setCreateMeasurableRollup(v)}
+                      options={[
+                        { label: 'Total (default)', value: 'Total (default)' },
+                        { label: 'Average', value: 'Average' },
+                        { label: 'Min', value: 'Min' },
+                        { label: 'Max', value: 'Max' },
+                      ]}
+                      className="w-full"
+                    />
                   </div>
                 </div>
               </section>
@@ -1069,7 +1081,7 @@ export function InstrumentsSegmentView({
                 groupId={expandedGroupId}
                 group={currentGroups.find((g) => g.id === expandedGroupId)!}
                 onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
-                onDeleteGroup={isFacilitator ? (id) => setDeleteConfirmGroupId(id) : undefined}
+                onDeleteGroup={canUseFilters ? (id) => setDeleteConfirmGroupId(id) : undefined}
                 isExpanded={true}
                 onExpand={() => setExpandedGroupId(null)}
                 isCollapsed={collapsedGroupIds.has(expandedGroupId)}
@@ -1093,7 +1105,7 @@ export function InstrumentsSegmentView({
                     groupId={g.id}
                     group={g}
                     onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
-                    onDeleteGroup={isFacilitator ? (id) => setDeleteConfirmGroupId(id) : undefined}
+                    onDeleteGroup={canUseFilters ? (id) => setDeleteConfirmGroupId(id) : undefined}
                     isExpanded={false}
                     onExpand={() => setExpandedGroupId(g.id)}
                     isCollapsed={collapsedGroupIds.has(g.id)}
@@ -1133,7 +1145,7 @@ export function InstrumentsSegmentView({
                       groupId={g.id}
                       group={g}
                       onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
-                      onDeleteGroup={isFacilitator ? (id) => setDeleteConfirmGroupId(id) : undefined}
+                      onDeleteGroup={canUseFilters ? (id) => setDeleteConfirmGroupId(id) : undefined}
                       isExpanded={false}
                       onExpand={() => setExpandedGroupId(g.id)}
                       isCollapsed={collapsedGroupIds.has(g.id)}
@@ -1177,7 +1189,7 @@ export function InstrumentsSegmentView({
                 groupId={g.id}
                 group={g}
                 onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
-                onDeleteGroup={isFacilitator ? (id) => setDeleteConfirmGroupId(id) : undefined}
+                onDeleteGroup={canUseFilters ? (id) => setDeleteConfirmGroupId(id) : undefined}
                 isExpanded={false}
                 onExpand={() => setExpandedGroupId(g.id)}
                 isCollapsed={collapsedGroupIds.has(g.id)}

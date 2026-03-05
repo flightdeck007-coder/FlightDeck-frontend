@@ -15,8 +15,8 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { Select, Input } from 'antd';
 import {
-  Search,
   MoreHorizontal,
   GripVertical,
   Mountain,
@@ -56,6 +56,8 @@ interface TodosSegmentViewProps {
   embedded?: boolean;
   meetingId?: string;
   isFacilitator?: boolean;
+  /** Scribe or facilitator can change filters and create (recording) */
+  canRecord?: boolean;
   onOpenCreate?: (type: CreatePopupType) => void;
 }
 
@@ -70,8 +72,10 @@ export function TodosSegmentView({
   embedded = false,
   meetingId,
   isFacilitator = true,
+  canRecord,
   onOpenCreate,
 }: TodosSegmentViewProps) {
+  const canUseFilters = canRecord ?? isFacilitator;
   const [teamFilter, setTeamFilter] = useState(teamName);
   const [ownerFilter, setOwnerFilter] = useState('All +1');
   const [archiveOn, setArchiveOn] = useState(false);
@@ -197,45 +201,39 @@ export function TodosSegmentView({
     <div className={`flex flex-col min-h-0 h-full ${wrap}`}>
       {/* Filter bar — full width, no padding on this div */}
       <div className="flex flex-wrap items-center gap-3 py-3 -mx-6 px-4 border-t border-b border-border bg-muted/30 shrink-0">
-        <div className="relative">
-          <span className="text-muted-foreground text-sm mr-1">Team:</span>
-          <select
+        <div className="flex items-center gap-1">
+          <span className="text-muted-foreground text-sm">Team:</span>
+          <Select
             value={teamFilter}
-            onChange={(e) => {
-              const v = e.target.value;
+            onChange={(v) => {
               setTeamFilter(v);
               if (meetingId && socket) socket.emit('todos_filter', { meetingId, teamFilter: v });
             }}
-            disabled={!isFacilitator}
-            className={`pl-3 pr-8 py-2 border border-border rounded-lg bg-background text-foreground text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:bg-muted/50 hover:border-foreground/20 transition-colors'}`}
-          >
-            <option>Leadership Team</option>
-          </select>
-          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            disabled={!canUseFilters}
+            options={[{ label: 'Leadership Team', value: teamName }]}
+            className="w-[160px]"
+          />
         </div>
-        <div className="relative">
-          <span className="text-muted-foreground text-sm mr-1">Owner:</span>
-          <select
+        <div className="flex items-center gap-1">
+          <span className="text-muted-foreground text-sm">Owner:</span>
+          <Select
             value={ownerFilter}
-            onChange={(e) => {
-              const v = e.target.value;
+            onChange={(v) => {
               setOwnerFilter(v);
               if (meetingId && socket) socket.emit('todos_filter', { meetingId, ownerFilter: v });
             }}
-            disabled={!isFacilitator}
-            className={`pl-3 pr-8 py-2 border border-border rounded-lg bg-background text-foreground text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:bg-muted/50 hover:border-foreground/20 transition-colors'}`}
-          >
-            <option>All +1</option>
-          </select>
-          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            disabled={!canUseFilters}
+            options={[{ label: 'All +1', value: 'All +1' }]}
+            className="w-[120px]"
+          />
         </div>
-        <label className={`flex items-center gap-2 group ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
+        <label className={`flex items-center gap-2 group ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
           <span className="text-sm text-foreground group-hover:text-foreground/90">Archive</span>
           <button
             type="button"
             role="switch"
             aria-checked={archiveOn}
-            disabled={!isFacilitator}
+            disabled={!canUseFilters}
             onClick={() => {
               setArchiveOn((o) => {
                 const next = !o;
@@ -243,7 +241,7 @@ export function TodosSegmentView({
                 return next;
               });
             }}
-            className={`relative w-11 h-6 rounded-full transition-colors border-2 flex items-center ${!isFacilitator ? 'cursor-not-allowed' : ''} ${
+            className={`relative w-11 h-6 rounded-full transition-colors border-2 flex items-center ${!canUseFilters ? 'cursor-not-allowed' : ''} ${
               archiveOn
                 ? 'bg-primary border-primary justify-end'
                 : 'bg-muted border-border justify-start hover:bg-muted/80'
@@ -255,40 +253,38 @@ export function TodosSegmentView({
         <span className="flex-1" />
         <button
           type="button"
-          disabled={!isFacilitator}
-          className={`p-2 rounded-lg transition-colors ${!isFacilitator ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
+          disabled={!canUseFilters}
+          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
           aria-label="Refresh"
         >
           <RotateCw className="w-4 h-4" />
         </button>
         <button
           type="button"
-          disabled={!isFacilitator}
-          className={`p-2 rounded-lg transition-colors ${!isFacilitator ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
+          disabled={!canUseFilters}
+          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
           aria-label="Download PDF"
         >
           <FileDown className="w-4 h-4" />
         </button>
         <button
           type="button"
-          disabled={!isFacilitator}
-          className={`p-2 rounded-lg transition-colors ${!isFacilitator ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
+          disabled={!canUseFilters}
+          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
           aria-label="Download"
         >
           <Download className="w-4 h-4" />
         </button>
         <button
           type="button"
-          disabled={!isFacilitator}
-          className={`p-2 rounded-lg transition-colors ${!isFacilitator ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
+          disabled={!canUseFilters}
+          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
           aria-label="More"
         >
           <Package className="w-4 h-4" />
         </button>
-        <div className="relative min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="search"
+        <div className="min-w-[200px]">
+          <Input.Search
             placeholder="Search TO-DO LIST | Level 10 Meetin..."
             value={searchQuery}
             onChange={(e) => {
@@ -296,8 +292,9 @@ export function TodosSegmentView({
               setSearchQuery(v);
               if (meetingId && socket) socket.emit('todos_filter', { meetingId, searchQuery: v });
             }}
-            disabled={!isFacilitator}
-            className={`w-full pl-9 pr-3 py-2 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'hover:border-foreground/20'}`}
+            disabled={!canUseFilters}
+            allowClear
+            className="w-full"
           />
         </div>
       </div>
@@ -431,23 +428,15 @@ export function TodosSegmentView({
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-2">
               Items per page:
-              <span className="relative inline-flex items-center">
-                <select
-                  value={itemsPerPage}
-                  onChange={(e) => {
-                    setItemsPerPage(Number(e.target.value));
-                    setPage(0);
-                  }}
-                  className="pl-2 pr-7 py-1 border border-border rounded-lg bg-background text-foreground appearance-none cursor-pointer hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                >
-                  {PAGE_SIZES.map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              </span>
+              <Select
+                value={itemsPerPage}
+                onChange={(v) => {
+                  setItemsPerPage(v);
+                  setPage(0);
+                }}
+                options={PAGE_SIZES.map((n) => ({ label: String(n), value: n }))}
+                className="w-[70px]"
+              />
             </span>
             <span>
               {totalItems === 0
@@ -938,13 +927,12 @@ export function EditTodoPanel({
           <label className="block text-sm font-medium text-foreground mb-1">
             Repeat
           </label>
-          <select
+          <Select
             value={repeat}
-            onChange={(e) => setRepeat(e.target.value)}
-            className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
-          >
-            <option>Don&apos;t repeat</option>
-          </select>
+            onChange={setRepeat}
+            options={[{ label: "Don't repeat", value: "Don't repeat" }]}
+            className="w-full"
+          />
         </div>
         <div>
           <label className="block text-sm font-medium text-foreground mb-1">
@@ -975,13 +963,12 @@ export function EditTodoPanel({
           <label className="block text-sm font-medium text-foreground mb-1">
             Team
           </label>
-          <select
+          <Select
             value={team}
-            onChange={(e) => setTeam(e.target.value)}
-            className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
-          >
-            <option>Leadership Team</option>
-          </select>
+            onChange={setTeam}
+            options={[{ label: 'Leadership Team', value: 'Leadership Team' }]}
+            className="w-full"
+          />
           <p className="text-xs text-muted-foreground mt-1">
             Changing the team will affect which users the To-Do can be assigned
             to.
