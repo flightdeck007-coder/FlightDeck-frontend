@@ -171,6 +171,26 @@ export default function AgendaEditPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [teamId, setTeamId] = useState<string>('');
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<number | null>(null);
+  const [orgRole, setOrgRole] = useState<string | null>(null);
+
+  const isAdminOrManager = orgRole === 'ADMIN' || orgRole === 'MANAGER';
+
+  useEffect(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('organizationRole') : null;
+    setOrgRole(stored ?? null);
+    const onRoleChange = (e: CustomEvent<{ role?: string }>) => {
+      setOrgRole(e.detail?.role ?? null);
+    };
+    window.addEventListener('organizationRoleChanged', onRoleChange as EventListener);
+    return () => window.removeEventListener('organizationRoleChanged', onRoleChange as EventListener);
+  }, []);
+
+  useEffect(() => {
+    if (orgRole != null && !isAdminOrManager) {
+      router.replace(ROUTES.MEETINGS_UPCOMING);
+      return;
+    }
+  }, [orgRole, isAdminOrManager, router]);
 
   const loadSeries = useCallback(async () => {
     const orgId = typeof window !== 'undefined' ? localStorage.getItem('organizationId') : null;

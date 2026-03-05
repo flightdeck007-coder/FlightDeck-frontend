@@ -15,9 +15,29 @@ export default function MeetingsAgendasPage() {
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const [agendas, setAgendas] = useState<MeetingSeries[]>([]);
   const [loading, setLoading] = useState(true);
+  const [orgRole, setOrgRole] = useState<string | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [newAgendaName, setNewAgendaName] = useState('');
   const [createLoading, setCreateLoading] = useState(false);
+
+  const isAdminOrManager = orgRole === 'ADMIN' || orgRole === 'MANAGER';
+
+  useEffect(() => {
+    if (orgRole != null && !isAdminOrManager) {
+      router.replace(ROUTES.MEETINGS_UPCOMING);
+      return;
+    }
+  }, [orgRole, isAdminOrManager, router]);
+
+  useEffect(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('organizationRole') : null;
+    setOrgRole(stored ?? null);
+    const onRoleChange = (e: CustomEvent<{ role?: string }>) => {
+      setOrgRole(e.detail?.role ?? null);
+    };
+    window.addEventListener('organizationRoleChanged', onRoleChange as EventListener);
+    return () => window.removeEventListener('organizationRoleChanged', onRoleChange as EventListener);
+  }, []);
 
   useEffect(() => {
     const storedOrgId = typeof window !== 'undefined' ? localStorage.getItem('organizationId') : null;
@@ -112,16 +132,18 @@ export default function MeetingsAgendasPage() {
             )}
           </SimpleTable>
 
-          <div className="border-t border-border/30 px-4 py-4">
-            <button
-              type="button"
-              onClick={() => setCreateModalOpen(true)}
-              className="text-primary hover:text-primary/80 font-medium text-sm flex items-center gap-1"
-            >
-              <Plus className="w-4 h-4" />
-              Create Agenda
-            </button>
-          </div>
+          {isAdminOrManager && (
+            <div className="border-t border-border/30 px-4 py-4">
+              <button
+                type="button"
+                onClick={() => setCreateModalOpen(true)}
+                className="text-primary hover:text-primary/80 font-medium text-sm flex items-center gap-1"
+              >
+                <Plus className="w-4 h-4" />
+                Create Agenda
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

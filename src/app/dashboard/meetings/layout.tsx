@@ -1,16 +1,17 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { FLIGHT_TERMS } from '@/lib/constants/flightTerminology';
 import { ROUTES } from '@/lib/constants/routes';
 
-const NAV_LINKS = [
+const ALL_NAV_LINKS: Array<{ href: string; label: string; adminOrManagerOnly?: boolean }> = [
   { href: ROUTES.MEETINGS_UPCOMING, label: 'Upcoming' },
   { href: ROUTES.MEETINGS_PAST, label: 'Past Meetings' },
-  { href: ROUTES.MEETINGS_AGENDAS, label: 'Agendas' },
-] as const;
+  { href: ROUTES.MEETINGS_AGENDAS, label: 'Agendas', adminOrManagerOnly: true },
+];
 
 /** True when we're on an agenda edit page (e.g. /dashboard/meetings/agendas/abc-123). */
 function isAgendaEditPath(pathname: string): boolean {
@@ -25,6 +26,20 @@ export default function MeetingsLayout({
 }) {
   const pathname = usePathname();
   const isAgendaEdit = isAgendaEditPath(pathname);
+  const [orgRole, setOrgRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('organizationRole') : null;
+    setOrgRole(stored ?? null);
+    const onRoleChange = (e: CustomEvent<{ role?: string }>) => {
+      setOrgRole(e.detail?.role ?? null);
+    };
+    window.addEventListener('organizationRoleChanged', onRoleChange as EventListener);
+    return () => window.removeEventListener('organizationRoleChanged', onRoleChange as EventListener);
+  }, []);
+
+  const isAdminOrManager = orgRole === 'ADMIN' || orgRole === 'MANAGER';
+  const navLinks = ALL_NAV_LINKS.filter((link) => !link.adminOrManagerOnly || isAdminOrManager);
 
   return (
     <DashboardLayout>
@@ -40,7 +55,7 @@ export default function MeetingsLayout({
               </div>
             </div>
             <nav className="mt-4 flex gap-6" aria-label="Meeting sections">
-              {NAV_LINKS.map(({ href, label }) => {
+              {navLinks.map(({ href, label }) => {
                 const isActive = pathname === href || (href === ROUTES.MEETINGS_AGENDAS && pathname.startsWith(ROUTES.MEETINGS_AGENDAS + '/'));
                 return (
                   <Link

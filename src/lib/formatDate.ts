@@ -9,13 +9,16 @@ export function formatDate(d: Date | string | number): string {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
-    year: 'numeric',
   });
 }
 
 export function formatTime(d: Date | string | number): string {
   const date = typeof d === 'object' && d instanceof Date ? d : new Date(d);
-  return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return date.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 export function formatDateTime(d: Date | string | number): string {

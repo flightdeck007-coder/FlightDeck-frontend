@@ -32,7 +32,7 @@ export default function MeetingsPastPage() {
   const [recapLoading, setRecapLoading] = useState(false);
   const [orgRole, setOrgRole] = useState<string | null>(null);
 
-  const now = Date.now();
+  // Past = only canceled or completed meetings. Upcoming = everything else (scheduled, in progress, suspended).
   const pastMeetings = meetings.filter((m) => m.endedAt || m.cancelledAt);
 
   useEffect(() => {

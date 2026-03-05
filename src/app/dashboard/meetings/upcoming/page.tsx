@@ -64,21 +64,39 @@ export default function MeetingsUpcomingPage() {
     teamName: string;
     scheduledAt: string;
   } | null>(null);
+  const [orgRole, setOrgRole] = useState<string | null>(null);
 
+  useEffect(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('organizationRole') : null;
+    setOrgRole(stored ?? null);
+    const onRoleChange = (e: CustomEvent<{ role?: string }>) => {
+      setOrgRole(e.detail?.role ?? null);
+    };
+    window.addEventListener('organizationRoleChanged', onRoleChange as EventListener);
+    return () => window.removeEventListener('organizationRoleChanged', onRoleChange as EventListener);
+  }, []);
+
+  const isAdminOrManager = orgRole === 'ADMIN' || orgRole === 'MANAGER';
+
+  // Upcoming = all meetings to be executed: not ended, not cancelled (scheduled + in progress + suspended).
+  // Past = only ended or cancelled. So we filter by team and then:
   const now = Date.now();
-  const upcomingMeetings = meetings.filter(
-    (m) =>
-      !m.cancelledAt &&
-      !m.endedAt &&
-      !m.suspendedAt &&
-      new Date(m.scheduledAt).getTime() > now
-  );
   const inProgressMeeting = meetings.find(
     (m) =>
       m.teamId === selectedTeamId && m.startedAt && !m.endedAt && !m.suspendedAt
   );
   const suspendedMeeting = meetings.find(
     (m) => m.teamId === selectedTeamId && m.suspendedAt && !m.endedAt
+  );
+  // Scheduled table: future meetings not yet started (in-progress/suspended shown in card/banner above)
+  const upcomingMeetings = meetings.filter(
+    (m) =>
+      m.teamId === selectedTeamId &&
+      !m.cancelledAt &&
+      !m.endedAt &&
+      !m.suspendedAt &&
+      !m.startedAt &&
+      new Date(m.scheduledAt).getTime() > now
   );
   const isFacilitatorOrScribe =
     inProgressMeeting &&
@@ -99,6 +117,16 @@ export default function MeetingsUpcomingPage() {
     if (!organizationId || !selectedTeamId) return;
     meetingSeriesService.list(organizationId, selectedTeamId).then(setAgendas).catch(() => setAgendas([]));
   }, [organizationId, selectedTeamId]);
+
+  // Refetch when user returns to this tab so all team members see in-progress/scheduled updates
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refetch();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refetch]);
 
   const handleQuickStartWithAgenda = async (meetingSeriesId: string, meetingSeriesName: string) => {
     if (!organizationId || !selectedTeamId) return;
@@ -199,7 +227,7 @@ export default function MeetingsUpcomingPage() {
           <div>
             <h2 className="text-xl font-semibold text-foreground">Upcoming</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Start or schedule meetings for your team.
+              {isAdminOrManager ? 'Start or schedule meetings for your team.' : 'Upcoming meetings for your team.'}
             </p>
           </div>
           <Select
@@ -211,8 +239,8 @@ export default function MeetingsUpcomingPage() {
           />
         </div>
 
-        {/* Hero: background image with text and Start / Schedule buttons (when no meeting in progress) */}
-        {!inProgressMeeting && (
+        {/* Hero: background image with text and Start / Schedule buttons (admin/manager only, when no meeting in progress) */}
+        {isAdminOrManager && !inProgressMeeting && (
           <div className="relative rounded-xl overflow-hidden border border-border bg-card min-h-[180px] flex items-center justify-center">
             <div
               className="absolute inset-0 z-0 bg-cover bg-center"
@@ -328,7 +356,7 @@ export default function MeetingsUpcomingPage() {
             <div className="p-8 text-center text-muted-foreground text-sm">Loading…</div>
           ) : upcomingMeetings.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground text-sm">
-              No upcoming meetings. Start or schedule one above.
+              {isAdminOrManager ? 'No upcoming meetings. Start or schedule one above.' : 'No upcoming meetings.'}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -355,21 +383,39 @@ export default function MeetingsUpcomingPage() {
                     <td className="px-4 py-3 text-sm text-muted-foreground">—</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Link
-                          href={ROUTES.MEETING(meeting.id)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium text-primary hover:bg-primary/10"
-                        >
-                          <Play className="w-4 h-4" />
-                          Start
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={(e) => openRowMenu(e, meeting.id)}
-                          className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                          aria-label="Actions"
-                        >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
+                        {(() => {
+                          const isFuture = new Date(meeting.scheduledAt).getTime() > now && !meeting.startedAt;
+                          if (isFuture) {
+                            return (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium text-muted-foreground cursor-not-allowed"
+                                title="Meeting has not started yet"
+                              >
+                                <Play className="w-4 h-4 opacity-50" />
+                                Join
+                              </span>
+                            );
+                          }
+                          return (
+                            <Link
+                              href={ROUTES.MEETING(meeting.id)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium text-primary hover:bg-primary/10"
+                            >
+                              <Play className="w-4 h-4" />
+                              Join
+                            </Link>
+                          );
+                        })()}
+                        {isAdminOrManager && (
+                          <button
+                            type="button"
+                            onClick={(e) => openRowMenu(e, meeting.id)}
+                            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                            aria-label="Meeting actions"
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

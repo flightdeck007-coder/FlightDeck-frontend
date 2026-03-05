@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Pause, Play, Square, LogOut, Wrench, FileText, AlertTriangle, Eye, EyeOff, Loader2, Users } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, Pause, Play, Square, LogOut, FileText, AlertTriangle, Eye, EyeOff, Loader2, Users } from 'lucide-react';
+import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
 
 interface MeetingSection {
   id: string;
@@ -33,6 +34,10 @@ interface MeetingSidebarProps {
   onPrevSegment?: () => void;
   onNextSegment?: () => void;
   onSuspend?: () => void;
+  /** Show Meeting notes button (facilitator or scribe only). Tangent is shown to all. */
+  canShowTangentAndNotes?: boolean;
+  /** Meeting id (for tangent broadcast) */
+  meetingId?: string;
 }
 
 export function MeetingSidebar({
@@ -58,9 +63,22 @@ export function MeetingSidebar({
   onPrevSegment,
   onNextSegment,
   onSuspend,
+  canShowTangentAndNotes = false,
+  meetingId,
 }: MeetingSidebarProps) {
+  const { socket } = useMeetingSocket();
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
+  const [tangentModalOpen, setTangentModalOpen] = useState(false);
   const currentIndex = sections.findIndex((s) => s.id === currentSection);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onTangentCalled = () => setTangentModalOpen(true);
+    socket.on('tangent_called', onTangentCalled);
+    return () => {
+      socket.off('tangent_called', onTangentCalled);
+    };
+  }, [socket]);
   const canGoPrev = currentIndex > 0 && isFacilitator;
   const canGoNext = currentIndex >= 0 && currentIndex < sections.length - 1 && isFacilitator;
   const canControlTimer = isFacilitator;
@@ -189,41 +207,71 @@ export function MeetingSidebar({
         </div>
       </div>
 
-      {/* Tangent | View tools | Show notes */}
+      {/* Tangent (all) | Show notes (facilitator/scribe only) */}
       <div className="p-4 border-t border-border space-y-2">
         <div className="flex flex-col gap-1.5">
           <button
             type="button"
+            onClick={() => {
+              if (socket && meetingId) socket.emit('tangent_called', { meetingId });
+              setTangentModalOpen(true);
+            }}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-md hover:bg-foreground/10 transition-colors text-sm bg-background text-foreground"
           >
             <AlertTriangle className="w-4 h-4 text-foreground/70" />
             Tangent
           </button>
-          <button
-            type="button"
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-md hover:bg-foreground/10 transition-colors text-sm bg-background text-foreground"
-          >
-            <Eye className="w-4 h-4 text-foreground/70" />
-            View tools
-          </button>
-          <button
-            type="button"
-            onClick={onToggleNotes}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-md hover:bg-foreground/10 transition-colors text-sm bg-background text-foreground"
-          >
-            {notesVisible ? (
-              <>
-                <EyeOff className="w-4 h-4 text-foreground/70" />
-                Hide notes
-              </>
-            ) : (
-              <>
-                <FileText className="w-4 h-4 text-foreground/70" />
-                Show notes
-              </>
-            )}
-          </button>
+          {canShowTangentAndNotes && (
+            <button
+              type="button"
+              onClick={onToggleNotes}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-md hover:bg-foreground/10 transition-colors text-sm bg-background text-foreground"
+            >
+              {notesVisible ? (
+                <>
+                  <EyeOff className="w-4 h-4 text-foreground/70" />
+                  Hide notes
+                </>
+              ) : (
+                <>
+                  <FileText className="w-4 h-4 text-foreground/70" />
+                  Show notes
+                </>
+              )}
+            </button>
+          )}
         </div>
+        {/* Tangent Called! modal */}
+        {tangentModalOpen && (
+          <>
+            <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setTangentModalOpen(false)} aria-hidden />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="bg-card border border-border rounded-xl shadow-xl max-w-sm w-full p-6 relative">
+                <button
+                  type="button"
+                  onClick={() => setTangentModalOpen(false)}
+                  className="absolute top-4 right-4 p-1 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  aria-label="Close"
+                >
+                  <span className="text-lg leading-none">×</span>
+                </button>
+                <h3 className="text-xl font-bold text-red-600 pr-8">Tangent Called!</h3>
+                <div className="flex justify-center my-4">
+                  <AlertTriangle className="w-14 h-14 text-foreground stroke-[1.5]" />
+                </div>
+                <p className="text-sm text-foreground mb-1">It&apos;s time to get back on topic.</p>
+                <p className="text-sm text-muted-foreground mb-6">Create an Issue if the tangent is worth revisiting.</p>
+                <button
+                  type="button"
+                  onClick={() => setTangentModalOpen(false)}
+                  className="w-full py-3 px-4 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-md transition-colors"
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
+          </>
+        )}
         {/* Finish (facilitator) or Exit (member) */}
         {isFacilitator ? (
           <button

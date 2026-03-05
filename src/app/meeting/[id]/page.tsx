@@ -704,6 +704,8 @@ export default function MeetingPage() {
             onPrevSegment={handlePrevSegment}
             onNextSegment={handleNextSegment}
             onSuspend={handleSuspend}
+            canShowTangentAndNotes={canRecord}
+            meetingId={meetingId}
           />
         </div>
       )}

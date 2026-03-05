@@ -193,7 +193,7 @@ export function IssuesSegmentView({
     <div className={`flex flex-col min-h-0 h-full ${wrap}`}>
       {/* Filter bar — full width */}
       <div className="flex flex-wrap items-center gap-3 py-3 -mx-6 px-4 border-t border-b border-border bg-muted/30 shrink-0">
-        <div className="flex items-center gap-1">
+        <div className={`flex items-center gap-1 ${!canUseFilters ? 'dark:[&_.ant-select-selector]:bg-zinc-600/60 dark:[&_.ant-select-selector]:text-zinc-300' : ''}`}>
           <span className="text-muted-foreground text-sm">Team:</span>
           <Select
             value={teamFilter}
@@ -206,7 +206,7 @@ export function IssuesSegmentView({
             className="w-[160px]"
           />
         </div>
-        <label className={`flex items-center gap-2 group ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
+        <label className={`flex items-center gap-2 group ${!canUseFilters ? 'cursor-not-allowed opacity-70 dark:[&_span]:text-zinc-300 dark:opacity-90' : 'cursor-pointer'}`}>
           <span className="text-sm text-foreground group-hover:text-foreground/90">Archive</span>
           <button
             type="button"
@@ -220,7 +220,7 @@ export function IssuesSegmentView({
                 return next;
               });
             }}
-            className={`relative w-11 h-6 rounded-full transition-colors border-2 flex items-center ${!canUseFilters ? 'cursor-not-allowed' : ''} ${
+            className={`relative w-11 h-6 rounded-full transition-colors border-2 flex items-center ${!canUseFilters ? 'cursor-not-allowed dark:opacity-80' : ''} ${
               archiveOn
                 ? 'bg-primary border-primary justify-end'
                 : 'bg-muted border-border justify-start hover:bg-muted/80'
@@ -234,7 +234,7 @@ export function IssuesSegmentView({
           type="button"
           onClick={canUseFilters ? () => refetch() : undefined}
           disabled={!canUseFilters}
-          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
+          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground dark:bg-zinc-600/60 dark:text-zinc-300' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
           aria-label="Refresh"
         >
           <RotateCw className="w-4 h-4" />
@@ -242,7 +242,7 @@ export function IssuesSegmentView({
         <button
           type="button"
           disabled={!canUseFilters}
-          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
+          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground dark:bg-zinc-600/60 dark:text-zinc-300' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
           aria-label="Export PDF"
         >
           <FileDown className="w-4 h-4" />
@@ -250,7 +250,7 @@ export function IssuesSegmentView({
         <button
           type="button"
           disabled={!canUseFilters}
-          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
+          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground dark:bg-zinc-600/60 dark:text-zinc-300' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
           aria-label="Download"
         >
           <Download className="w-4 h-4" />
@@ -258,12 +258,12 @@ export function IssuesSegmentView({
         <button
           type="button"
           disabled={!canUseFilters}
-          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
+          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground dark:bg-zinc-600/60 dark:text-zinc-300' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
           aria-label="Archive all completed"
         >
           <Package className="w-4 h-4" />
         </button>
-        <div className="min-w-[200px]">
+        <div className={`min-w-[200px] ${!canUseFilters ? 'dark:[&_.ant-input]:bg-zinc-600/60 dark:[&_.ant-input]:text-zinc-300' : ''}`}>
           <Input.Search
             placeholder="Search IDS™ | Level 10 Meeting™..."
             value={searchQuery}
@@ -280,7 +280,7 @@ export function IssuesSegmentView({
         <button
           type="button"
           disabled={!canUseFilters}
-          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
+          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground dark:bg-zinc-600/60 dark:text-zinc-300' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
           aria-label="Settings"
         >
           <Settings className="w-4 h-4" />
@@ -301,7 +301,7 @@ export function IssuesSegmentView({
             setActiveTab('short_term');
             if (meetingId && socket) socket.emit('issues_filter', { meetingId, activeTab: 'short_term' });
           }}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''} ${
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70 dark:bg-zinc-600/50 dark:text-zinc-300' : ''} ${
             activeTab === 'short_term'
               ? 'text-primary border-primary'
               : 'text-muted-foreground border-transparent hover:text-foreground'
@@ -316,7 +316,7 @@ export function IssuesSegmentView({
             setActiveTab('long_term');
             if (meetingId && socket) socket.emit('issues_filter', { meetingId, activeTab: 'long_term' });
           }}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''} ${
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70 dark:bg-zinc-600/50 dark:text-zinc-300' : ''} ${
             activeTab === 'long_term'
               ? 'text-primary border-primary'
               : 'text-muted-foreground border-transparent hover:text-foreground'
@@ -332,7 +332,7 @@ export function IssuesSegmentView({
               setActiveTab('completed');
               if (socket) socket.emit('issues_filter', { meetingId, activeTab: 'completed' });
             }}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''} ${
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70 dark:bg-zinc-600/50 dark:text-zinc-300' : ''} ${
               activeTab === 'completed'
                 ? 'text-primary border-primary'
                 : 'text-muted-foreground border-transparent hover:text-foreground'
@@ -389,7 +389,7 @@ export function IssuesSegmentView({
                   return next;
                 });
               }}
-              className={`flex items-center gap-1.5 text-sm transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`flex items-center gap-1.5 text-sm transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground dark:bg-zinc-600/60 dark:text-zinc-300' : 'text-muted-foreground hover:text-foreground'}`}
             >
               {statsVisible ? (
                 <>
@@ -413,7 +413,9 @@ export function IssuesSegmentView({
                   return next;
                 });
               }}
-              className={`p-1.5 rounded transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground'}`}
+              className={`p-1.5 rounded transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground dark:bg-zinc-600/60 dark:text-zinc-300' : ''} ${
+                topThreeOnly ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+              }`}
               title="Selected top 3 priority issues"
             >
               <LayoutList className="w-4 h-4" />
@@ -426,7 +428,7 @@ export function IssuesSegmentView({
                   setLayout('list');
                   if (meetingId && socket) socket.emit('issues_filter', { meetingId, layout: 'list' });
                 }}
-                className={`p-1.5 rounded transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''} ${
+                className={`p-1.5 rounded transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 dark:bg-zinc-600/60 dark:text-zinc-300' : ''} ${
                   layout === 'list' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'
                 }`}
                 title="List view"
@@ -440,10 +442,10 @@ export function IssuesSegmentView({
                   setLayout('column');
                   if (meetingId && socket) socket.emit('issues_filter', { meetingId, layout: 'column' });
                 }}
-                className={`p-1.5 rounded transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''} ${
+                className={`p-1.5 rounded transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 dark:bg-zinc-600/60 dark:text-zinc-300' : ''} ${
                   layout === 'column' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'
                 }`}
-                title="Column view"
+                title="2-column grid view"
               >
                 <LayoutGrid className="w-4 h-4" />
               </button>
@@ -457,20 +459,10 @@ export function IssuesSegmentView({
               <Loader2 className="w-8 h-8 animate-spin text-primary" aria-label="Loading" />
             </div>
           )}
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/30">
-                <th className="w-10 px-4 py-2" />
-                <th className="text-left font-medium text-foreground px-4 py-2">Title</th>
-                <th className="text-left font-medium text-foreground px-4 py-2 w-16">#</th>
-                <th className="text-left font-medium text-foreground px-4 py-2 w-24">Created</th>
-                <th className="text-left font-medium text-foreground px-4 py-2 w-20">Owner</th>
-                <th className="text-right font-medium text-foreground px-4 py-2 w-14" />
-              </tr>
-            </thead>
-            <tbody>
+          {layout === 'column' ? (
+            <div className="grid grid-cols-2 gap-4 p-4">
               {pageItems.map((item) => (
-                <IssueRow
+                <IssueCard
                   key={item.id}
                   item={item}
                   onToggleResolved={(resolved) => setResolved(item.id, resolved)}
@@ -480,8 +472,34 @@ export function IssuesSegmentView({
                   onMakeLongTerm={activeTab === 'short_term' ? () => makeLongTerm(item.id) : undefined}
                 />
               ))}
-            </tbody>
-          </table>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  <th className="w-10 px-4 py-2" />
+                  <th className="text-left font-medium text-foreground px-4 py-2">Title</th>
+                  <th className="text-left font-medium text-foreground px-4 py-2 w-16">#</th>
+                  <th className="text-left font-medium text-foreground px-4 py-2 w-24">Created</th>
+                  <th className="text-left font-medium text-foreground px-4 py-2 w-20">Owner</th>
+                  <th className="text-right font-medium text-foreground px-4 py-2 w-14" />
+                </tr>
+              </thead>
+              <tbody>
+                {pageItems.map((item) => (
+                  <IssueRow
+                    key={item.id}
+                    item={item}
+                    onToggleResolved={(resolved) => setResolved(item.id, resolved)}
+                    onPriorityChange={(priority) => updateIssue(item.id, { priority })}
+                    onArchive={() => setResolved(item.id, true)}
+                    onDelete={() => deleteIssue(item.id)}
+                    onMakeLongTerm={activeTab === 'short_term' ? () => makeLongTerm(item.id) : undefined}
+                  />
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
         <div className="p-3 border-t border-border flex items-center justify-between flex-wrap gap-2">
@@ -555,6 +573,98 @@ export function IssuesSegmentView({
         </div>
       </div>
       </div>
+      )}
+    </div>
+  );
+}
+
+function IssueCard({
+  item,
+  onToggleResolved,
+  onPriorityChange,
+  onArchive,
+  onDelete,
+  onMakeLongTerm,
+}: {
+  item: IssueItem;
+  onToggleResolved: (resolved: boolean) => void;
+  onPriorityChange: (priority: number) => void;
+  onArchive: () => void;
+  onDelete: () => void;
+  onMakeLongTerm?: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const resolved = !!item.resolvedAt;
+  const openMenu = () => {
+    if (buttonRef.current) {
+      setAnchorRect(buttonRef.current.getBoundingClientRect());
+      setMenuOpen(true);
+    }
+  };
+  return (
+    <div className="border border-border rounded-lg p-4 bg-card hover:bg-muted/5 transition-colors flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => onToggleResolved(!resolved)}
+          className="rounded-full w-6 h-6 flex items-center justify-center hover:bg-muted/80 text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
+          aria-label={resolved ? 'Mark unresolved' : 'Mark resolved'}
+        >
+          {resolved ? (
+            <CheckCircle2 className="w-5 h-5 text-primary" />
+          ) : (
+            <Circle className="w-5 h-5" />
+          )}
+        </button>
+        <button
+          ref={buttonRef}
+          type="button"
+          onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
+          className="p-1.5 rounded-md hover:bg-muted/80 text-muted-foreground shrink-0"
+          aria-label="More actions"
+        >
+          <MoreVertical className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="flex flex-col gap-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-foreground break-words">{item.title}</span>
+          {(item.attachmentCount ?? 0) > 0 && (
+            <span className="flex items-center gap-0.5 text-muted-foreground text-xs">
+              <Paperclip className="w-3 h-3" />
+              {item.attachmentCount}
+            </span>
+          )}
+        </div>
+        {resolved && item.resolvedByName && (
+          <span className="text-xs text-muted-foreground">Resolved by {item.resolvedByName}</span>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-2 mt-auto">
+        <Select
+          value={item.priority}
+          onChange={onPriorityChange}
+          options={[1, 2, 3, 4, 5].map((n) => ({ label: String(n), value: n }))}
+          className="w-[60px]"
+        />
+        <span className="text-xs text-muted-foreground">{formatDate(item.createdAt)}</span>
+        <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground shrink-0">
+          {item.ownerInitials}
+        </div>
+      </div>
+      {menuOpen && anchorRect && typeof document !== 'undefined' && (
+        <IssueRowMenu
+          anchorRect={anchorRect}
+          onClose={() => {
+            setMenuOpen(false);
+            setAnchorRect(null);
+          }}
+          onArchive={onArchive}
+          onDelete={onDelete}
+          onMakeLongTerm={onMakeLongTerm}
+        />
       )}
     </div>
   );
