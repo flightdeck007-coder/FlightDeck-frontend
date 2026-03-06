@@ -18,6 +18,7 @@ export interface TodoItem {
   title: string;
   dueDate: string | null;
   ownerInitials: string;
+  assigneeId?: string | null;
   completed: boolean;
   description?: string;
   repeat?: string;
@@ -34,6 +35,7 @@ function apiToItem(t: TodoApiItem): TodoItem {
     title: t.title,
     dueDate: t.dueDate,
     ownerInitials: t.ownerInitials,
+    assigneeId: t.assigneeId ?? undefined,
     completed: t.status === 'done',
     description: t.description ?? undefined,
     archived: t.archived,

@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import Link from 'next/link';
 import {
   useReactTable,
   getCoreRowModel,
@@ -29,9 +30,20 @@ import {
   Info,
   Loader2,
   Trash2,
+  Pencil,
+  ArrowRightToLine,
+  Copy,
+  CheckSquare,
+  AlertTriangle,
+  MinusCircle,
 } from 'lucide-react';
 import { RichTextEditor } from './RichTextEditor';
-import { scorecardGroupsService, type ScorecardGroup as ApiScorecardGroup } from '@/lib/api/meetings.service';
+import {
+  scorecardGroupsService,
+  scorecardMainGroupService,
+  scorecardMeasurablesService,
+  type ScorecardGroup as ApiScorecardGroup,
+} from '@/lib/api/meetings.service';
 import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
 
 export type TimeframeTab = 'weekly' | 'monthly' | 'quarterly' | 'annual';
@@ -85,6 +97,8 @@ export interface MeasurableRow {
   total: string;
   trend: 'up' | 'down' | 'neutral';
   periodValues: Record<string, string>;
+  /** When set, measurable appears in that group's card; when undefined/null, appears in main card */
+  groupId?: string | null;
 }
 
 const MOCK_MEASURABLES: MeasurableRow[] = [
@@ -109,7 +123,14 @@ function ScorecardTableCard({
   onExpand,
   isCollapsed,
   onCollapse,
-  onOpenSettings,
+  otherGroups,
+  onMoveToGroup,
+  onDuplicate,
+  onCreateTodo,
+  onCreateIssue,
+  onRemoveFromGroup,
+  onDelete,
+  columnVisibility,
 }: {
   title: string;
   data: MeasurableRow[];
@@ -117,7 +138,7 @@ function ScorecardTableCard({
   displayDirection: 'ltr' | 'rtl';
   newMeasurableOpen: boolean;
   onNewMeasurableToggle: () => void;
-  onCreateNew: () => void;
+  onCreateNew: (groupId: string) => void;
   onAddExisting: () => void;
   className?: string;
   groupId?: string;
@@ -128,35 +149,110 @@ function ScorecardTableCard({
   onExpand?: () => void;
   isCollapsed?: boolean;
   onCollapse?: () => void;
-  onOpenSettings?: () => void;
+  otherGroups?: { id: string; name: string }[];
+  onMoveToGroup?: (measurableIds: string[], targetGroupId: string) => void;
+  onDuplicate?: (measurableIds: string[]) => void;
+  onCreateTodo?: (measurables: MeasurableRow[]) => void;
+  onCreateIssue?: (measurables: MeasurableRow[]) => void;
+  onRemoveFromGroup?: (measurableIds: string[]) => void;
+  onDelete?: (measurableIds: string[]) => void;
+  columnVisibility?: { showStatusIndicators: boolean; showOwnerColumn: boolean; showGoalColumn: boolean; showAverageColumn: boolean; showTotalColumn: boolean };
 }) {
+  const effectiveGroupId = groupId ?? 'main';
+  const visibility = columnVisibility ?? {
+    showStatusIndicators: true,
+    showOwnerColumn: false,
+    showGoalColumn: true,
+    showAverageColumn: true,
+    showTotalColumn: true,
+  };
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectActionOpen, setSelectActionOpen] = useState(false);
+  const [moveModalOpen, setMoveModalOpen] = useState(false);
+  const [moveTargetGroupId, setMoveTargetGroupId] = useState<string | null>(null);
+  const selectActionBtnRef = useRef<HTMLButtonElement>(null);
+  const [selectActionPosition, setSelectActionPosition] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!selectActionOpen || !selectActionBtnRef.current) {
+      setSelectActionPosition(null);
+      return;
+    }
+    const rect = selectActionBtnRef.current.getBoundingClientRect();
+    setSelectActionPosition({ top: rect.bottom + 4, left: rect.right - 240 });
+  }, [selectActionOpen]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    if (data.length === 0) return;
+    const allSelected = data.every((r) => selectedIds.has(r.id));
+    setSelectedIds(allSelected ? new Set() : new Set(data.map((r) => r.id)));
+  };
+  const selectedList = Array.from(selectedIds);
+  const selectedMeasurables = data.filter((m) => selectedIds.has(m.id));
+  const firstSelectedMeasurable = selectedMeasurables[0];
+
   const columns = useMemo<ColumnDef<MeasurableRow, unknown>[]>(() => {
     const cols: ColumnDef<MeasurableRow, unknown>[] = [
-      { id: 'select', header: () => <input type="checkbox" className="rounded border-border" />, cell: () => <input type="checkbox" className="rounded border-border" />, size: 40 },
-      { id: 'trend', header: () => <span className="font-medium text-foreground">View Trend</span>, cell: ({ row }) => (
+      { id: 'select', header: () => <input type="checkbox" className="rounded border-border" checked={data.length > 0 && data.every((r) => selectedIds.has(r.id))} onChange={toggleSelectAll} />, cell: ({ row }) => <input type="checkbox" className="rounded border-border" checked={selectedIds.has(row.original.id)} onChange={() => toggleSelect(row.original.id)} />, size: 40 },
+    ];
+    if (visibility.showStatusIndicators) {
+      cols.push({ id: 'trend', header: () => <span className="font-medium text-foreground">View Trend</span>, cell: ({ row }) => (
         <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-600">
           {row.original.trend === 'down' ? <Minus className="w-3 h-3" /> : '−'}
         </span>
-      ), size: 100 },
+      ), size: 100 });
+    }
+    cols.push(
       { id: 'title', header: () => <span className="font-medium text-foreground">Title</span>, cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <span>{row.original.title}</span>
-          <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs text-foreground/70"><User className="w-3 h-3" /></span>
+          {visibility.showOwnerColumn && <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs text-foreground/70"><User className="w-3 h-3" /></span>}
         </div>
-      ), size: 180 },
-      { id: 'goal', header: () => <span className="font-medium text-foreground">Goal</span>, cell: ({ row }) => row.original.goal, size: 100 },
-      { id: 'average', header: () => <span className="font-medium text-foreground">Average</span>, cell: ({ row }) => row.original.average, size: 90 },
-      { id: 'total', header: () => <span className="font-medium text-foreground">Total</span>, cell: ({ row }) => row.original.total, size: 80 },
-      ...periodColumns.map((label, i) => ({
-        id: `period-${i}`,
-        header: () => <span className="font-medium text-foreground text-xs whitespace-nowrap">{label}</span>,
-        cell: ({ row }: { row: { original: MeasurableRow } }) => row.original.periodValues[label] ?? '—',
-        size: 100,
-      })),
-    ];
+      ), size: 180 }
+    );
+    if (visibility.showGoalColumn) cols.push({ id: 'goal', header: () => <span className="font-medium text-foreground">Goal</span>, cell: ({ row }) => row.original.goal, size: 100 });
+    if (visibility.showAverageColumn) cols.push({ id: 'average', header: () => <span className="font-medium text-foreground">Average</span>, cell: ({ row }) => row.original.average, size: 90 });
+    if (visibility.showTotalColumn) cols.push({ id: 'total', header: () => <span className="font-medium text-foreground">Total</span>, cell: ({ row }) => row.original.total, size: 80 });
+    const periodCols = (displayDirection === 'rtl' ? [...periodColumns].reverse() : periodColumns).map((label, i) => ({
+      id: `period-${i}`,
+      header: () => <span className="font-medium text-foreground text-xs whitespace-nowrap">{label}</span>,
+      cell: ({ row }: { row: { original: MeasurableRow } }) => row.original.periodValues[label] ?? '—',
+      size: 100,
+    }));
+    cols.push(...periodCols);
     return cols;
-  }, [periodColumns]);
-  const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
+  }, [periodColumns, selectedIds, data, displayDirection, visibility]);
+  const FIXED_COLUMN_IDS = useMemo(() => {
+    const ids = ['select'];
+    if (visibility.showStatusIndicators) ids.push('trend');
+    ids.push('title');
+    if (visibility.showGoalColumn) ids.push('goal');
+    if (visibility.showAverageColumn) ids.push('average');
+    if (visibility.showTotalColumn) ids.push('total');
+    return ids;
+  }, [visibility]);
+  const [columnSizing, setColumnSizing] = useState<Record<string, number>>({});
+  const table = useReactTable({
+    data,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    enableColumnResizing: true,
+    columnResizeMode: 'onChange',
+    state: { columnSizing },
+    onColumnSizingChange: setColumnSizing,
+    defaultColumn: { minSize: 40, maxSize: 500 },
+  });
+  const fixedHeaders = table.getHeaderGroups()[0]?.headers.filter((h) => FIXED_COLUMN_IDS.includes(h.column.id)) ?? [];
+  const periodHeaders = table.getHeaderGroups()[0]?.headers.filter((h) => !FIXED_COLUMN_IDS.includes(h.column.id)) ?? [];
+  const fixedWidth = fixedHeaders.reduce((sum, h) => sum + (h.column.getSize()), 0);
   const [groupMenuOpen, setGroupMenuOpen] = useState(false);
   const newMeasurableBtnRef = useRef<HTMLButtonElement>(null);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null);
@@ -173,18 +269,81 @@ function ScorecardTableCard({
     });
   }, [newMeasurableOpen]);
 
-  const showGroupMenu = (groupId && group) || onOpenSettings;
+  const showGroupMenu = Boolean(groupId && group);
   return (
+    <>
     <div className={`border border-border rounded-lg overflow-visible bg-card flex flex-col ${isCollapsed ? 'min-h-0 shrink-0' : 'min-h-[72px]'} ${className}`}>
       <div className={`flex items-center justify-between gap-2 p-4 shrink-0 ${isCollapsed ? 'bg-muted/20' : 'border-b border-border bg-muted/20'}`}>
         <h2 className="text-lg font-semibold text-foreground truncate">{title}{isCollapsed && <span className="text-muted-foreground font-normal ml-2">({data.length} measurables)</span>}</h2>
         <div className="flex items-center gap-1 shrink-0">
+          {selectedList.length > 0 && (
+            <div className="relative">
+              <button
+                ref={selectActionBtnRef}
+                type="button"
+                onClick={() => setSelectActionOpen((o) => !o)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium cursor-pointer"
+              >
+                Select action <ChevronDown className="w-4 h-4" />
+              </button>
+              {selectActionOpen && selectActionPosition != null && typeof document !== 'undefined' &&
+                createPortal(
+                  <>
+                    <div
+                      className="fixed z-[100] py-2 bg-card border border-border rounded-md shadow-lg min-w-[220px]"
+                      style={{ top: selectActionPosition.top, left: selectActionPosition.left }}
+                    >
+                      <div className="space-y-1">
+                        {otherGroups && otherGroups.length > 0 && onMoveToGroup && (
+                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-sm" onClick={() => { setSelectActionOpen(false); setMoveModalOpen(true); }}>
+                            <ArrowRightToLine className="w-4 h-4 shrink-0" /> Move to group
+                          </button>
+                        )}
+                        {onDuplicate && (
+                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-sm" onClick={() => { setSelectActionOpen(false); onDuplicate(selectedList); setSelectedIds(new Set()); }}>
+                            <Copy className="w-4 h-4 shrink-0" /> Duplicate
+                          </button>
+                        )}
+                      </div>
+                      <div className="border-t border-border my-2" role="separator" />
+                      <div className="space-y-1">
+                        {onCreateTodo && selectedMeasurables.length > 0 && (
+                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-sm" onClick={() => { setSelectActionOpen(false); onCreateTodo(selectedMeasurables); setSelectedIds(new Set()); }}>
+                            <CheckSquare className="w-4 h-4 shrink-0" /> Create To-Do
+                          </button>
+                        )}
+                        {onCreateIssue && selectedMeasurables.length > 0 && (
+                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-sm" onClick={() => { setSelectActionOpen(false); onCreateIssue(selectedMeasurables); setSelectedIds(new Set()); }}>
+                            <AlertTriangle className="w-4 h-4 shrink-0" /> Create Issue
+                          </button>
+                        )}
+                      </div>
+                      <div className="border-t border-border my-2" role="separator" />
+                      <div className="space-y-1">
+                        {onRemoveFromGroup && (
+                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer text-destructive rounded-sm" onClick={() => { setSelectActionOpen(false); onRemoveFromGroup(selectedList); setSelectedIds(new Set()); }}>
+                            <MinusCircle className="w-4 h-4 shrink-0" /> Remove from group
+                          </button>
+                        )}
+                        {onDelete && (
+                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer text-destructive rounded-sm" onClick={() => { setSelectActionOpen(false); onDelete(selectedList); setSelectedIds(new Set()); }}>
+                            <Trash2 className="w-4 h-4 shrink-0" /> Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="fixed inset-0 z-[99]" onClick={() => setSelectActionOpen(false)} aria-hidden />
+                  </>,
+                  document.body
+                )}
+            </div>
+          )}
           <div className="relative">
             <button
               ref={newMeasurableBtnRef}
               type="button"
               onClick={onNewMeasurableToggle}
-              className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium cursor-pointer"
+              className="flex items-center gap-2 px-3 py-1.5 border border-border text-primary rounded-md hover:bg-accent bg-background text-sm font-medium cursor-pointer transition-colors"
             >
               New Measurable <ChevronDown className="w-4 h-4" />
             </button>
@@ -195,7 +354,7 @@ function ScorecardTableCard({
                     className="fixed z-[100] py-1 bg-card border border-border rounded-md shadow-lg min-w-[200px]"
                     style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
                   >
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer" onClick={() => { onNewMeasurableToggle(); onCreateNew(); }}><Plus className="w-4 h-4" /> Create new Measurable</button>
+                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer" onClick={() => { onNewMeasurableToggle(); onCreateNew(effectiveGroupId); }}><Plus className="w-4 h-4" /> Create new Measurable</button>
                     <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer" onClick={() => { onNewMeasurableToggle(); onAddExisting(); }}><Plus className="w-4 h-4" /> Add existing Measurable</button>
                   </div>
                   <div className="fixed inset-0 z-[99]" onClick={onNewMeasurableToggle} aria-hidden />
@@ -212,18 +371,12 @@ function ScorecardTableCard({
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setGroupMenuOpen(false)} aria-hidden />
                   <div className="absolute right-0 top-full mt-1 py-1 bg-card border border-border rounded-md shadow-lg z-20 min-w-[180px]">
-                    {groupId && group ? (
-                      <>
-                        <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer" onClick={() => { setGroupMenuOpen(false); onEditGroup?.(group); }}>Edit group details</button>
-                        {onDeleteGroup && (
-                          <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive" onClick={() => { setGroupMenuOpen(false); onDeleteGroup(group.id); }}>
-                            <Trash2 className="w-4 h-4" /> Delete group
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer" onClick={() => { setGroupMenuOpen(false); onOpenSettings?.(); }}>
-                        <Settings className="w-4 h-4" /> Scorecard settings
+                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer" onClick={() => { setGroupMenuOpen(false); onEditGroup?.(group!); }}>
+                      <Pencil className="w-4 h-4 shrink-0" /> Edit group details
+                    </button>
+                    {onDeleteGroup && (
+                      <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive" onClick={() => { setGroupMenuOpen(false); onDeleteGroup(group!.id); }}>
+                        <Trash2 className="w-4 h-4 shrink-0" /> Delete group
                       </button>
                     )}
                   </div>
@@ -244,40 +397,131 @@ function ScorecardTableCard({
         </div>
       </div>
       {!isCollapsed && (
-      <div className="overflow-auto flex-1 min-h-0" dir={displayDirection}>
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id}>
-                {hg.headers.map((h) => (
-                  <th key={h.id} className={`text-left font-medium text-foreground border-b border-border px-3 py-2 whitespace-nowrap bg-muted/30 ${h.index === 0 ? 'sticky left-0 z-20 bg-muted shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]' : ''}`} style={{ width: h.getSize(), minWidth: h.getSize() }}>
+      <div className="flex flex-1 min-h-0 overflow-hidden" dir={displayDirection}>
+        {/* Left section: fixed columns (through Total), no scroll */}
+        <div className="shrink-0 overflow-hidden bg-card" style={{ width: fixedWidth }}>
+          <table className="w-full border-collapse text-sm table-fixed">
+            <thead>
+              <tr>
+                {fixedHeaders.map((h) => (
+                  <th key={h.id} className="text-left font-medium text-foreground border-b border-border px-3 py-2 whitespace-nowrap bg-muted/30 relative group" style={{ width: h.column.getSize(), minWidth: h.column.getSize() }}>
                     {typeof h.column.columnDef.header === 'function' ? flexRender(h.column.columnDef.header, h.getContext()) : h.column.columnDef.header}
+                    <div
+                      onMouseDown={h.getResizeHandler()}
+                      onTouchStart={h.getResizeHandler()}
+                      className="absolute right-0 top-0 h-full w-0.5 cursor-col-resize touch-none select-none bg-border border-r border-border hover:bg-primary/30 hover:border-primary/50 active:bg-primary active:border-primary"
+                      style={{ userSelect: 'none' }}
+                      aria-hidden
+                    />
                   </th>
                 ))}
               </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.length === 0 ? (
-              <tr><td colSpan={table.getAllColumns().length} className="px-3 py-8 text-center text-muted-foreground border-b border-border">No data to show</td></tr>
-            ) : (
-              table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-b border-border hover:bg-muted/20">
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className={`px-3 py-2 text-foreground whitespace-nowrap ${cell.column.id === 'select' ? 'sticky left-0 z-10 bg-card border-r border-border' : ''}`} style={{ width: cell.column.getSize(), minWidth: cell.column.getSize() }}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
+            </thead>
+            <tbody>
+              {table.getRowModel().rows.length === 0 ? (
+                <tr><td colSpan={fixedHeaders.length} className="px-3 py-8 text-center text-muted-foreground border-b border-border">No data to show</td></tr>
+              ) : (
+                table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className="border-b border-border hover:bg-muted/20">
+                    {row.getVisibleCells().filter((cell) => FIXED_COLUMN_IDS.includes(cell.column.id)).map((cell) => (
+                      <td key={cell.id} className="px-3 py-2 text-foreground whitespace-nowrap" style={{ width: cell.column.getSize(), minWidth: cell.column.getSize() }}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        {/* Right section: date columns, scrollable, blue divider */}
+        <div className="flex-1 min-w-0 flex flex-col border-l-2 border-primary">
+          <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
+            <table className="border-collapse text-sm w-max min-w-full">
+              <thead>
+                <tr>
+                  {periodHeaders.map((h) => (
+                    <th key={h.id} className="text-left font-medium text-foreground border-b border-border px-3 py-2 whitespace-nowrap bg-muted/30 text-xs relative group" style={{ width: h.column.getSize(), minWidth: h.column.getSize() }}>
+                      {typeof h.column.columnDef.header === 'function' ? flexRender(h.column.columnDef.header, h.getContext()) : h.column.columnDef.header}
+                      <div
+                        onMouseDown={h.getResizeHandler()}
+                        onTouchStart={h.getResizeHandler()}
+                        className="absolute right-0 top-0 h-full w-0.5 cursor-col-resize touch-none select-none bg-border border-r border-border hover:bg-primary/30 hover:border-primary/50 active:bg-primary active:border-primary"
+                        style={{ userSelect: 'none' }}
+                        aria-hidden
+                      />
+                    </th>
                   ))}
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {table.getRowModel().rows.length === 0 ? null : (
+                  table.getRowModel().rows.map((row) => (
+                    <tr key={row.id} className="border-b border-border hover:bg-muted/20">
+                      {row.getVisibleCells().filter((cell) => !FIXED_COLUMN_IDS.includes(cell.column.id)).map((cell) => (
+                        <td key={cell.id} className="px-3 py-2 text-foreground whitespace-nowrap" style={{ width: cell.column.getSize(), minWidth: cell.column.getSize() }}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
       )}
     </div>
+      {/* Move to group modal */}
+      {moveModalOpen && otherGroups && otherGroups.length > 0 && onMoveToGroup && (
+        <>
+          <div className="fixed inset-0 bg-black/20 z-40" onClick={() => { setMoveModalOpen(false); setMoveTargetGroupId(null); }} aria-hidden />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-card border border-border rounded-lg shadow-xl max-w-sm w-full p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-4">
+                {selectedList.length === 1 ? 'Move Measurable 1' : `Move ${selectedList.length} measurables`}
+              </h3>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-foreground mb-2">New Measurable Group</label>
+                <Select
+                  placeholder="Select group..."
+                  value={moveTargetGroupId}
+                  onChange={(v) => setMoveTargetGroupId(v)}
+                  options={otherGroups.map((g) => ({ label: g.name, value: g.id }))}
+                  className="w-full"
+                  allowClear
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => { setMoveModalOpen(false); setMoveTargetGroupId(null); }} className="px-4 py-2 border border-border rounded-md hover:bg-muted text-sm font-medium">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!moveTargetGroupId}
+                  onClick={() => {
+                    if (moveTargetGroupId) {
+                      onMoveToGroup(selectedList, moveTargetGroupId);
+                      setMoveModalOpen(false);
+                      setMoveTargetGroupId(null);
+                      setSelectedIds(new Set());
+                    }
+                  }}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Move
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }
+
+type CreatePopupType = 'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message';
 
 interface InstrumentsSegmentViewProps {
   teamName?: string;
@@ -287,6 +531,12 @@ interface InstrumentsSegmentViewProps {
   isFacilitator?: boolean;
   /** Scribe or facilitator: can change scorecard filters and create groups/measurables */
   canRecord?: boolean;
+  /** When true, meeting is scheduled in the future (not started); scorecard shows grey bg and disabled controls */
+  isMeetingInFuture?: boolean;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string }) => void;
+  onOpenCreateIssue?: () => void;
+  /** Meeting attendees for Person/Owner dropdowns (scorecard measurables) */
+  meetingAttendances?: Array<{ id: string; user: { id: string; name?: string | null; email: string } }>;
 }
 
 export function InstrumentsSegmentView({
@@ -296,8 +546,12 @@ export function InstrumentsSegmentView({
   organizationId,
   isFacilitator = true,
   canRecord,
+  isMeetingInFuture = false,
+  onOpenCreate,
+  onOpenCreateIssue,
+  meetingAttendances = [],
 }: InstrumentsSegmentViewProps) {
-  const canUseFilters = canRecord ?? isFacilitator;
+  const canUseFilters = (canRecord ?? isFacilitator) && !isMeetingInFuture;
   const [timeframe, setTimeframe] = useState<TimeframeTab>('weekly');
   const [viewBy, setViewBy] = useState<ViewBy>('week');
   const [dateRange, setDateRange] = useState<DateRangeKey>('last13weeks');
@@ -311,11 +565,32 @@ export function InstrumentsSegmentView({
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [addExistingModalOpen, setAddExistingModalOpen] = useState(false);
   const [createMeasurableOpen, setCreateMeasurableOpen] = useState(false);
+  const [createMeasurableForGroupId, setCreateMeasurableForGroupId] = useState<string | null>(null);
   const [deleteConfirmGroupId, setDeleteConfirmGroupId] = useState<string | null>(null);
   const [deleteGroupLoading, setDeleteGroupLoading] = useState(false);
   const moreMenuBtnRef = useRef<HTMLButtonElement>(null);
 
   const handleDeleteGroup = async (groupId: string) => {
+    if (groupId === 'main') {
+      if (!organizationId || !meetingId) {
+        setDeleteConfirmGroupId(null);
+        return;
+      }
+      setDeleteGroupLoading(true);
+      try {
+        await scorecardMainGroupService.update(organizationId, meetingId, { hidden: true });
+        setMainGroupHidden(true);
+        setEditGroupId(null);
+        setEditGroupInitial(null);
+        setCreateGroupOpen(false);
+        setCreateGroupName('');
+        setCreateGroupDescription('');
+        setDeleteConfirmGroupId(null);
+      } finally {
+        setDeleteGroupLoading(false);
+      }
+      return;
+    }
     if (!organizationId || !meetingId) return;
     setDeleteGroupLoading(true);
     try {
@@ -329,6 +604,7 @@ export function InstrumentsSegmentView({
       });
       if (editGroupId === groupId) {
         setEditGroupId(null);
+        setEditGroupInitial(null);
         setCreateGroupOpen(false);
         setCreateGroupName('');
         setCreateGroupDescription('');
@@ -377,7 +653,14 @@ export function InstrumentsSegmentView({
   const [measurables, setMeasurables] = useState<MeasurableRow[]>(MOCK_MEASURABLES);
   const [addExistingSearch, setAddExistingSearch] = useState('');
   const [addExistingPersonFilter, setAddExistingPersonFilter] = useState<string>('All');
-  const MOCK_PERSONS = ['Unassigned', 'Gulraiz Saeed'];
+  const personOptions = useMemo(() => {
+    const list = Array.isArray(meetingAttendances) ? meetingAttendances : [];
+    return [
+      { label: 'All', value: 'All' },
+      { label: 'Unassigned', value: 'Unassigned' },
+      ...list.map((a) => ({ label: a.user?.name || a.user?.email || a.user?.id || 'Unknown', value: a.user?.id ?? a.id })),
+    ];
+  }, [meetingAttendances]);
   const [savedMeasurables, setSavedMeasurables] = useState<MeasurableRow[]>([]);
   const [createMeasurableTitle, setCreateMeasurableTitle] = useState('');
   const [createMeasurableDescription, setCreateMeasurableDescription] = useState('');
@@ -391,9 +674,17 @@ export function InstrumentsSegmentView({
   const [createMeasurableRollup, setCreateMeasurableRollup] = useState('Total (default)');
   const [createMeasurableFormulaBuilder, setCreateMeasurableFormulaBuilder] = useState(false);
   const [editGroupId, setEditGroupId] = useState<string | null>(null);
+  const [editGroupInitial, setEditGroupInitial] = useState<{ name: string; description: string } | null>(null);
   const [createGroupSaving, setCreateGroupSaving] = useState(false);
+  const [mainGroupName, setMainGroupName] = useState('');
+  const [mainGroupDescription, setMainGroupDescription] = useState('');
+  const [mainGroupHidden, setMainGroupHidden] = useState(false);
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(new Set());
+  const [scorecardHistory, setScorecardHistory] = useState<MeasurableRow[][]>([]);
+  const [scorecardRedo, setScorecardRedo] = useState<MeasurableRow[][]>([]);
+  const measurablesRef = useRef<MeasurableRow[]>(measurables);
+  measurablesRef.current = measurables;
 
   const periodColumns = useMemo(() => {
     if (timeframe === 'weekly') return getWeekRangeLabels(13);
@@ -412,9 +703,12 @@ export function InstrumentsSegmentView({
   }, [timeframe]);
 
   const useApiGroups = Boolean(meetingId && organizationId);
+  const [scorecardGroupsLoading, setScorecardGroupsLoading] = useState(false);
+  const [scorecardMeasurablesLoading, setScorecardMeasurablesLoading] = useState(false);
 
   const fetchScorecardGroups = useCallback(async () => {
     if (!organizationId || !meetingId) return;
+    setScorecardGroupsLoading(true);
     try {
       const list = await scorecardGroupsService.list(organizationId, meetingId);
       const byTab: Record<TimeframeTab, Array<{ id: string; name: string; description?: string }>> = {
@@ -430,6 +724,8 @@ export function InstrumentsSegmentView({
       setGroupsByTimeframe(byTab);
     } catch {
       // keep local state on error
+    } finally {
+      setScorecardGroupsLoading(false);
     }
   }, [meetingId, organizationId]);
 
@@ -437,6 +733,75 @@ export function InstrumentsSegmentView({
     if (!useApiGroups) return;
     fetchScorecardGroups();
   }, [useApiGroups, fetchScorecardGroups]);
+
+  const fetchMainGroupSettings = useCallback(async () => {
+    if (!organizationId || !meetingId) return;
+    try {
+      const settings = await scorecardMainGroupService.get(organizationId, meetingId);
+      if (settings) {
+        if (settings.hidden === true) setMainGroupHidden(true);
+        if (settings.name != null) setMainGroupName(settings.name);
+        if (settings.description != null) setMainGroupDescription(settings.description);
+      }
+    } catch {
+      // keep defaults
+    }
+  }, [organizationId, meetingId]);
+
+  const fetchScorecardMeasurables = useCallback(async () => {
+    if (!organizationId || !meetingId) return;
+    setScorecardMeasurablesLoading(true);
+    try {
+      const list = await scorecardMeasurablesService.list(organizationId, meetingId);
+      if (list.length > 0) {
+        setMeasurables(
+          list.map((m) => ({
+            id: m.id,
+            title: m.title,
+            goal: m.goal,
+            average: m.average,
+            total: m.total,
+            trend: m.trend,
+            periodValues: m.periodValues ?? {},
+            groupId: m.groupId ?? undefined,
+          }))
+        );
+      } else {
+        const seed = MOCK_MEASURABLES.map((m) => ({ ...m, groupId: undefined as string | undefined }));
+        setMeasurables(seed);
+        await scorecardMeasurablesService.upsert(
+          organizationId,
+          meetingId,
+          seed.map((m, i) => ({
+            id: m.id,
+            scorecardGroupId: (m.groupId === undefined || m.groupId === 'main') ? null : m.groupId,
+            title: m.title,
+            goal: m.goal,
+            average: m.average,
+            total: m.total,
+            trend: m.trend,
+            periodValues: m.periodValues,
+            order: i,
+          }))
+        );
+      }
+    } catch {
+      // keep mock
+    } finally {
+      setScorecardMeasurablesLoading(false);
+    }
+  }, [organizationId, meetingId]);
+
+  useEffect(() => {
+    if (!organizationId || !meetingId) return;
+    fetchMainGroupSettings();
+  }, [organizationId, meetingId, fetchMainGroupSettings]);
+
+  useEffect(() => {
+    if (!organizationId || !meetingId) return;
+    fetchScorecardMeasurables();
+  }, [organizationId, meetingId, fetchScorecardMeasurables]);
+
   const wrap = embedded ? 'pt-0 pb-4' : 'pt-0 pb-6';
   const contentPad = embedded ? 'px-4' : 'px-6';
 
@@ -467,14 +832,250 @@ export function InstrumentsSegmentView({
     };
   }, [socket, meetingId, useApiGroups, fetchScorecardGroups]);
 
+  useEffect(() => {
+    if (!socket || !meetingId || !organizationId) return;
+    const onMainGroupChanged = () => fetchMainGroupSettings();
+    socket.on('scorecard_main_group_changed', onMainGroupChanged);
+    return () => {
+      socket.off('scorecard_main_group_changed', onMainGroupChanged);
+    };
+  }, [socket, meetingId, organizationId, fetchMainGroupSettings]);
+
+  useEffect(() => {
+    if (!socket || !meetingId || !organizationId) return;
+    const onMeasurablesChanged = () => fetchScorecardMeasurables();
+    socket.on('scorecard_measurables_changed', onMeasurablesChanged);
+    return () => {
+      socket.off('scorecard_measurables_changed', onMeasurablesChanged);
+    };
+  }, [socket, meetingId, organizationId, fetchScorecardMeasurables]);
+
   const timeframeLabel = timeframe === 'weekly' ? 'Weekly' : timeframe === 'monthly' ? 'Monthly' : timeframe === 'quarterly' ? 'Quarterly' : 'Annual';
   const currentGroups = groupsByTimeframe[timeframe] || [];
+  const mainGroup = { id: 'main', name: mainGroupName || `${timeframeLabel} KPIs`, description: mainGroupDescription || undefined };
+  /** Move targets for main card: only real API groups (no synthetic default). */
+  const otherGroupsForMain = currentGroups;
+  /** For a custom group card: only other real groups. Include main only if it exists (not hidden/deleted). */
+  const otherGroupsForGroupId = useCallback(
+    (groupId: string) => {
+      const others = currentGroups.filter((g) => g.id !== groupId);
+      if (!mainGroupHidden) return [{ id: 'main', name: mainGroup.name }, ...others];
+      return others;
+    },
+    [mainGroup.name, mainGroupHidden, currentGroups]
+  );
+  const mainMeasurables = measurables.filter((m) => !m.groupId || m.groupId === 'main');
+  /** Measurables visible on the current tab (main + any group in this timeframe). */
+  const measurablesForCurrentTab = useMemo(
+    () => measurables.filter((m) => !m.groupId || m.groupId === 'main' || currentGroups.some((g) => g.id === m.groupId)),
+    [measurables, currentGroups]
+  );
+
+  const downloadCsv = useCallback((rows: MeasurableRow[], filename: string) => {
+    const periodKeys = rows.length ? Object.keys(rows.reduce((acc, r) => ({ ...acc, ...r.periodValues }), {} as Record<string, string>)) : [];
+    const headers = ['Title', 'Goal', 'Average', 'Total', 'Trend', ...periodKeys];
+    const escape = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const csv = [headers.map(escape).join(','), ...rows.map((r) => [r.title, r.goal, r.average, r.total, r.trend, ...periodKeys.map((k) => r.periodValues[k] ?? '')].map(String).map(escape).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const downloadPdf = useCallback((rows: MeasurableRow[], title: string) => {
+    const periodKeys = rows.length ? Object.keys(rows.reduce((acc, r) => ({ ...acc, ...r.periodValues }), {} as Record<string, string>)) : [];
+    const headers = ['Title', 'Goal', 'Average', 'Total', 'Trend', ...periodKeys];
+    const th = headers.map((h) => `<th style="border:1px solid #ccc;padding:6px;text-align:left">${h}</th>`).join('');
+    const trs = rows.map((r) => `<tr>${[r.title, r.goal, r.average, r.total, r.trend, ...periodKeys.map((k) => r.periodValues[k] ?? '')].map((c) => `<td style="border:1px solid #ccc;padding:6px">${String(c)}</td>`).join('')}</tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><title>${title}</title></head><body><h2>${title}</h2><table style="border-collapse:collapse;width:100%"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></body></html>`;
+    const w = window.open('', '_blank');
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+      w.onload = () => { w.print(); w.close(); };
+    }
+  }, []);
+
+  const scorecardColumnVisibility = useMemo(
+    () => ({
+      showStatusIndicators: scorecardSettings[timeframe].showStatusIndicators,
+      showOwnerColumn: scorecardSettings[timeframe].showOwnerColumn,
+      showGoalColumn: scorecardSettings[timeframe].showGoalColumn,
+      showAverageColumn: scorecardSettings[timeframe].showAverageColumn,
+      showTotalColumn: scorecardSettings[timeframe].showTotalColumn,
+    }),
+    [scorecardSettings, timeframe]
+  );
+  const pushScorecardHistory = useCallback(() => {
+    setScorecardHistory((h) => [...h, measurablesRef.current]);
+    setScorecardRedo([]);
+  }, []);
+
+  const handleUndoScorecard = useCallback(() => {
+    if (!organizationId || !meetingId) return;
+    setScorecardHistory((h) => {
+      if (h.length === 0) return h;
+      const prev = h[h.length - 1];
+      setScorecardRedo((r) => [...r, measurablesRef.current]);
+      setMeasurables(prev);
+      scorecardMeasurablesService
+        .upsert(
+          organizationId,
+          meetingId,
+          prev.map((m, i) => ({
+            id: m.id,
+            scorecardGroupId: m.groupId === undefined || m.groupId === 'main' ? null : m.groupId,
+            title: m.title,
+            goal: m.goal,
+            average: m.average,
+            total: m.total,
+            trend: m.trend,
+            periodValues: m.periodValues,
+            order: i,
+          }))
+        )
+        .catch((e) => console.error('Failed to persist undo', e));
+      return h.slice(0, -1);
+    });
+  }, [organizationId, meetingId]);
+
+  const handleRedoScorecard = useCallback(() => {
+    if (!organizationId || !meetingId) return;
+    setScorecardRedo((r) => {
+      if (r.length === 0) return r;
+      const next = r[r.length - 1];
+      setScorecardHistory((h) => [...h, measurablesRef.current]);
+      setMeasurables(next);
+      scorecardMeasurablesService
+        .upsert(
+          organizationId,
+          meetingId,
+          next.map((m, i) => ({
+            id: m.id,
+            scorecardGroupId: m.groupId === undefined || m.groupId === 'main' ? null : m.groupId,
+            title: m.title,
+            goal: m.goal,
+            average: m.average,
+            total: m.total,
+            trend: m.trend,
+            periodValues: m.periodValues,
+            order: i,
+          }))
+        )
+        .catch((e) => console.error('Failed to persist redo', e));
+      return r.slice(0, -1);
+    });
+  }, [organizationId, meetingId]);
+
+  const handleDuplicateMeasurables = useCallback(
+    async (ids: string[]) => {
+      pushScorecardHistory();
+      setMeasurables((prev) => {
+        const newRows = ids.map((id) => {
+          const m = prev.find((x) => x.id === id);
+          return m ? { ...m, id: `dup-${Date.now()}-${id}` } : null;
+        }).filter((x): x is MeasurableRow => x != null);
+        const next = [...prev, ...newRows];
+        if (organizationId && meetingId) {
+          scorecardMeasurablesService
+            .upsert(
+              organizationId,
+              meetingId,
+              next.map((m, i) => ({
+                id: m.id,
+                scorecardGroupId: (m.groupId === undefined || m.groupId === 'main') ? null : m.groupId,
+                title: m.title,
+                goal: m.goal,
+                average: m.average,
+                total: m.total,
+                trend: m.trend,
+                periodValues: m.periodValues,
+                order: i,
+              }))
+            )
+            .catch((e) => console.error('Failed to save duplicated measurables', e));
+        }
+        return next;
+      });
+    },
+    [organizationId, meetingId, pushScorecardHistory]
+  );
+  const handleRemoveFromGroup = useCallback(
+    async (ids: string[]) => {
+      pushScorecardHistory();
+      if (organizationId && meetingId) {
+        try {
+          await Promise.all(
+            ids.map((id) =>
+              scorecardMeasurablesService.updateGroup(organizationId, meetingId, id, null)
+            )
+          );
+        } catch (e) {
+          console.error('Failed to remove from group', e);
+        }
+      }
+      setMeasurables((prev) => prev.map((m) => (ids.includes(m.id) ? { ...m, groupId: undefined } : m)));
+    },
+    [organizationId, meetingId, pushScorecardHistory]
+  );
+  const handleCreateTodoFromMeasurable = useCallback((measurables: MeasurableRow[]) => {
+    const n = measurables.length;
+    const title = `Review ${n} Measurable${n === 1 ? '' : 's'}`;
+    const description = 'Measurables:\n' + measurables.map((m) => '• ' + m.title).join('\n');
+    onOpenCreate?.('todo', { title, description });
+  }, [onOpenCreate]);
+  const handleCreateIssueFromMeasurable = useCallback((measurables: MeasurableRow[]) => {
+    const n = measurables.length;
+    const title = `Review ${n} Measurable${n === 1 ? '' : 's'}`;
+    const description = 'Measurables:\n' + measurables.map((m) => '• ' + m.title).join('\n');
+    onOpenCreate?.('issue', { title, description });
+  }, [onOpenCreate]);
+  const handleMoveToGroup = useCallback(
+    async (measurableIds: string[], targetGroupId: string) => {
+      if (!organizationId || !meetingId) return;
+      pushScorecardHistory();
+      const apiGroupId = targetGroupId === 'main' ? null : targetGroupId;
+      const displayGroupId = targetGroupId === 'main' ? undefined : targetGroupId;
+      try {
+        await Promise.all(
+          measurableIds.map((id) =>
+            scorecardMeasurablesService.updateGroup(organizationId, meetingId, id, apiGroupId)
+          )
+        );
+        setMeasurables((prev) =>
+          prev.map((m) => (measurableIds.includes(m.id) ? { ...m, groupId: displayGroupId } : m))
+        );
+      } catch (e) {
+        console.error('Failed to move measurables', e);
+      }
+    },
+    [organizationId, meetingId, pushScorecardHistory]
+  );
+
+  const handleDeleteMeasurables = useCallback(
+    async (ids: string[]) => {
+      if (!organizationId || !meetingId) return;
+      pushScorecardHistory();
+      try {
+        await Promise.all(
+          ids.map((id) => scorecardMeasurablesService.delete(organizationId, meetingId, id))
+        );
+        setMeasurables((prev) => prev.filter((m) => !ids.includes(m.id)));
+      } catch (e) {
+        console.error('Failed to delete measurables', e);
+      }
+    },
+    [organizationId, meetingId, pushScorecardHistory]
+  );
 
   return (
-    <div className={`flex flex-col min-h-0 h-full ${wrap}`}>
-      {/* Details header: tabs + filters — full width like main header */}
-      <div className="-mx-6 px-4 border-t border-b border-border bg-muted/30 shrink-0">
-        <div className="flex gap-0 border-b border-border mb-0 shrink-0">
+    <div className={`flex flex-col min-h-0 h-full ${wrap} ${isMeetingInFuture ? 'bg-muted/40 cursor-not-allowed' : ''}`}>
+      {/* Section-style tabs: Weekly / Monthly / Quarterly / Annual (like Upcoming / Past / Agenda) */}
+      <div className="-mx-6 border-b border-border shrink-0 bg-background mt-0">
+        <div className="flex gap-0">
           {(['weekly', 'monthly', 'quarterly', 'annual'] as const).map((tab) => (
             <button
               key={tab}
@@ -485,121 +1086,112 @@ export function InstrumentsSegmentView({
                 if (meetingId && socket) socket.emit('scorecard_filter', { meetingId, timeframe: tab });
               }}
               disabled={!canUseFilters}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors rounded-t-md ${timeframe === tab ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'} ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
+              className={`px-6 py-3 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors rounded-t-md ${
+                timeframe === tab
+                  ? 'border-primary text-primary bg-primary/5'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              } ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-3 py-3 shrink-0">
-          <Select
-            value={teamName}
-            options={[{ label: 'Leadership Team', value: teamName }]}
-            className="w-[160px]"
-          />
-          <span className="text-muted-foreground text-sm">View by:</span>
-          <Select<ViewBy>
-            value={viewBy}
-            onChange={(v) => {
-              if (!canUseFilters) return;
-              if (v) setViewBy(v);
-              if (meetingId && socket && v) socket.emit('scorecard_filter', { meetingId, viewBy: v });
-            }}
-            disabled={!canUseFilters}
-            options={[
-              { label: 'Week', value: 'week' },
-              { label: 'Month', value: 'month' },
-              { label: 'Quarter', value: 'quarter' },
-              { label: 'Year', value: 'year' },
-            ]}
-            className="min-w-[100px]"
-          />
-          <span className="text-muted-foreground text-sm">Date Range:</span>
-          <Select<DateRangeKey>
-            value={dateRange}
-            onChange={(v) => {
-              if (!canUseFilters) return;
-              if (v) setDateRange(v);
-              if (meetingId && socket && v) socket.emit('scorecard_filter', { meetingId, dateRange: v });
-            }}
-            disabled={!canUseFilters}
-            options={DATE_RANGE_OPTIONS}
-            className="min-w-[180px]"
-          />
-          {/* LTR / RTL display toggle — immediately after date range */}
-          <div className="flex rounded-lg border border-border overflow-hidden bg-muted/30">
-            <button
-              type="button"
-              onClick={() => {
+      </div>
+      {/* Filters row: dropdowns + LTR/RTL | space | undo/redo/search/actions */}
+      <div className={`-mx-6 px-4 border-b border-border shrink-0 py-2.5 ${isMeetingInFuture ? 'bg-muted/50' : 'bg-muted/30'}`}>
+        <div className="flex flex-nowrap items-center justify-between gap-4 min-w-0">
+          <div className="flex flex-nowrap items-center gap-4 shrink-0">
+            <Select
+              value={teamName}
+              options={[{ label: 'Leadership Team', value: teamName }]}
+              className="w-[140px] shrink-0"
+              disabled={!canUseFilters}
+            />
+            <span className="text-muted-foreground text-xs shrink-0">View by:</span>
+            <Select<ViewBy>
+              value={viewBy}
+              onChange={(v) => {
                 if (!canUseFilters) return;
-                setDisplayDirection('rtl');
-                if (meetingId && socket) socket.emit('scorecard_filter', { meetingId, displayDirection: 'rtl' });
+                if (v) setViewBy(v);
+                if (meetingId && socket && v) socket.emit('scorecard_filter', { meetingId, viewBy: v });
               }}
               disabled={!canUseFilters}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${displayDirection === 'rtl' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'} ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
-              title="Right to left"
-            >
-              <BarChart2 className="w-4 h-4" />
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
+              options={[
+                { label: 'Week', value: 'week' },
+                { label: 'Month', value: 'month' },
+                { label: 'Quarter', value: 'quarter' },
+                { label: 'Year', value: 'year' },
+              ]}
+              className="min-w-[88px] w-[88px] shrink-0"
+            />
+            <span className="text-muted-foreground text-xs shrink-0">Date:</span>
+            <Select<DateRangeKey>
+              value={dateRange}
+              onChange={(v) => {
                 if (!canUseFilters) return;
-                setDisplayDirection('ltr');
-                if (meetingId && socket) socket.emit('scorecard_filter', { meetingId, displayDirection: 'ltr' });
+                if (v) setDateRange(v);
+                if (meetingId && socket && v) socket.emit('scorecard_filter', { meetingId, dateRange: v });
               }}
               disabled={!canUseFilters}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${displayDirection === 'ltr' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'} ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
-              title="Left to right"
-            >
-              <BarChart2 className="w-4 h-4" />
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 pb-3 shrink-0">
-          <button type="button" className="p-2 rounded-md border border-border hover:bg-accent text-muted-foreground hover:text-foreground" title="Undo score change"><RotateCcw className="w-4 h-4" /></button>
-          <button type="button" className="p-2 rounded-md border border-border hover:bg-accent text-muted-foreground hover:text-foreground" title="Redo score change"><RotateCw className="w-4 h-4" /></button>
-          <button type="button" onClick={() => canUseFilters && setCreateGroupOpen(true)} disabled={!canUseFilters} className={`flex items-center gap-2 px-3 py-2 border border-border rounded-md text-sm font-medium text-primary ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'hover:bg-accent cursor-pointer'}`}><Plus className="w-4 h-4" /> New group</button>
-          <button type="button" className="px-3 py-2 border border-border rounded-md hover:bg-accent text-sm font-medium text-primary">Go to Measurable Manager</button>
-          {canUseFilters && (
-            <div className="relative">
+              options={DATE_RANGE_OPTIONS}
+              className="min-w-[140px] w-[140px] shrink-0"
+            />
+            <div className="flex rounded-lg border border-border overflow-hidden bg-muted/30 shrink-0">
               <button
-                ref={moreMenuBtnRef}
                 type="button"
-                onClick={() => setMoreMenuOpen((o) => !o)}
-                className="p-2 rounded-md border border-border hover:bg-accent hover:text-foreground text-muted-foreground transition-colors cursor-pointer"
-                title="More options"
+                onClick={() => {
+                  if (!canUseFilters) return;
+                  setDisplayDirection('rtl');
+                  if (meetingId && socket) socket.emit('scorecard_filter', { meetingId, displayDirection: 'rtl' });
+                }}
+                disabled={!canUseFilters}
+                className={`flex items-center gap-1 px-2 py-1.5 text-xs transition-colors ${displayDirection === 'rtl' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'} ${!canUseFilters ? 'cursor-not-allowed opacity-60 bg-muted/50' : 'cursor-pointer'}`}
+                title="Right to left"
               >
-                <MoreHorizontal className="w-4 h-4" />
+                <BarChart2 className="w-3.5 h-3.5" />
+                <ArrowLeft className="w-3.5 h-3.5" />
               </button>
-              {moreMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setMoreMenuOpen(false)} aria-hidden />
-                  <div className="absolute right-0 top-full mt-1 py-2 bg-card border border-border rounded-lg shadow-xl z-20 min-w-[200px]">
-                    <button type="button" className="w-full text-left px-3 py-2.5 text-sm text-foreground hover:bg-muted/60 flex items-center gap-3 cursor-pointer" onClick={() => { setMoreMenuOpen(false); setSettingsPanelOpen(true); }}>
-                      <Settings className="w-4 h-4 text-muted-foreground" /> Settings
-                    </button>
-                    <div className="border-t border-border my-1" />
-                    <button type="button" className="w-full text-left px-3 py-2.5 text-sm text-foreground hover:bg-muted/60 flex items-center gap-3" onClick={() => { setMoreMenuOpen(false); }}>
-                      <Download className="w-4 h-4 text-muted-foreground" /> Export as CSV
-                    </button>
-                    <button type="button" className="w-full text-left px-3 py-2.5 text-sm text-foreground hover:bg-muted/60 flex items-center gap-3" onClick={() => { setMoreMenuOpen(false); }}>
-                      <FileText className="w-4 h-4 text-muted-foreground" /> Print PDF
-                    </button>
-                  </div>
-                </>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (!canUseFilters) return;
+                  setDisplayDirection('ltr');
+                  if (meetingId && socket) socket.emit('scorecard_filter', { meetingId, displayDirection: 'ltr' });
+                }}
+                disabled={!canUseFilters}
+                className={`flex items-center gap-1 px-2 py-1.5 text-xs transition-colors ${displayDirection === 'ltr' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'} ${!canUseFilters ? 'cursor-not-allowed opacity-60 bg-muted/50' : 'cursor-pointer'}`}
+                title="Left to right"
+              >
+                <BarChart2 className="w-3.5 h-3.5" />
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
             </div>
-          )}
-          <Input.Search
-            placeholder="Search KPIs..."
-            value={searchKpis}
-            onChange={(e) => setSearchKpis(e.target.value)}
-            allowClear
-            className="min-w-[180px] max-w-xs"
-          />
+          </div>
+          <div className="flex flex-nowrap items-center gap-2 shrink-0">
+            <button type="button" disabled={!canUseFilters || scorecardHistory.length === 0} onClick={handleUndoScorecard} className="p-1.5 rounded-md border border-border hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer disabled:bg-muted/50 shrink-0" title="Undo score change"><RotateCcw className="w-4 h-4" /></button>
+            <button type="button" disabled={!canUseFilters || scorecardRedo.length === 0} onClick={handleRedoScorecard} className="p-1.5 rounded-md border border-border hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer disabled:bg-muted/50 shrink-0" title="Redo score change"><RotateCw className="w-4 h-4" /></button>
+            <button type="button" disabled={!canUseFilters} onClick={() => { setEditGroupId(null); setEditGroupInitial(null); setCreateGroupName(''); setCreateGroupDescription(''); setCreateGroupOpen(true); }} className={`flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-md text-xs font-medium shrink-0 ${canUseFilters ? 'text-primary hover:bg-accent cursor-pointer' : 'text-muted-foreground bg-muted/50 cursor-not-allowed opacity-60'}`}><Plus className="w-3.5 h-3.5" /> New group</button>
+            {meetingId ? <Link href={`/meeting/${meetingId}?segment=scorecard&manager=1`} className="px-2.5 py-1.5 border border-border rounded-md hover:bg-accent text-xs font-medium text-primary cursor-pointer inline-flex items-center shrink-0 whitespace-nowrap">Go to Measurable Manager</Link> : <button type="button" disabled={!canUseFilters} className="px-2.5 py-1.5 border border-border rounded-md hover:bg-accent text-xs font-medium text-primary shrink-0 whitespace-nowrap disabled:opacity-60 disabled:bg-muted/50 disabled:cursor-not-allowed">Go to Measurable Manager</button>}
+            <Input.Search placeholder="Search KPIs..." value={searchKpis} onChange={(e) => setSearchKpis(e.target.value)} allowClear className="w-[160px] min-w-[140px] text-sm shrink-0" disabled={!canUseFilters} />
+            {canUseFilters && (
+              <div className="relative shrink-0">
+                <button ref={moreMenuBtnRef} type="button" onClick={() => setMoreMenuOpen((o) => !o)} className="p-1.5 rounded-md border border-border hover:bg-accent hover:text-foreground text-muted-foreground transition-colors cursor-pointer" title="More options">
+                  <MoreHorizontal className="w-4 h-4" />
+                </button>
+                {moreMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setMoreMenuOpen(false)} aria-hidden />
+                    <div className="absolute right-0 top-full mt-1 py-2 bg-card border border-border rounded-lg shadow-xl z-20 min-w-[200px]">
+                      <button type="button" className="w-full text-left px-3 py-2.5 text-sm text-foreground hover:bg-muted/60 flex items-center gap-3 cursor-pointer" onClick={() => { setMoreMenuOpen(false); setSettingsPanelOpen(true); }}><Settings className="w-4 h-4 text-muted-foreground" /> Settings</button>
+                      <div className="border-t border-border my-1" />
+                      <button type="button" className="w-full text-left px-3 py-2.5 text-sm text-foreground hover:bg-muted/60 flex items-center gap-3" onClick={() => { setMoreMenuOpen(false); downloadCsv(measurablesForCurrentTab, `scorecard-${timeframe}.csv`); }}><Download className="w-4 h-4 text-muted-foreground" /> Export as CSV</button>
+                      <button type="button" className="w-full text-left px-3 py-2.5 text-sm text-foreground hover:bg-muted/60 flex items-center gap-3" onClick={() => { setMoreMenuOpen(false); downloadPdf(measurablesForCurrentTab, `Scorecard ${timeframeLabel}`); }}><FileText className="w-4 h-4 text-muted-foreground" /> Print PDF</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -669,14 +1261,16 @@ export function InstrumentsSegmentView({
           <div className="fixed inset-0 bg-black/20 z-40" onClick={() => !deleteGroupLoading && setDeleteConfirmGroupId(null)} aria-hidden />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="bg-card border border-border rounded-lg shadow-xl max-w-sm w-full p-6">
-              <h3 className="text-lg font-semibold text-foreground mb-2">Delete group?</h3>
-              <p className="text-sm text-muted-foreground mb-4">This action cannot be undone. The group and its measurables will be removed from this scorecard.</p>
-              <div className="flex justify-end gap-2">
+              <h3 className="text-lg font-semibold text-foreground">Delete group?</h3>
+              <div className="mt-4 pt-4 border-t border-border">
+                <p className="text-sm text-muted-foreground">This action cannot be undone. The group and its measurables will be removed from this scorecard.</p>
+              </div>
+              <div className="mt-4 pt-4 border-t border-border flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => !deleteGroupLoading && setDeleteConfirmGroupId(null)}
                   disabled={deleteGroupLoading}
-                  className="px-4 py-2 border border-border rounded-md hover:bg-muted text-sm font-medium disabled:opacity-50"
+                  className="px-4 py-2 border border-border rounded-md hover:bg-muted text-sm font-medium disabled:opacity-50 cursor-pointer transition-colors"
                 >
                   Cancel
                 </button>
@@ -684,10 +1278,10 @@ export function InstrumentsSegmentView({
                   type="button"
                   onClick={() => handleDeleteGroup(deleteConfirmGroupId)}
                   disabled={deleteGroupLoading}
-                  className="px-4 py-2 bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+                  className="px-4 py-2 bg-primary text-primary-foreground border border-primary rounded-md hover:bg-primary/90 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer transition-colors shadow-sm min-h-[2.25rem]"
                 >
                   {deleteGroupLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                  Delete
+                  Yes, delete
                 </button>
               </div>
             </div>
@@ -695,17 +1289,17 @@ export function InstrumentsSegmentView({
         </>
       )}
 
-      {/* Create group — right-side panel */}
+      {/* Create group / Edit group details — right-side full-height panel */}
       {createGroupOpen && (
         <>
-          <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setCreateGroupOpen(false)} aria-hidden />
-          <div className="fixed inset-y-0 right-0 w-full max-w-md bg-card border-l border-border shadow-xl z-50 flex flex-col">
+          <div className="fixed inset-0 bg-black/20 z-[55]" onClick={() => setCreateGroupOpen(false)} aria-hidden />
+          <div className="fixed inset-y-0 right-0 w-full max-w-md bg-card border-l border-border shadow-xl z-[60] flex flex-col h-full">
             <header className="flex items-center justify-between p-4 border-b border-border shrink-0">
-              <h3 className="text-lg font-semibold text-foreground">{editGroupId ? 'Edit group' : 'Create group'}</h3>
+              <h3 className="text-lg font-semibold text-foreground">{editGroupId ? 'Edit group details' : 'Create group'}</h3>
               <button
                 type="button"
                 onClick={() => setCreateGroupOpen(false)}
-                className="p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"
+                className="p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
                 aria-label="Close"
               >
                 <X className="w-5 h-5" />
@@ -736,13 +1330,30 @@ export function InstrumentsSegmentView({
                 />
               </div>
             </div>
-            <footer className="flex items-center gap-2 p-4 border-t border-border shrink-0">
+            <footer className="flex items-center gap-2 p-4 border-t border-border shrink-0 bg-card">
               <button
                 type="button"
                 onClick={async () => {
                   if (!createGroupName.trim()) return;
                   setCreateGroupSaving(true);
                   try {
+                    if (editGroupId === 'main') {
+                      setMainGroupName(createGroupName.trim());
+                      setMainGroupDescription(createGroupDescription);
+                      if (organizationId && meetingId) {
+                        await scorecardMainGroupService.update(organizationId, meetingId, {
+                          name: createGroupName.trim(),
+                          description: createGroupDescription,
+                        });
+                      }
+                      setEditGroupId(null);
+                      setEditGroupInitial(null);
+                      setCreateGroupOpen(false);
+                      setCreateGroupName('');
+                      setCreateGroupDescription('');
+                      setCreateGroupSaving(false);
+                      return;
+                    }
                     if (useApiGroups && meetingId && organizationId) {
                       if (editGroupId) {
                         await scorecardGroupsService.update(organizationId, meetingId, editGroupId, {
@@ -780,6 +1391,7 @@ export function InstrumentsSegmentView({
                       }
                     }
                     setEditGroupId(null);
+                    setEditGroupInitial(null);
                     setCreateGroupOpen(false);
                     setCreateGroupName('');
                     setCreateGroupDescription('');
@@ -789,7 +1401,13 @@ export function InstrumentsSegmentView({
                     setCreateGroupSaving(false);
                   }
                 }}
-                disabled={createGroupSaving}
+                disabled={
+                  createGroupSaving ||
+                  (editGroupId && editGroupInitial
+                    ? !createGroupName.trim() ||
+                      (createGroupName.trim() === editGroupInitial.name && createGroupDescription === editGroupInitial.description)
+                    : !createGroupName.trim())
+                }
                 className="px-4 py-2 bg-primary text-primary-foreground border border-primary rounded-md hover:bg-primary/90 text-sm font-medium cursor-pointer shadow-sm disabled:opacity-70 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 min-w-[80px]"
               >
                 {createGroupSaving ? (
@@ -808,6 +1426,7 @@ export function InstrumentsSegmentView({
                   setCreateGroupName('');
                   setCreateGroupDescription('');
                   setEditGroupId(null);
+                  setEditGroupInitial(null);
                 }}
                 className="px-4 py-2 border border-border bg-background text-foreground rounded-md hover:bg-muted text-sm font-medium cursor-pointer"
               >
@@ -839,11 +1458,7 @@ export function InstrumentsSegmentView({
                 placeholder="Person"
                 value={addExistingPersonFilter}
                 onChange={(v) => setAddExistingPersonFilter(v ?? 'All')}
-                options={[
-                  { label: 'All', value: 'All' },
-                  { label: 'Unassigned', value: 'Unassigned' },
-                  ...MOCK_PERSONS.filter((p) => p !== 'Unassigned').map((p) => ({ label: p, value: p })),
-                ]}
+                options={personOptions}
                 showSearch
                 filterOption={(input, opt) => (opt?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())}
                 className="w-auto min-w-[140px] max-w-[220px]"
@@ -915,11 +1530,8 @@ export function InstrumentsSegmentView({
                 <label className="block text-sm font-medium text-foreground mb-2">Owner</label>
                 <Select
                   className="w-full"
-                  placeholder="Owner"
-                  options={[
-                    { label: 'Unassigned', value: 'Unassigned' },
-                    ...MOCK_PERSONS.filter((p) => p !== 'Unassigned').map((p) => ({ label: p, value: p })),
-                  ]}
+                  placeholder="Select person in meeting"
+                  options={personOptions.filter((o) => o.value !== 'All')}
                 />
               </section>
 
@@ -1022,7 +1634,61 @@ export function InstrumentsSegmentView({
               </section>
             </div>
             <footer className="flex items-center gap-2 p-4 border-t border-border shrink-0 bg-muted/10">
-              <button type="button" onClick={() => { if (createMeasurableTitle.trim()) { setMeasurables((prev) => [...prev, { id: `m-${Date.now()}`, title: createMeasurableTitle.trim(), goal: '>= 0', average: '0', total: '0', trend: 'down', periodValues: {} }]); setCreateMeasurableOpen(false); setCreateMeasurableTitle(''); setCreateMeasurableDescription(''); } }} className="px-4 py-2.5 bg-primary text-primary-foreground border border-primary rounded-lg hover:bg-primary/90 text-sm font-medium cursor-pointer shadow-sm transition-colors">Save</button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!createMeasurableTitle.trim() || createMeasurableForGroupId == null) return;
+                  const goalOp = createMeasurableOrientation.includes('Greater') ? '>=' : createMeasurableOrientation.includes('Less') ? '<=' : '=';
+                  const goalStr = `${goalOp} ${createMeasurableGoalValue}`;
+                  const newId = `m-${Date.now()}`;
+                  const displayGroupId = createMeasurableForGroupId === 'main' ? undefined : createMeasurableForGroupId;
+                  const newRow: MeasurableRow = {
+                    id: newId,
+                    title: createMeasurableTitle.trim(),
+                    goal: goalStr,
+                    average: createMeasurableShowAverage ? '0' : '',
+                    total: createMeasurableShowTotal ? '0' : '',
+                    trend: 'neutral',
+                    periodValues: {},
+                    groupId: displayGroupId,
+                  };
+                  pushScorecardHistory();
+                  setMeasurables((prev) => {
+                    const next = [...prev, newRow];
+                    if (organizationId && meetingId) {
+                      scorecardMeasurablesService
+                        .upsert(
+                          organizationId,
+                          meetingId,
+                          next.map((m, i) => ({
+                            id: m.id,
+                            scorecardGroupId: m.groupId === undefined || m.groupId === 'main' ? null : m.groupId,
+                            title: m.title,
+                            goal: m.goal,
+                            average: m.average,
+                            total: m.total,
+                            trend: m.trend,
+                            periodValues: m.periodValues,
+                            order: i,
+                          }))
+                        )
+                        .catch((e) => console.error('Failed to save new measurable', e));
+                    }
+                    return next;
+                  });
+                  setCreateMeasurableOpen(false);
+                  setCreateMeasurableTitle('');
+                  setCreateMeasurableDescription('');
+                  setCreateMeasurableGoalValue(0);
+                  setCreateMeasurableShowTotal(true);
+                  setCreateMeasurableShowAverage(true);
+                  setCreateMeasurableShowGoal(true);
+                  setCreateMeasurableForGroupId(null);
+                }}
+                className="px-4 py-2.5 bg-primary text-primary-foreground border border-primary rounded-lg hover:bg-primary/90 text-sm font-medium cursor-pointer shadow-sm transition-colors"
+              >
+                Save
+              </button>
               <button type="button" onClick={() => setCreateMeasurableCloseConfirmOpen(true)} className="px-4 py-2.5 border border-border bg-background text-foreground rounded-lg hover:bg-muted text-sm font-medium cursor-pointer transition-colors">Cancel</button>
             </footer>
           </div>
@@ -1037,7 +1703,7 @@ export function InstrumentsSegmentView({
             <p className="text-sm font-medium text-foreground mb-4">Are you sure you want to close? Your changes won&apos;t be saved.</p>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setCreateMeasurableCloseConfirmOpen(false)} className="px-4 py-2 border border-border rounded-lg hover:bg-muted text-sm font-medium cursor-pointer">Stay</button>
-              <button type="button" onClick={() => { setCreateMeasurableCloseConfirmOpen(false); setCreateMeasurableOpen(false); setCreateMeasurableTitle(''); setCreateMeasurableDescription(''); }} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 text-sm font-medium cursor-pointer">Close</button>
+              <button type="button" onClick={() => { setCreateMeasurableCloseConfirmOpen(false); setCreateMeasurableOpen(false); setCreateMeasurableTitle(''); setCreateMeasurableDescription(''); setCreateMeasurableForGroupId(null); }} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 text-sm font-medium cursor-pointer">Close</button>
             </div>
           </div>
         </>
@@ -1045,47 +1711,71 @@ export function InstrumentsSegmentView({
 
       {/* Content: padding after filter bar — fixed header above, only this area scrolls when expanded */}
       <div className={`flex-1 flex flex-col min-h-0 mt-4 ${contentPad} gap-4 overflow-hidden`}>
-        {expandedGroupId ? (
+        {useApiGroups && (scorecardGroupsLoading || scorecardMeasurablesLoading) ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 min-h-[200px] text-muted-foreground">
+            <Loader2 className="w-10 h-10 animate-spin" aria-hidden />
+            <p className="text-sm font-medium">Loading scorecard…</p>
+          </div>
+        ) : expandedGroupId ? (
           <>
             {/* Expanded card: 80% of content area; rest of cards below in scroll */}
-            {expandedGroupId === 'main' ? (
+            {expandedGroupId === 'main' && !mainGroupHidden ? (
               <ScorecardTableCard
                 key="main"
-                title={`${timeframeLabel} KPIs ${measurables.length}`}
-                data={measurables}
+                title={mainGroup.name + (mainMeasurables.length ? ` ${mainMeasurables.length}` : '')}
+                data={mainMeasurables}
                 periodColumns={periodColumns}
                 displayDirection={displayDirection}
+                columnVisibility={scorecardColumnVisibility}
                 newMeasurableOpen={newMeasurableOpenGroupId === 'main'}
                 onNewMeasurableToggle={() => setNewMeasurableOpenGroupId((id) => (id === 'main' ? null : 'main'))}
-                onCreateNew={() => setCreateMeasurableOpen(true)}
+                onCreateNew={(groupId) => { setCreateMeasurableForGroupId(groupId); setCreateMeasurableOpen(true); }}
                 onAddExisting={() => setAddExistingModalOpen(true)}
                 className="flex-[0_0_80%] min-h-0 shrink-0"
-                onOpenSettings={() => setSettingsPanelOpen(true)}
+                groupId="main"
+                group={mainGroup}
+                onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupInitial({ name: gr.name, description: gr.description || '' }); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
+                onDeleteGroup={canUseFilters ? (id) => setDeleteConfirmGroupId(id) : undefined}
                 isExpanded={true}
                 onExpand={() => setExpandedGroupId(null)}
                 isCollapsed={collapsedGroupIds.has('main')}
                 onCollapse={() => setCollapsedGroupIds((s) => { const n = new Set(s); if (n.has('main')) n.delete('main'); else n.add('main'); return n; })}
+                otherGroups={otherGroupsForMain}
+                onMoveToGroup={handleMoveToGroup}
+                onDuplicate={handleDuplicateMeasurables}
+                onCreateTodo={handleCreateTodoFromMeasurable}
+                onCreateIssue={handleCreateIssueFromMeasurable}
+                onRemoveFromGroup={handleRemoveFromGroup}
+                onDelete={handleDeleteMeasurables}
               />
             ) : currentGroups.find((g) => g.id === expandedGroupId) ? (
               <ScorecardTableCard
                 key={expandedGroupId}
                 title={currentGroups.find((g) => g.id === expandedGroupId)!.name}
-                data={[]}
+                data={measurables.filter((m) => m.groupId === expandedGroupId)}
                 periodColumns={periodColumns}
                 displayDirection={displayDirection}
+                columnVisibility={scorecardColumnVisibility}
                 newMeasurableOpen={newMeasurableOpenGroupId === expandedGroupId}
                 onNewMeasurableToggle={() => setNewMeasurableOpenGroupId((id) => (id === expandedGroupId ? null : expandedGroupId))}
-                onCreateNew={() => setCreateMeasurableOpen(true)}
+                onCreateNew={(groupId) => { setCreateMeasurableForGroupId(groupId); setCreateMeasurableOpen(true); }}
                 onAddExisting={() => setAddExistingModalOpen(true)}
                 className="flex-[0_0_80%] min-h-0 shrink-0"
                 groupId={expandedGroupId}
                 group={currentGroups.find((g) => g.id === expandedGroupId)!}
-                onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
+                onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupInitial({ name: gr.name, description: gr.description || '' }); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
                 onDeleteGroup={canUseFilters ? (id) => setDeleteConfirmGroupId(id) : undefined}
                 isExpanded={true}
                 onExpand={() => setExpandedGroupId(null)}
                 isCollapsed={collapsedGroupIds.has(expandedGroupId)}
                 onCollapse={() => setCollapsedGroupIds((s) => { const n = new Set(s); if (n.has(expandedGroupId)) n.delete(expandedGroupId); else n.add(expandedGroupId); return n; })}
+                otherGroups={otherGroupsForGroupId(expandedGroupId)}
+                onMoveToGroup={handleMoveToGroup}
+                onDuplicate={handleDuplicateMeasurables}
+                onCreateTodo={handleCreateTodoFromMeasurable}
+                onCreateIssue={handleCreateIssueFromMeasurable}
+                onRemoveFromGroup={handleRemoveFromGroup}
+                onDelete={handleDeleteMeasurables}
               />
             ) : null}
             <div className="flex-1 min-h-0 overflow-auto flex flex-col gap-4">
@@ -1094,62 +1784,90 @@ export function InstrumentsSegmentView({
                   <ScorecardTableCard
                     key={g.id}
                     title={g.name}
-                    data={[]}
+                    data={measurables.filter((m) => m.groupId === g.id)}
                     periodColumns={periodColumns}
                     displayDirection={displayDirection}
+                    columnVisibility={scorecardColumnVisibility}
                     newMeasurableOpen={newMeasurableOpenGroupId === g.id}
                     onNewMeasurableToggle={() => setNewMeasurableOpenGroupId((id) => (id === g.id ? null : g.id))}
-                    onCreateNew={() => setCreateMeasurableOpen(true)}
+                    onCreateNew={(groupId) => { setCreateMeasurableForGroupId(groupId); setCreateMeasurableOpen(true); }}
                     onAddExisting={() => setAddExistingModalOpen(true)}
                     className={collapsedGroupIds.has(g.id) ? 'shrink-0' : 'min-h-[200px] shrink-0'}
                     groupId={g.id}
                     group={g}
-                    onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
+                    onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupInitial({ name: gr.name, description: gr.description || '' }); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
                     onDeleteGroup={canUseFilters ? (id) => setDeleteConfirmGroupId(id) : undefined}
                     isExpanded={false}
                     onExpand={() => setExpandedGroupId(g.id)}
                     isCollapsed={collapsedGroupIds.has(g.id)}
                     onCollapse={() => setCollapsedGroupIds((s) => { const n = new Set(s); if (n.has(g.id)) n.delete(g.id); else n.add(g.id); return n; })}
+                    otherGroups={otherGroupsForGroupId(g.id)}
+                    onMoveToGroup={handleMoveToGroup}
+                    onDuplicate={handleDuplicateMeasurables}
+                    onCreateTodo={handleCreateTodoFromMeasurable}
+                    onCreateIssue={handleCreateIssueFromMeasurable}
+                    onRemoveFromGroup={handleRemoveFromGroup}
+                    onDelete={handleDeleteMeasurables}
                   />
                 ))
               ) : (
                 <>
+                  {!mainGroupHidden && (
                   <ScorecardTableCard
-                    title={`${timeframeLabel} KPIs ${measurables.length}`}
-                    data={measurables}
+                    title={mainGroup.name + (mainMeasurables.length ? ` ${mainMeasurables.length}` : '')}
+                    data={mainMeasurables}
                     periodColumns={periodColumns}
                     displayDirection={displayDirection}
                     newMeasurableOpen={newMeasurableOpenGroupId === 'main'}
                     onNewMeasurableToggle={() => setNewMeasurableOpenGroupId((id) => (id === 'main' ? null : 'main'))}
-                    onCreateNew={() => setCreateMeasurableOpen(true)}
+                    onCreateNew={(groupId) => { setCreateMeasurableForGroupId(groupId); setCreateMeasurableOpen(true); }}
                     onAddExisting={() => setAddExistingModalOpen(true)}
                     className={collapsedGroupIds.has('main') ? 'shrink-0' : 'min-h-[200px] shrink-0'}
-                    onOpenSettings={() => setSettingsPanelOpen(true)}
+                    groupId="main"
+                    group={mainGroup}
+                    onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupInitial({ name: gr.name, description: gr.description || '' }); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
+                    onDeleteGroup={canUseFilters ? (id) => setDeleteConfirmGroupId(id) : undefined}
                     isExpanded={false}
                     onExpand={() => setExpandedGroupId('main')}
                     isCollapsed={collapsedGroupIds.has('main')}
                     onCollapse={() => setCollapsedGroupIds((s) => { const n = new Set(s); if (n.has('main')) n.delete('main'); else n.add('main'); return n; })}
+                    otherGroups={otherGroupsForMain}
+                    onMoveToGroup={handleMoveToGroup}
+                    onDuplicate={handleDuplicateMeasurables}
+                    onCreateTodo={handleCreateTodoFromMeasurable}
+                    onCreateIssue={handleCreateIssueFromMeasurable}
+                    onRemoveFromGroup={handleRemoveFromGroup}
+                    onDelete={handleDeleteMeasurables}
                   />
+                  )}
                   {currentGroups.filter((g) => g.id !== expandedGroupId).map((g) => (
                     <ScorecardTableCard
                       key={g.id}
                       title={g.name}
-                      data={[]}
+                      data={measurables.filter((m) => m.groupId === g.id)}
                       periodColumns={periodColumns}
                       displayDirection={displayDirection}
+                      columnVisibility={scorecardColumnVisibility}
                       newMeasurableOpen={newMeasurableOpenGroupId === g.id}
                       onNewMeasurableToggle={() => setNewMeasurableOpenGroupId((id) => (id === g.id ? null : g.id))}
-                      onCreateNew={() => setCreateMeasurableOpen(true)}
+                      onCreateNew={(groupId) => { setCreateMeasurableForGroupId(groupId); setCreateMeasurableOpen(true); }}
                       onAddExisting={() => setAddExistingModalOpen(true)}
                       className={collapsedGroupIds.has(g.id) ? 'shrink-0' : 'min-h-[200px] shrink-0'}
                       groupId={g.id}
                       group={g}
-                      onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
+                      onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupInitial({ name: gr.name, description: gr.description || '' }); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
                       onDeleteGroup={canUseFilters ? (id) => setDeleteConfirmGroupId(id) : undefined}
                       isExpanded={false}
                       onExpand={() => setExpandedGroupId(g.id)}
                       isCollapsed={collapsedGroupIds.has(g.id)}
                       onCollapse={() => setCollapsedGroupIds((s) => { const n = new Set(s); if (n.has(g.id)) n.delete(g.id); else n.add(g.id); return n; })}
+                      otherGroups={otherGroupsForGroupId(g.id)}
+                      onMoveToGroup={handleMoveToGroup}
+                      onDuplicate={handleDuplicateMeasurables}
+                      onCreateTodo={handleCreateTodoFromMeasurable}
+                      onCreateIssue={handleCreateIssueFromMeasurable}
+                      onRemoveFromGroup={handleRemoveFromGroup}
+                      onDelete={handleDeleteMeasurables}
                     />
                   ))}
                 </>
@@ -1158,42 +1876,62 @@ export function InstrumentsSegmentView({
           </>
         ) : (
           <div className="flex-1 flex flex-col min-h-0 overflow-y-auto gap-4">
+            {!mainGroupHidden && (
             <ScorecardTableCard
-              title={`${timeframeLabel} KPIs ${measurables.length}`}
-              data={measurables}
+              title={mainGroup.name + (mainMeasurables.length ? ` ${mainMeasurables.length}` : '')}
+              data={mainMeasurables}
               periodColumns={periodColumns}
               displayDirection={displayDirection}
+              columnVisibility={scorecardColumnVisibility}
               newMeasurableOpen={newMeasurableOpenGroupId === 'main'}
               onNewMeasurableToggle={() => setNewMeasurableOpenGroupId((id) => (id === 'main' ? null : 'main'))}
-              onCreateNew={() => setCreateMeasurableOpen(true)}
+              onCreateNew={(groupId) => { setCreateMeasurableForGroupId(groupId); setCreateMeasurableOpen(true); }}
               onAddExisting={() => setAddExistingModalOpen(true)}
               className="min-h-0 flex-1 shrink-0"
-              onOpenSettings={() => setSettingsPanelOpen(true)}
+              groupId="main"
+              group={mainGroup}
+              onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupInitial({ name: gr.name, description: gr.description || '' }); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
+              onDeleteGroup={canUseFilters ? (id) => setDeleteConfirmGroupId(id) : undefined}
               isExpanded={false}
               onExpand={() => setExpandedGroupId('main')}
               isCollapsed={collapsedGroupIds.has('main')}
               onCollapse={() => setCollapsedGroupIds((s) => { const n = new Set(s); if (n.has('main')) n.delete('main'); else n.add('main'); return n; })}
+              otherGroups={otherGroupsForMain}
+              onMoveToGroup={handleMoveToGroup}
+              onDuplicate={handleDuplicateMeasurables}
+              onCreateTodo={handleCreateTodoFromMeasurable}
+              onCreateIssue={handleCreateIssueFromMeasurable}
+              onRemoveFromGroup={handleRemoveFromGroup}
+              onDelete={handleDeleteMeasurables}
             />
+            )}
             {currentGroups.map((g) => (
               <ScorecardTableCard
                 key={g.id}
                 title={g.name}
-                data={[]}
+                data={measurables.filter((m) => m.groupId === g.id)}
                 periodColumns={periodColumns}
                 displayDirection={displayDirection}
                 newMeasurableOpen={newMeasurableOpenGroupId === g.id}
                 onNewMeasurableToggle={() => setNewMeasurableOpenGroupId((id) => (id === g.id ? null : g.id))}
-                onCreateNew={() => setCreateMeasurableOpen(true)}
+                onCreateNew={(groupId) => { setCreateMeasurableForGroupId(groupId); setCreateMeasurableOpen(true); }}
                 onAddExisting={() => setAddExistingModalOpen(true)}
                 className={collapsedGroupIds.has(g.id) ? 'shrink-0' : 'min-h-[240px] shrink-0'}
                 groupId={g.id}
                 group={g}
-                onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
+                onEditGroup={(gr) => { setCreateGroupName(gr.name); setCreateGroupDescription(gr.description || ''); setEditGroupInitial({ name: gr.name, description: gr.description || '' }); setEditGroupId(gr.id); setCreateGroupOpen(true); }}
                 onDeleteGroup={canUseFilters ? (id) => setDeleteConfirmGroupId(id) : undefined}
                 isExpanded={false}
                 onExpand={() => setExpandedGroupId(g.id)}
                 isCollapsed={collapsedGroupIds.has(g.id)}
                 onCollapse={() => setCollapsedGroupIds((s) => { const n = new Set(s); if (n.has(g.id)) n.delete(g.id); else n.add(g.id); return n; })}
+                otherGroups={otherGroupsForGroupId(g.id)}
+                onMoveToGroup={handleMoveToGroup}
+                onDuplicate={handleDuplicateMeasurables}
+                onCreateTodo={handleCreateTodoFromMeasurable}
+                onCreateIssue={handleCreateIssueFromMeasurable}
+                onRemoveFromGroup={handleRemoveFromGroup}
+                onDelete={handleDeleteMeasurables}
               />
             ))}
           </div>

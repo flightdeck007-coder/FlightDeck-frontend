@@ -16,7 +16,7 @@ interface MeetingContentProps {
   sectionId: string;
   sectionTitle: string;
   onOpenCreateIssue?: () => void;
-  onOpenCreate?: (type: CreatePopupType) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string }) => void;
   onFinishMeeting?: () => Promise<void>;
   finishLoading?: boolean;
   meetingId?: string;
@@ -31,6 +31,10 @@ interface MeetingContentProps {
     present: boolean;
     user: { id: string; name?: string | null; email: string };
   }>;
+  /** When true, meeting has not started yet (scheduled in future); scorecard shows read-only grey UI */
+  isMeetingInFuture?: boolean;
+  /** Meeting's team name (from meeting.team.name); used for todos, headlines, issues segments */
+  teamName?: string;
 }
 
 // Demo data for different sections (L10-style; flight wording in UI)
@@ -51,7 +55,7 @@ const demoData: Record<string, any> = {
   },
   headlines: {
     type: 'prompt',
-    content: 'Customer & Employee Headlines',
+    content: 'Crew Headlines (Customer/Employee)',
     empty: true,
   },
   rocks: {
@@ -86,7 +90,7 @@ const demoData: Record<string, any> = {
   },
 };
 
-export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onOpenCreate, onFinishMeeting, finishLoading, meetingId, organizationId, isFacilitator, canRecord, facilitatorId, currentUserId, meetingAttendances }: MeetingContentProps) {
+export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onOpenCreate, onFinishMeeting, finishLoading, meetingId, organizationId, isFacilitator, canRecord, facilitatorId, currentUserId, meetingAttendances, isMeetingInFuture, teamName: meetingTeamName }: MeetingContentProps) {
   const canRecordOrFacilitator = canRecord ?? isFacilitator;
   const data = demoData[sectionId.toLowerCase()] || demoData.segue;
   const isMinimalPrompt = data.type === 'prompt' && data.empty; // Segue, Headlines: prompt + empty only
@@ -133,8 +137,10 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
         </div>
       )}
 
-      {/* Content: for Segue = prompt line + empty; others = existing UI */}
-      <div className={`flex-1 overflow-y-auto ${hasFilterBar ? 'pt-0 px-6 pb-6' : 'p-6'}`}>
+      {/* Content: for Segue = prompt line + empty; others = existing UI. Issues: no section spacing so filters/tabs sit flush. */}
+      <div className={`flex-1 overflow-y-auto ${
+        sectionId === 'issues' ? 'pt-0 pb-0 px-6' : hasFilterBar ? 'pt-0 px-6 pb-6' : 'p-6'
+      }`}>
         {isMinimalPrompt && sectionId !== 'headlines' && (
           <>
             <p className="text-lg text-foreground font-medium">{data.content}</p>
@@ -142,13 +148,13 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
           </>
         )}
         {sectionId === 'scorecard' && (
-          <InstrumentsSegmentView embedded teamName="Leadership Team" meetingId={meetingId} organizationId={organizationId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} />
+          <InstrumentsSegmentView embedded teamName="Leadership Team" meetingId={meetingId} organizationId={organizationId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} isMeetingInFuture={isMeetingInFuture} onOpenCreate={onOpenCreate} onOpenCreateIssue={onOpenCreateIssue} meetingAttendances={meetingAttendances} />
         )}
         {sectionId === 'rocks' && (
           <RocksSegmentView embedded sectionTitle={sectionTitle} meetingId={meetingId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} onOpenCreate={onOpenCreate} />
         )}
         {sectionId === 'headlines' && (
-          <HeadlinesSegmentView embedded teamName="Leadership Team" meetingId={meetingId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} onOpenCreate={onOpenCreate} />
+          <HeadlinesSegmentView embedded teamName={meetingTeamName ?? 'Leadership Team'} meetingId={meetingId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} onOpenCreate={onOpenCreate} />
         )}
         {sectionId === 'todos' && (
           <TodosSegmentView
@@ -163,7 +169,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
         {sectionId === 'issues' && (
           <IssuesSegmentView
             embedded
-            teamName="Leadership Team"
+            teamName={meetingTeamName ?? 'Leadership Team'}
             meetingId={meetingId}
             isFacilitator={isFacilitator}
             canRecord={canRecordOrFacilitator}
@@ -174,7 +180,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
         {sectionId === 'conclude' && (
           <ConcludeSegmentView
             embedded
-            teamName="Leadership Team"
+            teamName={meetingTeamName ?? 'Leadership Team'}
             onFinishMeeting={onFinishMeeting}
             finishLoading={finishLoading}
             meetingId={meetingId}
@@ -209,7 +215,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
 
         {data.type === 'list' && sectionId !== 'rocks' && sectionId !== 'headlines' && sectionId !== 'todos' && sectionId !== 'issues' && (
           <div>
-            {/* Tabs for Turbulence (Issues) */}
+            {/* Tabs for Turbulence (Issues) — flight term */}
             {sectionId === 'issues' && (
               <div className="flex gap-2 mb-4 border-b border-border">
                 <button className="px-4 py-2 text-sm font-medium text-primary border-b-2 border-primary">
@@ -281,7 +287,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
             {/* Add Button */}
             <button className="mt-4 flex items-center gap-2 px-4 py-2 border border-dashed border-border rounded-lg text-foreground/70 hover:text-foreground hover:border-primary/50 transition-colors">
               <Plus className="w-4 h-4" />
-              {sectionId === 'issues' ? 'Add Turbulence' : sectionId === 'todos' ? 'Add Clearance' : 'Add Waypoint'}
+              {sectionId === 'issues' ? 'Add Turbulence (Issue)' : sectionId === 'todos' ? 'Add Clearance (To-Do)' : 'Add Waypoint (Rock)'}
             </button>
 
             {/* Pagination */}

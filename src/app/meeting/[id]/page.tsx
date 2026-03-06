@@ -19,18 +19,21 @@ import { teamsService, type Team } from '@/lib/api/teams.service';
 import { issuesService } from '@/lib/api/issues.service';
 import { todosService } from '@/lib/api/todos.service';
 import { ROUTES } from '@/lib/constants/routes';
-import { Menu, User, Plus, Loader2 } from 'lucide-react';
+import Link from 'next/link';
+import { Menu, User, Plus, Loader2, ArrowLeft } from 'lucide-react';
 import { FullScreenLoaderWithText } from '@/components/ui/loaders';
+import { MeasurableManagerView } from '@/components/meeting/MeasurableManagerView';
+import { SECTION_DISPLAY_TITLES } from '@/lib/constants/flightTerminology';
 
-// L10 Meeting Format Sections: flight term (real term). 7 segments. IDs stay canonical for content lookup.
+// L10 Meeting Format Sections: flight-first display; IDs stay canonical for content lookup.
 const meetingSections = [
-  { id: 'segue', title: 'PRE-FLIGHT (Segue)', duration: 5, order: 1 },
-  { id: 'scorecard', title: 'INSTRUMENTS (Scorecard)', duration: 5, order: 2 },
-  { id: 'rocks', title: 'WAYPOINT REVIEW (Rocks)', duration: 5, order: 3 },
-  { id: 'headlines', title: 'HEADLINES (Customer/Employee)', duration: 5, order: 4 },
-  { id: 'todos', title: 'CLEARANCES (To-Dos)', duration: 5, order: 5 },
-  { id: 'issues', title: 'TURBULENCE (Issues)', duration: 60, order: 6 },
-  { id: 'conclude', title: 'DEBRIEF (Conclude)', duration: 5, order: 7 },
+  { id: 'segue', title: SECTION_DISPLAY_TITLES.segue ?? 'Pre-Flight (Segue)', duration: 5, order: 1 },
+  { id: 'scorecard', title: SECTION_DISPLAY_TITLES.scorecard ?? 'Flight Desk (Scorecard)', duration: 5, order: 2 },
+  { id: 'rocks', title: SECTION_DISPLAY_TITLES.rocks ?? 'Waypoint Review (Rocks)', duration: 5, order: 3 },
+  { id: 'headlines', title: SECTION_DISPLAY_TITLES.headlines ?? 'Crew Headlines (Customer/Employee)', duration: 5, order: 4 },
+  { id: 'todos', title: SECTION_DISPLAY_TITLES.todos ?? 'Clearances (To-Dos)', duration: 5, order: 5 },
+  { id: 'issues', title: SECTION_DISPLAY_TITLES.issues ?? 'Turbulence (Issues)', duration: 60, order: 6 },
+  { id: 'conclude', title: SECTION_DISPLAY_TITLES.conclude ?? 'Debrief (Conclude)', duration: 5, order: 7 },
 ];
 
 // Map API section titles (flight (real) or legacy) to canonical section id for content
@@ -49,6 +52,9 @@ const sectionTitleToId: Record<string, string> = {
   'CLEARANCES': 'todos', 'TO-DO LIST': 'todos', 'TO-DOS': 'todos',
   'TURBULENCE': 'issues', 'IDS™': 'issues', 'ISSUES': 'issues',
   'DEBRIEF': 'conclude', 'CONCLUDE': 'conclude',
+  // Flight-first display titles (for reference / if API returns them)
+  'Pre-Flight (Segue)': 'segue', 'Flight Desk (Scorecard)': 'scorecard', 'Waypoint Review (Rocks)': 'rocks',
+  'Crew Headlines (Customer/Employee)': 'headlines', 'Clearances (To-Dos)': 'todos', 'Turbulence (Issues)': 'issues', 'Debrief (Conclude)': 'conclude',
 };
 
 const VALID_SEGMENT_IDS = ['segue', 'scorecard', 'rocks', 'headlines', 'todos', 'issues', 'conclude'];
@@ -87,6 +93,8 @@ export default function MeetingPage() {
   const [isSuspended, setIsSuspended] = useState(false);
   const [createPopupOpen, setCreatePopupOpen] = useState(false);
   const [createPopupInitialType, setCreatePopupInitialType] = useState<'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | undefined>(undefined);
+  const [createPopupInitialTitle, setCreatePopupInitialTitle] = useState<string | undefined>(undefined);
+  const [createPopupInitialDescription, setCreatePopupInitialDescription] = useState<string | undefined>(undefined);
   const [teams, setTeams] = useState<Team[]>([]);
   const [finishLoading, setFinishLoading] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
@@ -163,7 +171,7 @@ export default function MeetingPage() {
               const canonicalId = sectionTitleToId[s.title] ?? s.title.toLowerCase().replace(/[^a-z0-9]+/g, '_');
               return {
                 id: canonicalId,
-                title: s.title,
+                title: SECTION_DISPLAY_TITLES[canonicalId] ?? s.title,
                 duration: s.durationMinutes ?? 5,
                 order: s.order + 1,
               };
@@ -620,9 +628,13 @@ export default function MeetingPage() {
   }, [organizationId, meetingId]);
 
   const headerSegmentLine = `${currentSectionData.title} | ${headerTitle}`;
+  const showManager = currentSection === 'scorecard' && searchParams.get('manager') === '1';
   const isFacilitator = Boolean(meeting?.facilitatorId && currentUserId && meeting.facilitatorId === currentUserId);
   const isScribe = Boolean(meeting?.scribeId && currentUserId && meeting.scribeId === currentUserId);
   const canRecord = isFacilitator || isScribe; // scribe can add/edit notes, todos, issues (recording); facilitator can do everything
+  const isMeetingInFuture = Boolean(
+    meeting && !meeting.startedAt && meeting.scheduledAt && new Date(meeting.scheduledAt).getTime() > Date.now()
+  );
 
   const getTimerState = useCallback(
     () => ({
@@ -680,7 +692,7 @@ export default function MeetingPage() {
       )}
       {/* Sidebar - collapsible */}
       {sidebarOpen && (
-        <div className="w-64 min-w-[240px] flex-shrink-0 overflow-hidden">
+        <div className="w-[243px] min-w-[228px] flex-shrink-0 overflow-hidden">
           <MeetingSidebar
             sections={loadedSections}
             currentSection={currentSection}
@@ -712,7 +724,7 @@ export default function MeetingPage() {
 
       {/* Main: header row + component details row */}
       <div className="flex-1 overflow-hidden flex flex-col min-w-0">
-        {/* Header row: hamburger | Segment | Meeting - Team | user + Create — white bg */}
+        {/* Header row: hamburger | Segment (or Back to Scorecard + Measurable Manager) | user + Create */}
         <header className="flex items-center gap-4 p-4 border-b border-border bg-card shrink-0">
           <button
             type="button"
@@ -722,9 +734,18 @@ export default function MeetingPage() {
           >
             <Menu className="w-5 h-5 text-foreground/80" />
           </button>
-          <h1 className="text-lg font-semibold text-foreground truncate flex-1">
-            {headerSegmentLine}
-          </h1>
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            {showManager ? (
+              <>
+                <Link href={`${pathname}?segment=scorecard`} className="text-sm font-medium text-primary hover:underline flex items-center gap-1 shrink-0">
+                  <ArrowLeft className="w-4 h-4" /> Back to Flight Desk (Scorecard)
+                </Link>
+                <h1 className="text-lg font-semibold text-foreground truncate">Measurable Manager</h1>
+              </>
+            ) : (
+              <h1 className="text-lg font-semibold text-foreground truncate">{headerSegmentLine}</h1>
+            )}
+          </div>
           <div className="flex items-center gap-2 shrink-0">
             <div
               className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-medium"
@@ -748,45 +769,65 @@ export default function MeetingPage() {
           onClose={() => {
             setCreatePopupOpen(false);
             setCreatePopupInitialType(undefined);
+            setCreatePopupInitialTitle(undefined);
+            setCreatePopupInitialDescription(undefined);
           }}
           teamName={headerTitle.replace(/^.*-\s*/, '').trim() || 'Leadership Team'}
           teamId={teamId || undefined}
           teams={teams}
           organizationId={organizationId || undefined}
           initialType={createPopupInitialType}
+          initialTitle={createPopupInitialTitle}
+          initialDescription={createPopupInitialDescription}
+          meetingAttendances={meeting?.attendances}
+          currentUserId={currentUserId}
         />
 
         {/* Suspended banner */}
         {isSuspended && (
           <div className="shrink-0 px-4 py-3 bg-amber-500/10 border-b border-amber-500/20 text-amber-800 dark:text-amber-200 flex items-center justify-between">
-            <span className="font-medium">Meeting suspended</span>
-            <span className="text-sm">Resume from the sidebar when ready.</span>
+<span className="font-medium">Flight Review suspended</span>
+                <span className="text-sm">Resume from the sidebar when ready.</span>
           </div>
         )}
 
         <div className="flex-1 overflow-auto flex flex-col">
           <div className="flex-1 min-h-0">
-            <MeetingContent
-              sectionId={currentSection}
-              sectionTitle={currentSectionData.title}
-              meetingId={meetingId}
-              organizationId={organizationId}
-              meetingAttendances={meeting?.attendances}
-              isFacilitator={isFacilitator}
-              canRecord={canRecord}
-              facilitatorId={meeting?.facilitatorId}
-              currentUserId={currentUserId}
-              onOpenCreateIssue={() => {
-                setCreatePopupInitialType('issue');
-                setCreatePopupOpen(true);
-              }}
-              onOpenCreate={(type) => {
-                setCreatePopupInitialType(type);
-                setCreatePopupOpen(true);
-              }}
-              onFinishMeeting={handleFinish}
-              finishLoading={finishLoading}
-            />
+            {showManager ? (
+              <MeasurableManagerView
+                meetingId={meetingId}
+                organizationId={organizationId || ''}
+                meeting={meeting}
+              />
+            ) : (
+              <MeetingContent
+                sectionId={currentSection}
+                sectionTitle={SECTION_DISPLAY_TITLES[currentSection] ?? currentSectionData.title}
+                meetingId={meetingId}
+                organizationId={organizationId}
+                meetingAttendances={meeting?.attendances}
+                isFacilitator={isFacilitator}
+                canRecord={canRecord}
+                isMeetingInFuture={isMeetingInFuture}
+                teamName={meeting?.team?.name}
+                facilitatorId={meeting?.facilitatorId}
+                currentUserId={currentUserId}
+                onOpenCreateIssue={() => {
+                  setCreatePopupInitialType('issue');
+                  setCreatePopupInitialTitle(undefined);
+                  setCreatePopupInitialDescription(undefined);
+                  setCreatePopupOpen(true);
+                }}
+                onOpenCreate={(type, options) => {
+                  setCreatePopupInitialType(type);
+                  setCreatePopupInitialTitle(options?.title);
+                  setCreatePopupInitialDescription(options?.description);
+                  setCreatePopupOpen(true);
+                }}
+                onFinishMeeting={handleFinish}
+                finishLoading={finishLoading}
+              />
+            )}
           </div>
           {showNotesSection && meeting && organizationId && meeting.sections?.[0] && (
             <div className="shrink-0 border-t border-border p-4 bg-muted/20">

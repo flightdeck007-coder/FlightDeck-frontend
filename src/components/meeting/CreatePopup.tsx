@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useForm, Controller, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -59,6 +59,7 @@ const rockSchema = z.object({
   dueByTime: z.string().optional(),
   status: z.enum(["on_track", "off_track", "at_risk", "done"]).optional(),
   isCompanyRock: z.boolean().optional(),
+  ownerId: z.string().optional(),
   teamId: z.string().optional(),
   quarter: z.string().optional(),
   otherTeamId: z.string().optional(),
@@ -156,6 +157,16 @@ function RockOtherTeamSelect({
   );
 }
 
+function getInitials(name?: string | null, email?: string): string {
+  if (name?.trim()) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  }
+  if (email) return email.slice(0, 2).toUpperCase();
+  return "U";
+}
+
 interface CreatePopupProps {
   open: boolean;
   onClose: () => void;
@@ -164,6 +175,13 @@ interface CreatePopupProps {
   teams?: Team[];
   organizationId?: string;
   initialType?: CreateType;
+  /** Pre-fill title when opening Create To-Do or Create Issue (e.g. "Review 3 Measurables") */
+  initialTitle?: string;
+  /** Pre-fill description when opening Create To-Do or Create Issue (e.g. "Measurables:\n• Item 1") */
+  initialDescription?: string;
+  /** Meeting attendees for rock owner dropdown (and issue/todo assignees if needed) */
+  meetingAttendances?: Array<{ id: string; user: { id: string; name?: string | null; email: string } }>;
+  currentUserId?: string | null;
 }
 
 export function CreatePopup({
@@ -174,6 +192,10 @@ export function CreatePopup({
   teams = [],
   organizationId,
   initialType,
+  initialTitle,
+  initialDescription,
+  meetingAttendances = [],
+  currentUserId,
 }: CreatePopupProps) {
   const teamsList = Array.isArray(teams) ? teams : [];
   const teamsForSelect = teamsList.length > 0 ? teamsList.map((t) => ({ id: t.id, name: t.name })) : [];
@@ -345,6 +367,16 @@ export function CreatePopup({
     },
   });
 
+  const rockOwnerOptions = useMemo(() => {
+    const list = Array.isArray(meetingAttendances) ? meetingAttendances : [];
+    return list.map((a) => ({
+      label: a.user?.name || a.user?.email || a.user?.id || "Unknown",
+      value: a.user?.id ?? a.id,
+      name: a.user?.name ?? null,
+      email: a.user?.email ?? "",
+    }));
+  }, [meetingAttendances]);
+
   const rockForm = useForm<RockFormData>({
     resolver: zodResolver(rockSchema),
     defaultValues: {
@@ -354,6 +386,7 @@ export function CreatePopup({
       dueByTime: "",
       status: "on_track",
       isCompanyRock: false,
+      ownerId: currentUserId ?? "",
       teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""),
       quarter: "",
       otherTeamId: "",
@@ -398,7 +431,16 @@ export function CreatePopup({
       cascadingForm.reset();
     }
     if (open && initialType) setCreateType(initialType);
-  }, [open, reset, initialType]);
+    if (open && (initialTitle != null || initialDescription != null) && initialType) {
+      const title = initialTitle ?? "";
+      const desc = initialDescription ?? "";
+      if (initialType === "todo") todoForm.reset({ title, description: desc, dueDate: "", repeat: "Don't repeat", teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""), private: false });
+      if (initialType === "issue") reset({ title, description: desc, priority: "", who: "", teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""), interval: "short" });
+    }
+    if (open && initialType === "rock" && currentUserId) {
+      rockForm.setValue("ownerId", currentUserId);
+    }
+  }, [open, reset, initialType, initialTitle, initialDescription, currentUserId]);
 
   const onIssueSubmit = async (data: IssueFormData) => {
     if (issuesApi) {
@@ -415,15 +457,19 @@ export function CreatePopup({
 
   const onRockSubmit = (data: RockFormData) => {
     const dueBy = data.dueBy?.trim() || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const isCompany = Boolean(data.isCompanyRock);
+    const selected = rockOwnerOptions.find((o) => o.value === data.ownerId);
+    const ownerName = selected?.name || selected?.label || "User";
+    const ownerInitials = selected ? getInitials(selected.name, selected.email) : "U";
     rocksApi?.addRock({
       title: data.title,
-      ownerName: "John Doe",
-      ownerInitials: "JD",
+      ownerName: String(ownerName),
+      ownerInitials: ownerInitials.slice(0, 2),
       dueBy,
       status: (data.status as "on_track" | "off_track" | "at_risk" | "done") || "on_track",
       column: "current",
       achieved: false,
-      isCompanyRock: Boolean(data.isCompanyRock),
+      isCompanyRock: isCompany,
     });
     onClose();
     rockForm.reset();
@@ -804,6 +850,24 @@ export function CreatePopup({
                     />
                     <span className="text-sm text-foreground">Company Rock</span>
                   </label>
+                  {rockOwnerOptions.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1">Owner</label>
+                      <Controller
+                        name="ownerId"
+                        control={rockForm.control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value || undefined}
+                            onChange={(v) => field.onChange(v ?? "")}
+                            options={rockOwnerOptions.map((o) => ({ label: o.label, value: o.value }))}
+                            className="w-full"
+                            placeholder="Select person in meeting"
+                          />
+                        )}
+                      />
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-foreground mb-1">Due date</label>

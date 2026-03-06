@@ -279,7 +279,7 @@ export function MeetingSidebar({
             onClick={onFinish}
             disabled={finishLoading}
             className="w-full px-4 py-3 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-            title="End meeting for everyone"
+            title="End Flight Review for everyone"
           >
             {finishLoading ? (
               <Loader2 className="w-4 h-4 animate-spin" />

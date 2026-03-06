@@ -471,7 +471,7 @@ export function ConcludeSegmentView({
                 className="rounded border-border text-primary"
               />
               <span className="text-sm text-foreground">
-                Archive All Completed Headlines, To-Dos and Issues for the {teamName}
+                Archive All Completed Crew Headlines, Clearances (To-Dos) and Turbulence (Issues) for the {teamName}
               </span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
@@ -481,7 +481,7 @@ export function ConcludeSegmentView({
                 onChange={(e) => setSendRecapEmail(e.target.checked)}
                 className="rounded border-border text-primary"
               />
-              <span className="text-sm text-foreground">Send Meeting Recap Email</span>
+              <span className="text-sm text-foreground">Send Flight Review Recap Email</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -490,7 +490,7 @@ export function ConcludeSegmentView({
                 onChange={(e) => setShowIssueOnRecaps(e.target.checked)}
                 className="rounded border-border"
               />
-              <span className="text-sm text-foreground">Show Issue description on Level 10 Meetings™ Recaps</span>
+              <span className="text-sm text-foreground">Show Turbulence (Issue) description on Level 10 Flight Review Recaps</span>
             </label>
             <button
               type="button"
@@ -543,14 +543,14 @@ export function ConcludeSegmentView({
         </>
       )}
 
-      {/* End meeting confirmation */}
+      {/* End Flight Review confirmation */}
       {showEndMeetingModal && (
         <>
           <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setShowEndMeetingModal(false)} aria-hidden />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="bg-card border border-border rounded-lg shadow-xl max-w-sm w-full p-6">
-              <h3 className="text-lg font-semibold text-foreground mb-2">End meeting?</h3>
-              <p className="text-sm text-muted-foreground mb-4">Are you sure you want to end this meeting?</p>
+              <h3 className="text-lg font-semibold text-foreground mb-2">End Flight Review?</h3>
+              <p className="text-sm text-muted-foreground mb-4">Are you sure you want to end this Flight Review?</p>
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
@@ -735,7 +735,7 @@ function RecapTodoRowMenu({
         <div className="border-t border-border my-1" />
         <div className="px-2 py-1">
           <button type="button" className={btn} onClick={onClose} role="menuitem">
-            <Mountain className={icon} /> Create linked Rock
+            <Mountain className={icon} /> Create linked Waypoint (Rock)
           </button>
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <CheckSquare className={icon} /> Create linked To-Do

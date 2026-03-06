@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
 import {
@@ -41,9 +41,26 @@ import {
   Loader2,
   Check,
 } from 'lucide-react';
+import dayjs, { type Dayjs } from 'dayjs';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { MobileDatePicker } from '@mui/x-date-pickers/MobileDatePicker';
 import { useTodos, type TodoItem } from '@/contexts/TodosContext';
 import { RichTextEditor } from './RichTextEditor';
 import { ContentAreaLoader } from '@/components/ui/loaders';
+
+const datePickerTextFieldSx = {
+  '& .MuiInputLabel-root': { color: 'var(--foreground) !important', '&.Mui-focused': { color: 'var(--primary) !important' } },
+  '& .MuiOutlinedInput-root': {
+    backgroundColor: 'var(--background)',
+    color: 'var(--foreground) !important',
+    '& fieldset': { borderColor: 'var(--border)' },
+    '&:hover fieldset': { borderColor: 'var(--foreground)' },
+    '&.Mui-focused fieldset': { borderColor: 'var(--primary)', borderWidth: '1px' },
+  },
+  '& .MuiInputBase-input': { color: 'var(--foreground) !important', WebkitTextFillColor: 'var(--foreground)' },
+  '& .MuiIconButton-root': { color: 'var(--foreground) !important' },
+};
 
 const MENU_WIDTH = 248;
 const MENU_GAP = 8;
@@ -59,12 +76,24 @@ interface TodosSegmentViewProps {
   /** Scribe or facilitator can change filters and create (recording) */
   canRecord?: boolean;
   onOpenCreate?: (type: CreatePopupType) => void;
+  /** Meeting attendees for Owner multi-select (id, user with id, name, email) */
+  meetingAttendances?: Array<{ id: string; user: { id: string; name?: string | null; email: string } }>;
 }
 
 function formatDueDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function getInitials(name?: string | null, email?: string): string {
+  if (name?.trim()) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  }
+  if (email) return email.slice(0, 2).toUpperCase();
+  return '?';
 }
 
 export function TodosSegmentView({
@@ -74,35 +103,39 @@ export function TodosSegmentView({
   isFacilitator = true,
   canRecord,
   onOpenCreate,
+  meetingAttendances = [],
 }: TodosSegmentViewProps) {
   const canUseFilters = canRecord ?? isFacilitator;
   const [teamFilter, setTeamFilter] = useState(teamName);
-  const [ownerFilter, setOwnerFilter] = useState('All +1');
+  const [selectedOwnerIds, setSelectedOwnerIds] = useState<Set<string>>(new Set(['all']));
+  const [ownerDropdownOpen, setOwnerDropdownOpen] = useState(false);
   const [archiveOn, setArchiveOn] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [page, setPage] = useState(0);
   const [editTodoId, setEditTodoId] = useState<string | null>(null);
+  const ownerDropdownRef = useRef<HTMLDivElement>(null);
 
   const { socket } = useMeetingSocket();
+
+  useEffect(() => {
+    setTeamFilter(teamName);
+  }, [teamName]);
 
   useEffect(() => {
     if (!socket || !meetingId) return;
     const onTodosFilter = (payload: {
       teamFilter?: string;
-      ownerFilter?: string;
       archiveOn?: boolean;
       searchQuery?: string;
     }) => {
       if (payload.teamFilter !== undefined) setTeamFilter(payload.teamFilter);
-      if (payload.ownerFilter !== undefined) setOwnerFilter(payload.ownerFilter);
       if (payload.archiveOn !== undefined) setArchiveOn(payload.archiveOn);
       if (payload.searchQuery !== undefined) setSearchQuery(payload.searchQuery);
     };
     socket.on('todos_filter', onTodosFilter);
     return () => {
       socket.off('todos_filter', onTodosFilter);
-      return;
     };
   }, [socket, meetingId]);
 
@@ -117,6 +150,7 @@ export function TodosSegmentView({
     archiveTodo,
     setCompleted,
     isLoading,
+    refetch,
   } = useTodos();
 
   const [isAddingTodo, setIsAddingTodo] = useState(false);
@@ -133,17 +167,44 @@ export function TodosSegmentView({
   );
 
   const filteredTodos = useMemo(() => {
-    const list = archiveOn ? archivedTodos : activeTodos;
+    let list = archiveOn ? archivedTodos : activeTodos;
     const seen = new Set<string>();
-    const deduped = list.filter((t) => {
+    list = list.filter((t) => {
       if (seen.has(t.id)) return false;
       seen.add(t.id);
       return true;
     });
-    if (!searchQuery.trim()) return deduped;
+    const showAllOwners = selectedOwnerIds.has('all') || selectedOwnerIds.size === 0;
+    if (!showAllOwners) {
+      list = list.filter((t) => t.assigneeId && selectedOwnerIds.has(t.assigneeId));
+    }
+    if (!searchQuery.trim()) return list;
     const q = searchQuery.toLowerCase();
-    return deduped.filter((t) => t.title.toLowerCase().includes(q));
-  }, [archiveOn, activeTodos, archivedTodos, searchQuery]);
+    return list.filter((t) => t.title.toLowerCase().includes(q));
+  }, [archiveOn, activeTodos, archivedTodos, searchQuery, selectedOwnerIds]);
+
+  const downloadTodosCsv = useCallback(() => {
+    const headers = ['Title', 'Due By', 'Owner', 'Status'];
+    const rows = filteredTodos.map((t) => [
+      `"${(t.title || '').replace(/"/g, '""')}"`,
+      t.dueDate ?? '—',
+      t.ownerInitials ?? '—',
+      t.completed ? 'Done' : 'Open',
+    ]);
+    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `todos-${archiveOn ? 'archived' : 'active'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [filteredTodos, archiveOn]);
+
+  const handleAchieveAllCompleted = useCallback(() => {
+    const toArchive = filteredTodos.filter((t) => t.completed);
+    toArchive.forEach((t) => archiveTodo(t.id));
+  }, [filteredTodos, archiveTodo]);
 
   const todoIds = useMemo(() => filteredTodos.map((t) => t.id), [filteredTodos]);
   const totalItems = filteredTodos.length;
@@ -206,26 +267,77 @@ export function TodosSegmentView({
           <Select
             value={teamFilter}
             onChange={(v) => {
-              setTeamFilter(v);
-              if (meetingId && socket) socket.emit('todos_filter', { meetingId, teamFilter: v });
+              setTeamFilter(v ?? teamName);
+              if (meetingId && socket) socket.emit('todos_filter', { meetingId, teamFilter: v ?? teamName });
             }}
             disabled={!canUseFilters}
-            options={[{ label: 'Leadership Team', value: teamName }]}
+            options={[{ label: teamName, value: teamName }]}
             className="w-[160px]"
           />
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 relative" ref={ownerDropdownRef}>
           <span className="text-muted-foreground text-sm">Owner:</span>
-          <Select
-            value={ownerFilter}
-            onChange={(v) => {
-              setOwnerFilter(v);
-              if (meetingId && socket) socket.emit('todos_filter', { meetingId, ownerFilter: v });
-            }}
+          <button
+            type="button"
             disabled={!canUseFilters}
-            options={[{ label: 'All +1', value: 'All +1' }]}
-            className="w-[120px]"
-          />
+            onClick={() => setOwnerDropdownOpen((o) => !o)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-md bg-background hover:bg-muted/50 text-sm text-foreground min-w-[120px] justify-between cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+          >
+            <span className="truncate">
+              {selectedOwnerIds.has('all') || selectedOwnerIds.size === 0
+                ? 'All'
+                : selectedOwnerIds.size === 1
+                  ? meetingAttendances.find((a) => a.user.id === [...selectedOwnerIds][0])?.user?.name ?? 'Selected'
+                  : `${selectedOwnerIds.size} selected`}
+            </span>
+            {ownerDropdownOpen ? <ChevronUp className="w-4 h-4 shrink-0" /> : <ChevronDown className="w-4 h-4 shrink-0" />}
+          </button>
+          {ownerDropdownOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setOwnerDropdownOpen(false)} aria-hidden />
+              <div className="absolute left-0 top-full mt-1 z-20 py-2 bg-card border border-border rounded-lg shadow-xl min-w-[200px] max-h-[280px] overflow-y-auto">
+                <label className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedOwnerIds.has('all') || selectedOwnerIds.size === 0}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelectedOwnerIds(new Set(['all']));
+                      else setSelectedOwnerIds(new Set());
+                    }}
+                    className="rounded border-border"
+                  />
+                  <span className="text-sm font-medium text-foreground">All</span>
+                </label>
+                {meetingAttendances.map((att) => {
+                  const uid = att.user.id;
+                  const name = att.user.name || att.user.email || 'User';
+                  const initials = getInitials(att.user.name, att.user.email);
+                  const checked = selectedOwnerIds.has(uid);
+                  return (
+                    <label key={att.id} className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setSelectedOwnerIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has('all')) next.delete('all');
+                            if (checked) next.delete(uid);
+                            else next.add(uid);
+                            if (next.size === 0) next.add('all');
+                            return next;
+                          });
+                        }}
+                        className="rounded border-border"
+                      />
+                      <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs text-foreground shrink-0">{initials}</span>
+                      <span className="text-sm text-foreground truncate">{name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
         <label className={`flex items-center gap-2 group ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
           <span className="text-sm text-foreground group-hover:text-foreground/90">Archive</span>
@@ -243,7 +355,7 @@ export function TodosSegmentView({
             }}
             className={`relative w-11 h-6 rounded-full transition-colors border-2 flex items-center ${!canUseFilters ? 'cursor-not-allowed' : ''} ${
               archiveOn
-                ? 'bg-primary border-primary justify-end'
+                ? 'bg-muted border-border justify-end'
                 : 'bg-muted border-border justify-start hover:bg-muted/80'
             }`}
           >
@@ -254,38 +366,42 @@ export function TodosSegmentView({
         <button
           type="button"
           disabled={!canUseFilters}
-          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
-          aria-label="Refresh"
+          onClick={() => refetch()}
+          title="Refresh the to-do list"
+          className="p-2 rounded-lg border border-border transition-colors cursor-pointer hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:bg-transparent"
         >
           <RotateCw className="w-4 h-4" />
         </button>
         <button
           type="button"
           disabled={!canUseFilters}
-          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
-          aria-label="Download PDF"
-        >
-          <FileDown className="w-4 h-4" />
-        </button>
-        <button
-          type="button"
-          disabled={!canUseFilters}
-          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
-          aria-label="Download"
+          onClick={downloadTodosCsv}
+          title="Download to-dos as CSV"
+          className="p-2 rounded-lg border border-border transition-colors cursor-pointer hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:bg-transparent"
         >
           <Download className="w-4 h-4" />
         </button>
         <button
           type="button"
           disabled={!canUseFilters}
-          className={`p-2 rounded-lg transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground' : 'hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer'}`}
-          aria-label="More"
+          onClick={() => window.print()}
+          title="Print / Download PDF"
+          className="p-2 rounded-lg border border-border transition-colors cursor-pointer hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+        >
+          <FileDown className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          disabled={!canUseFilters || filteredTodos.filter((t) => t.completed).length === 0}
+          onClick={handleAchieveAllCompleted}
+          title="Archive all completed to-dos in this list"
+          className="p-2 rounded-lg border border-border transition-colors cursor-pointer hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:bg-transparent"
         >
           <Package className="w-4 h-4" />
         </button>
         <div className="min-w-[200px]">
           <Input.Search
-            placeholder="Search TO-DO LIST | Level 10 Meetin..."
+            placeholder="Search to-dos..."
             value={searchQuery}
             onChange={(e) => {
               const v = e.target.value;
@@ -307,7 +423,7 @@ export function TodosSegmentView({
       <div className="bg-card border border-border rounded-lg flex flex-col flex-1 min-h-0">
         <div className="p-4 border-b border-border flex items-center justify-between">
           <h3 className="font-semibold text-foreground">
-            Team To-Dos {filteredTodos.length}
+            Team Clearances (To-Dos) {filteredTodos.length}
           </h3>
           <button
             type="button"
@@ -741,7 +857,7 @@ function TodoRowMenu({
         <div className="px-2 py-1">
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <Mountain className={icon} />
-            Create linked Rock
+            Create linked Waypoint (Rock)
           </button>
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <CheckSquare className={icon} />
@@ -807,25 +923,16 @@ export function EditTodoPanel({
 }) {
   const [title, setTitle] = useState(todo.title);
   const [description, setDescription] = useState(todo.description || '');
-  const [dueDate, setDueDate] = useState(
-    todo.dueDate
-      ? new Date(todo.dueDate).toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'numeric',
-          day: 'numeric',
-        })
-      : ''
+  const [dueDateValue, setDueDateValue] = useState<Dayjs | null>(
+    todo.dueDate ? dayjs(todo.dueDate) : null
   );
   const [repeat, setRepeat] = useState(todo.repeat || "Don't repeat");
   const [privateTodo, setPrivateTodo] = useState(todo.private ?? false);
   const [team, setTeam] = useState(todo.teamName || 'Leadership Team');
 
   const handleSave = (andClose = false) => {
-    const isoDate = dueDate
-      ? (() => {
-          const d = new Date(dueDate);
-          return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
-        })()
+    const isoDate = dueDateValue
+      ? dueDateValue.toISOString().slice(0, 10)
       : null;
     onUpdate({
       title,
@@ -838,11 +945,15 @@ export function EditTodoPanel({
     if (andClose) onClose();
   };
 
+  const handleCancel = () => {
+    onClose();
+  };
+
   return (
     <>
-      <div className="fixed inset-0 bg-black/20 z-40" onClick={() => handleSave(true)} aria-hidden />
-    <div className="fixed inset-y-0 right-0 w-[30%] min-w-[320px] max-w-[480px] bg-card border-l border-border shadow-xl z-50 flex flex-col">
-      <header className="flex items-center justify-between p-4 border-b border-border shrink-0">
+      <div className="fixed inset-0 bg-black/20 z-40" onClick={handleCancel} aria-hidden />
+    <div className="fixed inset-y-0 right-0 w-[42%] min-w-[380px] max-w-[620px] bg-card border-l border-border shadow-xl z-50 flex flex-col">
+      <header className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -871,7 +982,7 @@ export function EditTodoPanel({
           </div>
           <button
             type="button"
-            onClick={() => handleSave(true)}
+            onClick={handleCancel}
             className="p-2 rounded-md hover:bg-muted text-muted-foreground"
             aria-label="Close"
           >
@@ -879,7 +990,7 @@ export function EditTodoPanel({
           </button>
         </div>
       </header>
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
         <div>
           <label className="block text-sm font-medium text-foreground mb-1">
             Title
@@ -888,7 +999,6 @@ export function EditTodoPanel({
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            onBlur={() => handleSave()}
             className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
           />
         </div>
@@ -906,22 +1016,21 @@ export function EditTodoPanel({
           <label className="block text-sm font-medium text-foreground mb-1">
             Due Date
           </label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              placeholder="MM/DD/YYYY"
-              className="flex-1 px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
+          <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <MobileDatePicker
+              value={dueDateValue}
+              onChange={(v) => setDueDateValue(v)}
+              slotProps={{
+                textField: {
+                  size: 'small',
+                  fullWidth: true,
+                  sx: datePickerTextFieldSx,
+                  placeholder: 'Pick date',
+                  inputProps: { style: { color: 'var(--foreground)' } },
+                },
+              }}
             />
-            <button
-              type="button"
-              className="p-2 border border-border rounded-md hover:bg-muted"
-              aria-label="Pick date"
-            >
-              <Calendar className="w-4 h-4 text-muted-foreground" />
-            </button>
-          </div>
+          </LocalizationProvider>
         </div>
         <div>
           <label className="block text-sm font-medium text-foreground mb-1">
@@ -974,8 +1083,8 @@ export function EditTodoPanel({
             to.
           </p>
         </div>
-        <div>
-          <div className="flex items-center justify-between mb-2">
+        <section className="pt-6 mt-6 border-t border-border">
+          <div className="flex items-center justify-between mb-3">
             <h4 className="font-medium text-foreground">Linked Items 0</h4>
             <button
               type="button"
@@ -990,44 +1099,62 @@ export function EditTodoPanel({
           >
             + Linked Item
           </button>
-        </div>
-        <div>
-          <h4 className="font-medium text-foreground mb-2">Attachments 0</h4>
-          <div className="border-2 border-dashed border-border rounded-lg p-6 text-center text-sm text-muted-foreground">
+        </section>
+        <section className="pt-6 mt-6 border-t border-border">
+          <h4 className="font-medium text-foreground mb-3">Attachments 0</h4>
+          <div className="border-2 border-dashed border-border rounded-lg p-8 text-center text-sm text-muted-foreground">
             Drag and drop files to attach, or{' '}
             <button type="button" className="text-primary hover:underline">
               browse
             </button>
           </div>
-        </div>
-        <div>
-          <h4 className="font-medium text-foreground mb-2">Comments 0</h4>
-          <div className="flex gap-2">
-            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground shrink-0">
+        </section>
+        <section className="pt-6 mt-6 border-t border-border">
+          <h4 className="font-medium text-foreground mb-3">Comments 0</h4>
+          <div className="flex gap-3">
+            <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground shrink-0">
               {todo.ownerInitials}
             </div>
             <input
               type="text"
               placeholder="Add a comment..."
-              className="flex-1 px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
+              className="flex-1 px-3 py-2.5 border border-border rounded-md bg-background text-foreground text-sm"
             />
           </div>
-          <p className="text-xs text-muted-foreground text-right mt-1">
+          <p className="text-xs text-muted-foreground text-right mt-2">
             0/10000
           </p>
-        </div>
+        </section>
       </div>
-      <footer className="p-4 border-t border-border text-xs text-muted-foreground shrink-0">
-        Created by {todo.ownerInitials} on{' '}
-        {todo.dueDate
-          ? new Date(todo.dueDate).toLocaleDateString('en-US', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })
-          : '—'}{' '}
-        · <span className="flex items-center gap-1 inline-flex mt-1">✔ Following <User className="w-3 h-3" /></span>
+      <footer className="px-6 py-4 border-t border-border shrink-0 space-y-3">
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="px-4 py-2 rounded-md border border-border bg-background text-foreground text-sm font-medium hover:bg-muted cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSave(true)}
+            className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer"
+          >
+            Save
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Created by {todo.ownerInitials} on{' '}
+          {todo.dueDate
+            ? new Date(todo.dueDate).toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })
+            : '—'}{' '}
+          · <span className="inline-flex items-center gap-1">✔ Following <User className="w-3 h-3" /></span>
+        </p>
       </footer>
     </div>
     </>

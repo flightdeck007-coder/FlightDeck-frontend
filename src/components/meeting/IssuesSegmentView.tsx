@@ -187,7 +187,7 @@ export function IssuesSegmentView({
       ? Math.round((shortTermResolved.length / totalTrackedShort) * 100)
       : 0;
 
-  const wrap = embedded ? 'pt-0 pb-4' : 'pt-0 pb-6';
+  const wrap = embedded ? 'pt-0 pb-0' : 'pt-0 pb-0';
   const contentPad = embedded ? 'px-4' : 'px-6';
   return (
     <div className={`flex flex-col min-h-0 h-full ${wrap}`}>
@@ -265,7 +265,7 @@ export function IssuesSegmentView({
         </button>
         <div className={`min-w-[200px] ${!canUseFilters ? 'dark:[&_.ant-input]:bg-zinc-600/60 dark:[&_.ant-input]:text-zinc-300' : ''}`}>
           <Input.Search
-            placeholder="Search IDS™ | Level 10 Meeting™..."
+            placeholder="Search Turbulence (IDS™) | Level 10 Meeting™..."
             value={searchQuery}
             onChange={(e) => {
               const v = e.target.value;
@@ -287,13 +287,8 @@ export function IssuesSegmentView({
         </button>
       </div>
 
-      {/* Content: padding after filter bar — or full-area loader when fetching */}
-      {isLoading ? (
-        <ContentAreaLoader label="Loading issues…" />
-      ) : (
-      <div className={`flex-1 overflow-auto min-h-0 mt-4 ${contentPad}`}>
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-border shrink-0">
+      {/* Short-Term / Long-Term tabs attached to header — no space from top or left/right */}
+      <div className="flex gap-1 border-b border-border shrink-0 -mx-6 px-6 bg-background">
         <button
           type="button"
           disabled={!canUseFilters}
@@ -301,7 +296,7 @@ export function IssuesSegmentView({
             setActiveTab('short_term');
             if (meetingId && socket) socket.emit('issues_filter', { meetingId, activeTab: 'short_term' });
           }}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70 dark:bg-zinc-600/50 dark:text-zinc-300' : ''} ${
+          className={`px-8 py-1.5 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70 dark:bg-zinc-600/50 dark:text-zinc-300' : ''} ${
             activeTab === 'short_term'
               ? 'text-primary border-primary'
               : 'text-muted-foreground border-transparent hover:text-foreground'
@@ -316,7 +311,7 @@ export function IssuesSegmentView({
             setActiveTab('long_term');
             if (meetingId && socket) socket.emit('issues_filter', { meetingId, activeTab: 'long_term' });
           }}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70 dark:bg-zinc-600/50 dark:text-zinc-300' : ''} ${
+          className={`px-8 py-1.5 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70 dark:bg-zinc-600/50 dark:text-zinc-300' : ''} ${
             activeTab === 'long_term'
               ? 'text-primary border-primary'
               : 'text-muted-foreground border-transparent hover:text-foreground'
@@ -332,7 +327,7 @@ export function IssuesSegmentView({
               setActiveTab('completed');
               if (socket) socket.emit('issues_filter', { meetingId, activeTab: 'completed' });
             }}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70 dark:bg-zinc-600/50 dark:text-zinc-300' : ''} ${
+            className={`px-8 py-1.5 text-sm font-medium transition-colors border-b-2 -mb-px ${!canUseFilters ? 'cursor-not-allowed opacity-70 dark:bg-zinc-600/50 dark:text-zinc-300' : ''} ${
               activeTab === 'completed'
                 ? 'text-primary border-primary'
                 : 'text-muted-foreground border-transparent hover:text-foreground'
@@ -343,21 +338,27 @@ export function IssuesSegmentView({
         )}
       </div>
 
+      {/* Content: centered 80% width with large space between sections */}
+      {isLoading ? (
+        <ContentAreaLoader label="Loading issues…" />
+      ) : (
+      <div className="flex-1 overflow-auto min-h-0">
+        <div className={`w-[80%] max-w-full mx-auto space-y-16 ${contentPad}`}>
       {/* Short-Term only: stats row above the Short-Term card, controlled by Show/Hide */}
       {activeTab === 'short_term' && statsVisible && (
-        <div className="grid grid-cols-4 gap-4 py-4 shrink-0">
+        <div className="grid grid-cols-4 gap-4 pt-6 shrink-0">
           <div className="border border-border rounded-lg p-4 bg-card">
-            <p className="text-sm text-muted-foreground">Total Tracked Issues</p>
+            <p className="text-sm text-muted-foreground">Total Tracked Turbulence (Issues)</p>
             <p className="text-2xl font-bold text-foreground mt-1">{totalTrackedShort}</p>
           </div>
           <div className="border border-border rounded-lg p-4 bg-card">
             <p className="text-sm text-muted-foreground">
-              {meetingId ? 'Solved in this meeting' : 'Issues Solved Last Meeting'}
+              {meetingId ? 'Solved in this Flight Review' : 'Turbulence (Issues) Solved Last Flight Review'}
             </p>
             <p className="text-2xl font-bold text-foreground mt-1">{solvedLastMeeting}</p>
           </div>
           <div className="border border-border rounded-lg p-4 bg-card">
-            <p className="text-sm text-muted-foreground">Issues Solved Today</p>
+            <p className="text-sm text-muted-foreground">Turbulence (Issues) Solved Today</p>
             <p className="text-2xl font-bold text-foreground mt-1">{solvedToday}</p>
           </div>
           <div className="border border-border rounded-lg p-4 bg-card">
@@ -367,8 +368,8 @@ export function IssuesSegmentView({
         </div>
       )}
 
-      {/* Content card */}
-      <div className="flex-1 overflow-auto min-h-0 mt-4 bg-card border border-border rounded-lg flex flex-col">
+      {/* Content card — spacing from space-y-16 above */}
+      <div className="flex-1 min-h-0 bg-card border border-border rounded-lg flex flex-col">
         <div className="p-4 border-b border-border flex items-center justify-between flex-wrap gap-2">
           <h3 className="font-semibold text-foreground">
             {activeTab === 'short_term'
@@ -508,7 +509,7 @@ export function IssuesSegmentView({
             onClick={onOpenCreate ? () => onOpenCreate('issue') : onOpenCreateIssue}
             className="text-primary hover:underline text-sm font-medium hover:text-primary/90 transition-colors cursor-pointer"
           >
-            + Add Issue
+            + Add Turbulence (Issue)
           </button>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-2">
@@ -572,6 +573,7 @@ export function IssuesSegmentView({
           </div>
         </div>
       </div>
+        </div>
       </div>
       )}
     </div>
@@ -831,7 +833,7 @@ function IssueRowMenu({
         <div className="px-2 py-1">
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <Mountain className={icon} />
-            Create linked Rock
+            Create linked Waypoint (Rock)
           </button>
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <CheckSquare className={icon} />

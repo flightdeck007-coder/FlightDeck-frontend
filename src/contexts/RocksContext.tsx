@@ -73,6 +73,7 @@ interface RocksContextValue {
   updateRock: (id: string, updates: Partial<Rock>) => void;
   moveRockToColumn: (rockId: string, column: RockColumnId) => void;
   archiveRock: (id: string) => void;
+  unarchiveRock: (id: string) => void;
   deleteRock: (id: string) => void;
   getRocksByColumn: (column: RockColumnId) => Rock[];
   getActiveRocks: () => Rock[];
@@ -201,6 +202,13 @@ export function RocksProvider({
     [updateRock]
   );
 
+  const unarchiveRock = useCallback(
+    (id: string) => {
+      updateRock(id, { achieved: false, status: 'on_track' });
+    },
+    [updateRock]
+  );
+
   const deleteRock = useCallback(
     async (id: string) => {
       if (!organizationId || !meetingId) return;
@@ -236,6 +244,7 @@ export function RocksProvider({
       updateRock,
       moveRockToColumn,
       archiveRock,
+      unarchiveRock,
       deleteRock,
       getRocksByColumn,
       getActiveRocks,
@@ -249,6 +258,7 @@ export function RocksProvider({
       updateRock,
       moveRockToColumn,
       archiveRock,
+      unarchiveRock,
       deleteRock,
       getRocksByColumn,
       getActiveRocks,

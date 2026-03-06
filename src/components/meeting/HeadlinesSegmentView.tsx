@@ -213,7 +213,7 @@ export function HeadlinesSegmentView({
         </label>
         <div className="flex-1 min-w-[200px] flex justify-end">
           <Input.Search
-            placeholder="Search Headlines..."
+            placeholder="Search Crew Headlines..."
             value={searchQuery}
             onChange={(e) => {
               if (!canUseFilters) return;
@@ -236,12 +236,12 @@ export function HeadlinesSegmentView({
         {archiveOn ? (
           <>
             <ArchivedSection
-              title="Archived Headlines"
+              title="Archived Crew Headlines (Headlines)"
               count={archivedHeadlines.length}
               subtitle="Customer/Employee Headlines"
-              emptyMessage="Your team doesn't have any Archived Headlines."
-              hint="Headlines are a great way to share news across teams."
-              learnLink="Learn more about Headlines."
+              emptyMessage="Your team doesn't have any Archived Crew Headlines."
+              hint="Crew Headlines are a great way to share news across teams."
+              learnLink="Learn more about Crew Headlines."
             />
             <ArchivedSection
               title="Archived Cascading Messages"
@@ -265,7 +265,7 @@ export function HeadlinesSegmentView({
                     ? () => onOpenCreate('headline')
                     : () => setIsAddingHeadline(true)
                 }
-                sectionTitle="Headlines"
+                sectionTitle="Crew Headlines (Customer/Employee)"
                 sectionSubtitle="Customer/Employee Headlines"
                 createLabel="Create Headline"
                 isAdding={isAddingHeadline}
@@ -778,7 +778,7 @@ function HeadlineRowMenu({
           )}
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <Mountain className={icon} />
-            Create linked Rock
+            Create linked Waypoint (Rock)
           </button>
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <CheckSquare className={icon} />

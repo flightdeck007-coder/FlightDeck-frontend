@@ -467,3 +467,97 @@ export const scorecardGroupsService = {
     );
   },
 };
+
+export type ScorecardMainGroupSettings = {
+  hidden?: boolean;
+  name?: string;
+  description?: string;
+} | null;
+
+export const scorecardMainGroupService = {
+  get: async (
+    organizationId: string,
+    meetingId: string,
+  ): Promise<ScorecardMainGroupSettings> => {
+    const response = await apiClient.get<ScorecardMainGroupSettings>(
+      `/meetings/${meetingId}/scorecard-main-group?organizationId=${organizationId}`,
+    );
+    return response.data;
+  },
+  update: async (
+    organizationId: string,
+    meetingId: string,
+    data: { hidden?: boolean; name?: string; description?: string },
+  ): Promise<ScorecardMainGroupSettings> => {
+    const response = await apiClient.patch<ScorecardMainGroupSettings>(
+      `/meetings/${meetingId}/scorecard-main-group?organizationId=${organizationId}`,
+      data,
+    );
+    return response.data;
+  },
+};
+
+export interface ScorecardMeasurableDto {
+  id: string;
+  groupId: string | null;
+  title: string;
+  goal: string;
+  average: string;
+  total: string;
+  trend: 'up' | 'down' | 'neutral';
+  periodValues: Record<string, string>;
+}
+
+export const scorecardMeasurablesService = {
+  list: async (
+    organizationId: string,
+    meetingId: string,
+  ): Promise<ScorecardMeasurableDto[]> => {
+    const response = await apiClient.get<ScorecardMeasurableDto[]>(
+      `/meetings/${meetingId}/scorecard-measurables?organizationId=${organizationId}`,
+    );
+    return response.data;
+  },
+  updateGroup: async (
+    organizationId: string,
+    meetingId: string,
+    measurableId: string,
+    scorecardGroupId: string | null,
+  ): Promise<unknown> => {
+    const response = await apiClient.patch(
+      `/meetings/${meetingId}/scorecard-measurables/${measurableId}/group?organizationId=${organizationId}`,
+      { scorecardGroupId },
+    );
+    return response.data;
+  },
+  upsert: async (
+    organizationId: string,
+    meetingId: string,
+    measurables: Array<{
+      id: string;
+      scorecardGroupId?: string | null;
+      title: string;
+      goal?: string;
+      average?: string;
+      total?: string;
+      trend?: string;
+      periodValues?: Record<string, string>;
+      order?: number;
+    }>,
+  ): Promise<ScorecardMeasurableDto[]> => {
+    const response = await apiClient.put<ScorecardMeasurableDto[]>(
+      `/meetings/${meetingId}/scorecard-measurables?organizationId=${organizationId}`,
+      { measurables },
+    );
+    return response.data;
+  },
+  delete: async (
+    organizationId: string,
+    meetingId: string,
+    measurableId: string,
+  ): Promise<void> => {
+    await apiClient.delete(
+      `/meetings/${meetingId}/scorecard-measurables/${measurableId}?organizationId=${organizationId}`,
+    );
+  },
+};

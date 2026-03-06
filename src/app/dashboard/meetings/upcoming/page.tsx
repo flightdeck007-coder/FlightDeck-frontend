@@ -23,6 +23,7 @@ import { meetingSeriesService, type MeetingSeries } from '@/lib/api/meeting-seri
 import { StartMeetingModal } from '@/components/meeting/StartMeetingModal';
 import { ScheduleMeetingModal } from '@/components/meeting/ScheduleMeetingModal';
 import { EditScheduleModal } from '@/components/meeting/EditScheduleModal';
+import { MeetingScheduledModal } from '@/components/meeting/MeetingScheduledModal';
 import { QuickStartMeetingModal } from '@/components/meeting/QuickStartMeetingModal';
 import { SimpleTable } from '@/components/ui/SimpleTable';
 import { formatDate, formatTime } from '@/lib/formatDate';
@@ -59,10 +60,11 @@ export default function MeetingsUpcomingPage() {
   const [continueMeetingModal, setContinueMeetingModal] = useState<Meeting | null>(null);
   const [resumingMeetingId, setResumingMeetingId] = useState<string | null>(null);
   const [rowMenuAnchor, setRowMenuAnchor] = useState<{ meetingId: string; left: number; top: number } | null>(null);
-  const [shareModalFromRow, setShareModalFromRow] = useState<{
+  const [meetingScheduledModal, setMeetingScheduledModal] = useState<{
     agendaName: string;
     teamName: string;
     scheduledAt: string;
+    durationMinutes?: number;
   } | null>(null);
   const [orgRole, setOrgRole] = useState<string | null>(null);
 
@@ -145,7 +147,8 @@ export default function MeetingsUpcomingPage() {
     }
   };
 
-  const handleScheduled = () => {
+  const handleScheduled = (payload: { agendaName: string; teamName: string; scheduledAt: string; durationMinutes?: number }) => {
+    setMeetingScheduledModal(payload);
     refetch();
   };
 
@@ -597,7 +600,7 @@ export default function MeetingsUpcomingPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setShareModalFromRow({
+                  setMeetingScheduledModal({
                     agendaName: menuMeeting.series.name,
                     teamName: menuMeeting.team.name,
                     scheduledAt: menuMeeting.scheduledAt,
@@ -638,34 +641,15 @@ export default function MeetingsUpcomingPage() {
         );
       })()}
 
-      {shareModalFromRow && (
-        <>
-          <div className="fixed inset-0 bg-black/40 z-50" onClick={() => setShareModalFromRow(null)} aria-hidden />
-          <div
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-sm rounded-xl border border-border bg-card shadow-xl p-6"
-            role="dialog"
-            aria-modal="true"
-          >
-            <h3 className="text-lg font-semibold text-foreground mb-2">Add to calendar</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              {shareModalFromRow.agendaName} — {shareModalFromRow.teamName},{' '}
-              {formatDate(new Date(shareModalFromRow.scheduledAt))} at{' '}
-              {formatTime(new Date(shareModalFromRow.scheduledAt))}.
-            </p>
-            <p className="text-xs text-muted-foreground mb-4">
-              Calendar integration can be added here (e.g. Google Calendar link).
-            </p>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShareModalFromRow(null)}
-                className="px-4 py-2 rounded-md border border-border text-foreground text-sm"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </>
+      {meetingScheduledModal && (
+        <MeetingScheduledModal
+          open={true}
+          onClose={() => setMeetingScheduledModal(null)}
+          agendaName={meetingScheduledModal.agendaName}
+          teamName={meetingScheduledModal.teamName}
+          scheduledAt={meetingScheduledModal.scheduledAt}
+          durationMinutes={meetingScheduledModal.durationMinutes}
+        />
       )}
 
     </>

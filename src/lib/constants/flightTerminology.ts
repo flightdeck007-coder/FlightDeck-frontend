@@ -9,7 +9,10 @@ export const FLIGHT_TERMS = {
   TODOS: 'Clearances (To-Dos)',
   ROCKS: 'Waypoints (Rocks)',
   ISSUES: 'Turbulence (Issues)',
-  SCORECARD: 'Instrument Panel (Scorecard)',
+  SCORECARD: 'Flight Desk (Scorecard)',
+  SEGUE: 'Pre-Flight (Segue)',
+  HEADLINES: 'Crew Headlines (Customer/Employee)',
+  CONCLUDE: 'Debrief (Conclude)',
   START_MEETING: 'Start Flight Review',
   FINISH_MEETING: 'Finish Flight Review',
   INVITE_CREW: 'Invite Crew Members',
@@ -23,4 +26,18 @@ export const FLIGHT_TERMS = {
   OPEN_TURBULENCE: 'Open Turbulence',
   ACTIVE_WAYPOINTS: 'Active Waypoints',
   CREW_MEMBERS: 'Crew Members',
+  PLANNING_BOARD: 'Flight Plan (Planning Board)',
+  COMPANY_WAYPOINTS: 'Company Waypoints (Rocks)',
+  WAYPOINTS_BY_OWNER: 'Waypoints by owner (Rocks)',
 } as const;
+
+/** Section id -> display title (flight-first, original in brackets for reference) */
+export const SECTION_DISPLAY_TITLES: Record<string, string> = {
+  segue: FLIGHT_TERMS.SEGUE,
+  scorecard: FLIGHT_TERMS.SCORECARD,
+  rocks: 'Waypoint Review (Rocks)',
+  headlines: FLIGHT_TERMS.HEADLINES,
+  todos: FLIGHT_TERMS.TODOS,
+  issues: FLIGHT_TERMS.ISSUES,
+  conclude: FLIGHT_TERMS.CONCLUDE,
+};
