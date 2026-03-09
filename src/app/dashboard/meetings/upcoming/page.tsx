@@ -80,8 +80,8 @@ export default function MeetingsUpcomingPage() {
 
   const isAdminOrManager = orgRole === 'ADMIN' || orgRole === 'MANAGER';
 
-  // Upcoming = all meetings to be executed: not ended, not cancelled (scheduled + in progress + suspended).
-  // Past = only ended or cancelled. So we filter by team and then:
+  // Upcoming = all meetings that are not cancelled and not ended (ongoing, not started, future).
+  // They stay in Upcoming until cancelled, finished, or completed. Past = only ended or cancelled.
   const now = Date.now();
   const inProgressMeeting = meetings.find(
     (m) =>
@@ -90,16 +90,22 @@ export default function MeetingsUpcomingPage() {
   const suspendedMeeting = meetings.find(
     (m) => m.teamId === selectedTeamId && m.suspendedAt && !m.endedAt
   );
-  // Scheduled table: future meetings not yet started (in-progress/suspended shown in card/banner above)
-  const upcomingMeetings = meetings.filter(
-    (m) =>
-      m.teamId === selectedTeamId &&
-      !m.cancelledAt &&
-      !m.endedAt &&
-      !m.suspendedAt &&
-      !m.startedAt &&
-      new Date(m.scheduledAt).getTime() > now
-  );
+  // Table: all upcoming (not cancelled, not ended) — includes ongoing, not started, and future
+  const upcomingMeetings = meetings
+    .filter(
+      (m) =>
+        m.teamId === selectedTeamId &&
+        !m.cancelledAt &&
+        !m.endedAt
+    )
+    .sort((a, b) => {
+      // Ongoing (started or suspended) first, then by scheduled date
+      const aOngoing = !!(a.startedAt || a.suspendedAt);
+      const bOngoing = !!(b.startedAt || b.suspendedAt);
+      if (aOngoing && !bOngoing) return -1;
+      if (!aOngoing && bOngoing) return 1;
+      return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+    });
   const isFacilitatorOrScribe =
     inProgressMeeting &&
     currentUserId &&
@@ -349,10 +355,10 @@ export default function MeetingsUpcomingPage() {
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="px-4 py-4 border-b border-border">
             <h3 className="text-lg font-semibold text-foreground">
-              Scheduled <span className="text-muted-foreground font-normal">{upcomingMeetings.length}</span>
+              Upcoming <span className="text-muted-foreground font-normal">{upcomingMeetings.length}</span>
             </h3>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Upcoming meetings for this team.
+              Meetings stay here until cancelled or ended. Includes scheduled, in progress, and not yet started.
             </p>
           </div>
           {isLoading ? (
