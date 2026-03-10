@@ -28,14 +28,28 @@ import {
   Paperclip,
   Settings,
   Loader2,
+  X,
 } from 'lucide-react';
 import { useIssues, type IssueItem } from '@/contexts/IssuesContext';
 import { ContentAreaLoader } from '@/components/ui/loaders';
 import { formatDate } from '@/lib/formatDate';
+import { RichTextEditor } from '@/components/meeting/RichTextEditor';
 
 const MENU_WIDTH = 248;
 const MENU_GAP = 8;
 const PAGE_SIZES = [10, 25, 50];
+
+function linkedEntityTypeLabel(type: string | null | undefined): string {
+  if (!type) return 'Item';
+  const map: Record<string, string> = {
+    issue: 'Turbulence (Issue)',
+    rock: 'Waypoint (Rock)',
+    todo: 'Clearance (To-Do)',
+    headline: 'Headline',
+    cascading_message: 'Cascading message',
+  };
+  return map[type] ?? type;
+}
 
 type CreatePopupType = 'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message';
 
@@ -46,7 +60,7 @@ interface IssuesSegmentViewProps {
   isFacilitator?: boolean;
   /** Scribe or facilitator can change filters and create (recording) */
   canRecord?: boolean;
-  onOpenCreate?: (type: CreatePopupType) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
   onOpenCreateIssue?: () => void;
 }
 
@@ -91,6 +105,7 @@ export function IssuesSegmentView({
   const [layout, setLayout] = useState<'list' | 'column'>('list');
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const [page, setPage] = useState(0);
+  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
 
   const { socket } = useMeetingSocket();
 
@@ -132,6 +147,11 @@ export function IssuesSegmentView({
     refetch,
     isLoading,
   } = useIssues();
+
+  const allIssues = useMemo(
+    () => [...shortTerm, ...longTerm, ...shortTermResolved, ...longTermResolved],
+    [shortTerm, longTerm, shortTermResolved, longTermResolved]
+  );
 
   const currentList = useMemo(() => {
     if (activeTab === 'short_term') return shortTerm;
@@ -466,11 +486,13 @@ export function IssuesSegmentView({
                 <IssueCard
                   key={item.id}
                   item={item}
+                  onEdit={() => setSelectedIssueId(item.id)}
                   onToggleResolved={(resolved) => setResolved(item.id, resolved)}
                   onPriorityChange={(priority) => updateIssue(item.id, { priority })}
                   onArchive={() => setResolved(item.id, true)}
                   onDelete={() => deleteIssue(item.id)}
                   onMakeLongTerm={activeTab === 'short_term' ? () => makeLongTerm(item.id) : undefined}
+                  onOpenCreate={onOpenCreate}
                 />
               ))}
             </div>
@@ -491,11 +513,13 @@ export function IssuesSegmentView({
                   <IssueRow
                     key={item.id}
                     item={item}
+                    onEdit={() => setSelectedIssueId(item.id)}
                     onToggleResolved={(resolved) => setResolved(item.id, resolved)}
                     onPriorityChange={(priority) => updateIssue(item.id, { priority })}
                     onArchive={() => setResolved(item.id, true)}
                     onDelete={() => deleteIssue(item.id)}
                     onMakeLongTerm={activeTab === 'short_term' ? () => makeLongTerm(item.id) : undefined}
+                    onOpenCreate={onOpenCreate}
                   />
                 ))}
               </tbody>
@@ -576,24 +600,38 @@ export function IssuesSegmentView({
         </div>
       </div>
       )}
+      {selectedIssueId && (() => {
+        const issue = allIssues.find((i) => i.id === selectedIssueId);
+        return issue ? (
+          <IssueDetailPanel
+            issue={issue}
+            onClose={() => setSelectedIssueId(null)}
+            onUpdate={(patch) => updateIssue(issue.id, patch)}
+          />
+        ) : null;
+      })()}
     </div>
   );
 }
 
 function IssueCard({
   item,
+  onEdit,
   onToggleResolved,
   onPriorityChange,
   onArchive,
   onDelete,
   onMakeLongTerm,
+  onOpenCreate,
 }: {
   item: IssueItem;
+  onEdit?: () => void;
   onToggleResolved: (resolved: boolean) => void;
   onPriorityChange: (priority: number) => void;
   onArchive: () => void;
   onDelete: () => void;
   onMakeLongTerm?: () => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -632,7 +670,17 @@ function IssueCard({
       </div>
       <div className="flex flex-col gap-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-foreground break-words">{item.title}</span>
+          {onEdit ? (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="font-medium text-foreground break-words text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring rounded"
+            >
+              {item.title}
+            </button>
+          ) : (
+            <span className="font-medium text-foreground break-words">{item.title}</span>
+          )}
           {(item.attachmentCount ?? 0) > 0 && (
             <span className="flex items-center gap-0.5 text-muted-foreground text-xs">
               <Paperclip className="w-3 h-3" />
@@ -640,6 +688,9 @@ function IssueCard({
             </span>
           )}
         </div>
+        {item.linkedEntityTitle && (
+          <span className="text-xs text-muted-foreground">Linked to: {item.linkedEntityTitle}</span>
+        )}
         {resolved && item.resolvedByName && (
           <span className="text-xs text-muted-foreground">Resolved by {item.resolvedByName}</span>
         )}
@@ -659,6 +710,7 @@ function IssueCard({
       {menuOpen && anchorRect && typeof document !== 'undefined' && (
         <IssueRowMenu
           anchorRect={anchorRect}
+          item={item}
           onClose={() => {
             setMenuOpen(false);
             setAnchorRect(null);
@@ -666,6 +718,7 @@ function IssueCard({
           onArchive={onArchive}
           onDelete={onDelete}
           onMakeLongTerm={onMakeLongTerm}
+          onOpenCreate={onOpenCreate}
         />
       )}
     </div>
@@ -674,18 +727,22 @@ function IssueCard({
 
 function IssueRow({
   item,
+  onEdit,
   onToggleResolved,
   onPriorityChange,
   onArchive,
   onDelete,
   onMakeLongTerm,
+  onOpenCreate,
 }: {
   item: IssueItem;
+  onEdit?: () => void;
   onToggleResolved: (resolved: boolean) => void;
   onPriorityChange: (priority: number) => void;
   onArchive: () => void;
   onDelete: () => void;
   onMakeLongTerm?: () => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -719,7 +776,17 @@ function IssueRow({
         <td className="px-4 py-2 font-medium text-foreground align-middle">
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-2">
-              <span>{item.title}</span>
+              {onEdit ? (
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring rounded"
+                >
+                  {item.title}
+                </button>
+              ) : (
+                <span>{item.title}</span>
+              )}
               {(item.attachmentCount ?? 0) > 0 && (
                 <span className="flex items-center gap-0.5 text-muted-foreground text-xs">
                   <Paperclip className="w-3 h-3" />
@@ -727,6 +794,9 @@ function IssueRow({
                 </span>
               )}
             </div>
+            {item.linkedEntityTitle && (
+              <span className="text-xs text-muted-foreground">Linked to: {item.linkedEntityTitle}</span>
+            )}
             {resolved && item.resolvedByName && (
               <span className="text-xs text-muted-foreground">Resolved by {item.resolvedByName}</span>
             )}
@@ -761,6 +831,7 @@ function IssueRow({
           {menuOpen && anchorRect && typeof document !== 'undefined' && (
             <IssueRowMenu
               anchorRect={anchorRect}
+              item={item}
               onClose={() => {
                 setMenuOpen(false);
                 setAnchorRect(null);
@@ -768,6 +839,7 @@ function IssueRow({
               onArchive={onArchive}
               onDelete={onDelete}
               onMakeLongTerm={onMakeLongTerm}
+              onOpenCreate={onOpenCreate}
             />
           )}
         </td>
@@ -776,19 +848,140 @@ function IssueRow({
   );
 }
 
+function IssueDetailPanel({
+  issue,
+  onClose,
+  onUpdate,
+}: {
+  issue: IssueItem;
+  onClose: () => void;
+  onUpdate: (patch: Partial<IssueItem>) => void;
+}) {
+  const [title, setTitle] = useState(issue.title);
+  const [description, setDescription] = useState(issue.description ?? '');
+  const [priority, setPriority] = useState(issue.priority);
+
+  const handleSave = (andClose = false) => {
+    onUpdate({ title, description: description || undefined, priority });
+    if (andClose) onClose();
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} aria-hidden />
+      <div className="fixed inset-y-0 right-0 w-[42%] min-w-[380px] max-w-[620px] bg-card border-l border-border shadow-xl z-50 flex flex-col">
+        <header className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold text-foreground">Edit Turbulence (Issue)</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
+              {issue.ownerInitials}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-md hover:bg-muted text-muted-foreground"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </header>
+        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+          {issue.linkedEntityTitle && (
+            <div className="border border-border rounded-lg bg-muted/30 p-4 shadow-sm">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Linked to
+              </p>
+              <div className="flex items-start gap-3">
+                <Link2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-muted-foreground mb-0.5">
+                    {linkedEntityTypeLabel(issue.linkedEntityType)}
+                  </p>
+                  <p className="text-sm font-semibold text-foreground break-words">
+                    {issue.linkedEntityTitle}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              Description (optional)
+            </label>
+            <RichTextEditor
+              value={description}
+              onChange={(v) => setDescription(v)}
+              className="min-h-[120px]"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Priority</label>
+            <Select
+              value={priority}
+              onChange={setPriority}
+              options={[1, 2, 3, 4, 5].map((n) => ({ label: String(n), value: n }))}
+              className="w-[80px]"
+            />
+          </div>
+          <section className="pt-6 mt-6 border-t border-border flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleSave(true)}
+              className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium"
+            >
+              Save and close
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSave(false)}
+              className="px-4 py-2 rounded-md border border-border bg-background text-foreground hover:bg-muted text-sm font-medium"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-md text-muted-foreground hover:text-foreground text-sm font-medium"
+            >
+              Cancel
+            </button>
+          </section>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function IssueRowMenu({
   anchorRect,
+  item,
   onClose,
   onArchive,
   onDelete,
   onMakeLongTerm,
+  onOpenCreate,
 }: {
   anchorRect: DOMRect;
+  item: IssueItem;
   onClose: () => void;
   onArchive: () => void;
   onDelete: () => void;
   onMakeLongTerm?: () => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
 }) {
+  const linkedIssue = useMemo(() => ({ type: 'issue' as const, id: item.id, title: item.title }), [item.id, item.title]);
   const position = useMemo(() => {
     if (typeof window === 'undefined')
       return { top: anchorRect.top, left: anchorRect.right + MENU_GAP };
@@ -831,21 +1024,21 @@ function IssueRowMenu({
         </div>
         <div className="border-t border-border my-1" />
         <div className="px-2 py-1">
-          <button type="button" className={btn} onClick={onClose} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('rock', { linkedEntity: linkedIssue }); onClose(); }} role="menuitem">
             <Mountain className={icon} />
-            Create linked Waypoint (Rock)
+            Link Waypoint (Rock)
           </button>
-          <button type="button" className={btn} onClick={onClose} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('todo', { title: `To-Do: ${item.title}`, linkedEntity: linkedIssue }); onClose(); }} role="menuitem">
             <CheckSquare className={icon} />
-            Create linked To-Do
+            Link To-Do
           </button>
-          <button type="button" className={btn} onClick={onClose} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('issue', { title: `Issue: ${item.title}`, linkedEntity: linkedIssue }); onClose(); }} role="menuitem">
             <AlertCircle className={icon} />
-            Create linked Issue
+            Link Issue
           </button>
-          <button type="button" className={btn} onClick={onClose} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('headline', { title: item.title, linkedEntity: linkedIssue }); onClose(); }} role="menuitem">
             <Megaphone className={icon} />
-            Create linked Headline
+            Link Headline
           </button>
         </div>
         <div className="border-t border-border my-1" />

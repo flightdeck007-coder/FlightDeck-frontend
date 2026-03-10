@@ -20,6 +20,9 @@ export interface IssueItem {
   termType: 'short_term' | 'long_term';
   resolvedAt: string | null;
   resolvedByName: string | null;
+  linkedEntityType?: string | null;
+  linkedEntityId?: string | null;
+  linkedEntityTitle?: string | null;
   createdAt: string;
   updatedAt: string;
   createdById: string | null;
@@ -36,6 +39,9 @@ function apiToItem(i: IssueApiItem): IssueItem {
     termType: i.termType,
     resolvedAt: i.resolvedAt,
     resolvedByName: i.resolvedByName ?? null,
+    linkedEntityType: i.linkedEntityType ?? null,
+    linkedEntityId: i.linkedEntityId ?? null,
+    linkedEntityTitle: i.linkedEntityTitle ?? null,
     createdAt: i.createdAt,
     updatedAt: i.updatedAt,
     createdById: i.createdById,
@@ -53,6 +59,9 @@ interface IssuesContextValue {
     description?: string;
     priority?: number;
     termType?: 'short_term' | 'long_term';
+    linkedEntityType?: string;
+    linkedEntityId?: string;
+    linkedEntityTitle?: string;
   }) => Promise<string>;
   updateIssue: (id: string, patch: Partial<IssueItem>) => void;
   deleteIssue: (id: string) => void;
@@ -222,7 +231,13 @@ export function IssuesProvider({
         const created = await issuesService.create(
           organizationId,
           teamId,
-          { ...data, termType: term },
+          {
+            ...data,
+            termType: term,
+            linkedEntityType: data.linkedEntityType,
+            linkedEntityId: data.linkedEntityId,
+            linkedEntityTitle: data.linkedEntityTitle,
+          },
           meetingId
         );
         const item = apiToItem(created);
@@ -252,6 +267,9 @@ export function IssuesProvider({
             priority: patch.priority,
             termType: patch.termType,
             resolvedAt: patch.resolvedAt,
+            linkedEntityType: patch.linkedEntityType,
+            linkedEntityId: patch.linkedEntityId,
+            linkedEntityTitle: patch.linkedEntityTitle,
           },
           meetingId
         );

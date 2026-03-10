@@ -47,6 +47,27 @@ export function formatDurationMinutes(totalMinutes: number): string {
   return m ? `${h} hour${h !== 1 ? 's' : ''} ${m} minutes` : `${h} hour${h !== 1 ? 's' : ''}`;
 }
 
+/** Total duration from recap sectionDurations (array of "MM:SS"). Returns e.g. "1 hr 30 min". */
+export function formatDurationFromSectionDurations(
+  sectionDurations: Array<{ sectionTitle: string; durationMMSS: string }> | undefined
+): string {
+  if (!sectionDurations?.length) return '—';
+  let totalSeconds = 0;
+  for (const s of sectionDurations) {
+    const parts = (s.durationMMSS || '').trim().split(':');
+    if (parts.length >= 2) {
+      const m = parseInt(parts[0], 10) || 0;
+      const sec = parseInt(parts[1], 10) || 0;
+      totalSeconds += m * 60 + sec;
+    }
+  }
+  if (totalSeconds < 60) return `${totalSeconds} sec`;
+  if (totalSeconds < 3600) return `${Math.floor(totalSeconds / 60)} min`;
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  return m === 0 ? `${h} hr` : `${h} hr ${m} min`;
+}
+
 /** Section duration "MM:SS" - display as-is (already formatted) or ensure no raw value. */
 export function formatSegmentDuration(mmss: string): string {
   if (!mmss || typeof mmss !== 'string') return '0:00';

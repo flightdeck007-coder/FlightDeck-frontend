@@ -92,7 +92,7 @@ interface RocksSegmentViewProps {
   isFacilitator?: boolean;
   /** Scribe or facilitator can change filters and create (recording) */
   canRecord?: boolean;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string }) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
 }
 
 export function RocksSegmentView({
@@ -766,10 +766,11 @@ function RockActionsMenu({
   onArchive: (id: string) => void;
   onUnarchive?: (id: string) => void;
   onDelete: (id: string) => void;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string }) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
   meetingId?: string;
   isArchiveView?: boolean;
 }) {
+  const linkedRock = useMemo(() => ({ type: 'rock' as const, id: rock.id, title: rock.title }), [rock.id, rock.title]);
   const position = useMemo(() => {
     if (typeof window === 'undefined') return { top: anchorRect.top, left: anchorRect.right + ROCK_ACTIONS_MENU_GAP };
     const padding = 8;
@@ -835,7 +836,7 @@ function RockActionsMenu({
           <button
             type="button"
             className={buttonClass}
-            onClick={() => { onOpenCreate?.('rock', { title: rock.title, description: linkedDescription(rock) }); onClose(); }}
+            onClick={() => { onOpenCreate?.('rock', { title: rock.title, description: linkedDescription(rock), linkedEntity: linkedRock }); onClose(); }}
             role="menuitem"
           >
             <Mountain className={iconClass} />
@@ -844,7 +845,7 @@ function RockActionsMenu({
           <button
             type="button"
             className={buttonClass}
-            onClick={() => { onOpenCreate?.('todo', { title: `To-Do: ${rock.title}`, description: linkedDescription(rock) }); onClose(); }}
+            onClick={() => { onOpenCreate?.('todo', { title: `To-Do: ${rock.title}`, description: linkedDescription(rock), linkedEntity: linkedRock }); onClose(); }}
             role="menuitem"
           >
             <CheckSquare className={iconClass} />
@@ -853,7 +854,7 @@ function RockActionsMenu({
           <button
             type="button"
             className={buttonClass}
-            onClick={() => { onOpenCreate?.('issue', { title: `Issue: ${rock.title}`, description: linkedDescription(rock) }); onClose(); }}
+            onClick={() => { onOpenCreate?.('issue', { title: `Issue: ${rock.title}`, description: linkedDescription(rock), linkedEntity: linkedRock }); onClose(); }}
             role="menuitem"
           >
             <AlertCircle className={iconClass} />
@@ -862,7 +863,7 @@ function RockActionsMenu({
           <button
             type="button"
             className={buttonClass}
-            onClick={() => { onOpenCreate?.('headline', { title: rock.title, description: linkedDescription(rock) }); onClose(); }}
+            onClick={() => { onOpenCreate?.('headline', { title: rock.title, description: linkedDescription(rock), linkedEntity: linkedRock }); onClose(); }}
             role="menuitem"
           >
             <Megaphone className={iconClass} />

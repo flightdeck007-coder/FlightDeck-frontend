@@ -81,7 +81,7 @@ export default function MeetingPage() {
   const [segmentProgressPercent, setSegmentProgressPercent] = useState(0);
   const [segmentElapsedSeconds, setSegmentElapsedSeconds] = useState(0);
   const [totalElapsedSeconds, setTotalElapsedSeconds] = useState(0);
-  const [headerTitle, setHeaderTitle] = useState('Weekly Flight Review - Leadership Team');
+  const [headerTitle, setHeaderTitle] = useState('Meeting - Leadership Team');
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [loadedSections, setLoadedSections] = useState(meetingSections);
   const [organizationId, setOrganizationId] = useState<string>('');
@@ -95,6 +95,7 @@ export default function MeetingPage() {
   const [createPopupInitialType, setCreatePopupInitialType] = useState<'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | undefined>(undefined);
   const [createPopupInitialTitle, setCreatePopupInitialTitle] = useState<string | undefined>(undefined);
   const [createPopupInitialDescription, setCreatePopupInitialDescription] = useState<string | undefined>(undefined);
+  const [createPopupInitialLinkedEntity, setCreatePopupInitialLinkedEntity] = useState<{ type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } | undefined>(undefined);
   const [teams, setTeams] = useState<Team[]>([]);
   const [finishLoading, setFinishLoading] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
@@ -159,7 +160,7 @@ export default function MeetingPage() {
       try {
         const meeting = await meetingsService.findOne(organizationId, meetingId);
         setMeeting(meeting);
-        setHeaderTitle(`Weekly Flight Review - ${meeting.team.name}`);
+        setHeaderTitle(`${meeting.series?.name ?? 'Weekly Flight Review'} - ${meeting.team.name}`);
         setTeamId(meeting.teamId);
         const suspended = !!(meeting.suspendedAt && !meeting.endedAt);
         setIsSuspended(suspended);
@@ -542,7 +543,8 @@ export default function MeetingPage() {
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(`meeting-ratings-${meetingId}`);
       }
-      router.push(ROUTES.MEETINGS_UPCOMING);
+      // Redirect to Past meetings tab and auto-open this meeting's summary
+      router.push(`${ROUTES.MEETINGS_PAST}?recap=${meetingId}`);
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { message?: string }; status?: number } }).response?.data?.message
@@ -662,7 +664,7 @@ export default function MeetingPage() {
       pathname={pathname}
       router={router}
       setMeeting={setMeeting}
-      onMeetingEnded={() => router.push(ROUTES.MEETINGS_UPCOMING)}
+      onMeetingEnded={() => router.push(`${ROUTES.MEETINGS_PAST}?recap=${meetingId}`)}
       onTimerSynced={(segment, total) => {
         lastTimerSyncRef.current = { segment, total, ts: Date.now() };
       }}
@@ -718,6 +720,8 @@ export default function MeetingPage() {
             onSuspend={handleSuspend}
             canShowTangentAndNotes={canRecord}
             meetingId={meetingId}
+            canOpenParticipantsModal={canRecord}
+            organizationId={organizationId || undefined}
           />
         </div>
       )}
@@ -771,6 +775,7 @@ export default function MeetingPage() {
             setCreatePopupInitialType(undefined);
             setCreatePopupInitialTitle(undefined);
             setCreatePopupInitialDescription(undefined);
+            setCreatePopupInitialLinkedEntity(undefined);
           }}
           teamName={headerTitle.replace(/^.*-\s*/, '').trim() || 'Leadership Team'}
           teamId={teamId || undefined}
@@ -779,6 +784,7 @@ export default function MeetingPage() {
           initialType={createPopupInitialType}
           initialTitle={createPopupInitialTitle}
           initialDescription={createPopupInitialDescription}
+          initialLinkedEntity={createPopupInitialLinkedEntity}
           meetingAttendances={meeting?.attendances}
           currentUserId={currentUserId}
         />
@@ -822,6 +828,7 @@ export default function MeetingPage() {
                   setCreatePopupInitialType(type);
                   setCreatePopupInitialTitle(options?.title);
                   setCreatePopupInitialDescription(options?.description);
+                  setCreatePopupInitialLinkedEntity(options?.linkedEntity);
                   setCreatePopupOpen(true);
                 }}
                 onFinishMeeting={handleFinish}

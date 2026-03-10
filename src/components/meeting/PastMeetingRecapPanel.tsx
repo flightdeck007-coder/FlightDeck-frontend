@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   X,
   Pencil,
+  Save,
   MoreHorizontal,
   ExternalLink,
   Plus,
@@ -45,7 +46,7 @@ export interface MeetingRecapData {
     solveRatePercent: number;
   };
   sectionDurations?: Array<{ sectionTitle: string; durationMMSS: string }>;
-  ratings?: Array<{ userName: string; rating: number | null }>;
+  ratings?: Array<{ attendanceId?: string; userName: string; rating: number | null; absent?: boolean }>;
   attachments?: Array<{ id: string; name: string; url?: string }>;
 }
 
@@ -58,6 +59,44 @@ interface PastMeetingRecapPanelProps {
   orgRole?: string | null;
   onClose: () => void;
   onDeleted?: () => void;
+  /** Called after admin saves edited ratings so parent can update recap state. */
+  onRecapUpdated?: (recap: MeetingRecapData) => void;
+}
+
+/** Allowed HTML tags for note content (safe subset for lists and emphasis). */
+const ALLOWED_NOTE_TAGS = new Set(['p', 'br', 'ul', 'ol', 'li', 'strong', 'em', 'b', 'i', 'span']);
+
+function sanitizeNoteHtml(html: string): string {
+  if (!html?.trim()) return '';
+  let s = html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+  const tagPattern = /<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g;
+  s = s.replace(tagPattern, (match, tagName: string) =>
+    ALLOWED_NOTE_TAGS.has(tagName.toLowerCase()) ? match : ''
+  );
+  return s;
+}
+
+/** Renders note content: plain text with whitespace, or sanitized HTML with list styling. */
+function NoteContent({ content }: { content: string }) {
+  const trimmed = (content || '').trim();
+  if (!trimmed) return null;
+  const hasHtml = /<(?:\/)?(?:ul|ol|li|p|br|strong|em|b|i)\b/i.test(trimmed);
+  if (!hasHtml) {
+    return (
+      <p className="text-muted-foreground whitespace-pre-wrap break-words pl-0">
+        {trimmed}
+      </p>
+    );
+  }
+  const sanitized = sanitizeNoteHtml(trimmed);
+  return (
+    <div
+      className="note-html text-muted-foreground break-words pl-0 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1 [&_li]:my-0.5 [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0"
+      dangerouslySetInnerHTML={{ __html: sanitized }}
+    />
+  );
 }
 
 /** Notes by participant: from meeting.sections[].notes, grouped by author with segment title per note */
@@ -88,6 +127,8 @@ function getNotesByParticipantWithSegments(meeting: Meeting): Array<{
   return Array.from(byAuthor.values()).filter((n) => n.segments.length > 0);
 }
 
+type EditableRating = { attendanceId: string; userName: string; rating: number | null; absent: boolean };
+
 export function PastMeetingRecapPanel({
   meeting,
   recap,
@@ -97,6 +138,7 @@ export function PastMeetingRecapPanel({
   orgRole,
   onClose,
   onDeleted,
+  onRecapUpdated,
 }: PastMeetingRecapPanelProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -106,6 +148,10 @@ export function PastMeetingRecapPanel({
   const [localAttachments, setLocalAttachments] = useState<Array<{ id: string; name: string; url?: string }>>([]);
   const [apiAttachments, setApiAttachments] = useState<Array<{ id: string; fileName: string }>>([]);
   const [loadingAttachments, setLoadingAttachments] = useState(true);
+  const [editingRatings, setEditingRatings] = useState(false);
+  const [editRatings, setEditRatings] = useState<EditableRating[]>([]);
+  const [savingRatings, setSavingRatings] = useState(false);
+  const [ratingsSaveError, setRatingsSaveError] = useState<string | null>(null);
 
   const isCancelled = Boolean(meeting.cancelledAt);
   const isAdmin = orgRole === 'ADMIN';
@@ -140,8 +186,10 @@ export function PastMeetingRecapPanel({
     .sort((a, b) => a.order - b.order)
     .map((s) => ({ sectionTitle: s.title, durationMMSS: '00:00' }));
   const ratings = recap?.ratings ?? (meeting.attendances ?? []).map((a) => ({
+    attendanceId: a.id,
     userName: a.user?.name || a.user?.email || 'Attendee',
     rating: null as number | null,
+    absent: false,
   }));
   const attachmentsFromApi = apiAttachments.map((a) => ({ id: a.id, name: a.fileName, fromApi: true as const }));
   const attachmentsFromRecap = (recap?.attachments?.length ? recap.attachments : localAttachments) ?? [];
@@ -177,6 +225,57 @@ export function PastMeetingRecapPanel({
     e.target.value = '';
   };
 
+  const startEditingRatings = () => {
+    const attendances = meeting.attendances ?? [];
+    const recapRatings = recap?.ratings ?? [];
+    const list: EditableRating[] = attendances.map((a) => {
+      const saved = recapRatings.find((r) => r.attendanceId === a.id);
+      return {
+        attendanceId: a.id,
+        userName: a.user?.name || a.user?.email || 'Attendee',
+        rating: saved?.rating ?? null,
+        absent: saved?.absent ?? false,
+      };
+    });
+    setEditRatings(list);
+    setRatingsSaveError(null);
+    setEditingRatings(true);
+  };
+
+  const saveRatings = async () => {
+    if (!recap || !organizationId || !meeting.id) return;
+    setRatingsSaveError(null);
+    setSavingRatings(true);
+    try {
+      const updatedRatings = editRatings.map((r) => ({
+        attendanceId: r.attendanceId,
+        userName: r.userName,
+        rating: r.absent ? null : r.rating,
+        absent: r.absent,
+      }));
+      const updatedRecap: MeetingRecapData = {
+        ...recap,
+        ratings: updatedRatings,
+      };
+      await meetingsService.saveRecap(organizationId, meeting.id, updatedRecap);
+      onRecapUpdated?.(updatedRecap);
+      setEditingRatings(false);
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message?: string }).message) : 'Failed to save ratings.';
+      setRatingsSaveError(msg);
+    } finally {
+      setSavingRatings(false);
+    }
+  };
+
+  const setEditRatingAt = (index: number, patch: Partial<EditableRating>) => {
+    setEditRatings((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...patch };
+      return next;
+    });
+  };
+
   return (
     <>
       <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} aria-hidden />
@@ -186,13 +285,17 @@ export function PastMeetingRecapPanel({
             {isCancelled ? 'Cancelled meeting' : 'Past Level 10 Meeting™'}
           </h2>
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className="p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Edit meeting"
-            >
-              <Pencil className="w-4 h-4" />
-            </button>
+            {isAdmin && !isCancelled && (
+              <button
+                type="button"
+                onClick={editingRatings ? saveRatings : startEditingRatings}
+                disabled={savingRatings || recapLoading}
+                className="p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                aria-label={editingRatings ? 'Save ratings' : 'Edit summary ratings'}
+              >
+                {editingRatings ? <Save className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
+              </button>
+            )}
             <div className="relative">
               <button
                 type="button"
@@ -297,7 +400,7 @@ export function PastMeetingRecapPanel({
               <ul className="space-y-1.5">
                 {issuesSolved.map((issue) => (
                   <li key={issue.id} className="text-sm text-foreground py-1">
-                    <span>{issue.title}</span>
+                    <span className="font-semibold">{issue.title}</span>
                     {issue.resolvedByName && (
                       <span className="block text-xs text-muted-foreground mt-0.5">Solved by {issue.resolvedByName}</span>
                     )}
@@ -357,9 +460,7 @@ export function PastMeetingRecapPanel({
                       {item.segments.map((seg, j) => (
                         <div key={j}>
                           <p className="font-semibold text-foreground mb-1">{seg.sectionTitle}</p>
-                          <p className="text-muted-foreground whitespace-pre-wrap break-words pl-0">
-                            {seg.content}
-                          </p>
+                          <NoteContent content={seg.content} />
                         </div>
                       ))}
                     </div>
@@ -424,16 +525,58 @@ export function PastMeetingRecapPanel({
           {/* Ratings */}
           <section>
             <h3 className="text-sm font-semibold text-foreground mb-2">Ratings</h3>
-            <ul className="space-y-1.5">
-              {ratings.map((r, i) => (
-                <li key={i} className="flex items-center justify-between text-sm">
-                  <span className="text-foreground">{r.userName}</span>
-                  <span className="text-muted-foreground">
-                    {r.rating != null ? r.rating : 'N/A'}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            {ratingsSaveError && (
+              <p className="text-sm text-red-600 dark:text-red-400 mb-2" role="alert">
+                {ratingsSaveError}
+              </p>
+            )}
+            {editingRatings ? (
+              <ul className="space-y-3">
+                {editRatings.map((r, i) => (
+                  <li key={r.attendanceId} className="flex flex-col gap-1.5 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-foreground font-medium shrink-0">{r.userName}</span>
+                      <label className="flex items-center gap-2 shrink-0 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={r.absent}
+                          onChange={(e) => setEditRatingAt(i, { absent: e.target.checked, ...(e.target.checked ? { rating: null } : {}) })}
+                          className="rounded border-border"
+                        />
+                        <span className="text-muted-foreground text-xs">Absent</span>
+                      </label>
+                    </div>
+                    {!r.absent && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground text-xs">Rating (1–10):</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={r.rating ?? ''}
+                          onChange={(e) => {
+                            const v = e.target.value === '' ? null : Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 1));
+                            setEditRatingAt(i, { rating: v });
+                          }}
+                          className="w-16 px-2 py-1 rounded border border-border bg-background text-foreground text-sm"
+                        />
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <ul className="space-y-1.5">
+                {ratings.map((r, i) => (
+                  <li key={i} className="flex items-center justify-between text-sm">
+                    <span className="text-foreground">{r.userName}</span>
+                    <span className="text-muted-foreground">
+                      {r.absent ? 'Absent' : (r.rating != null ? r.rating : 'N/A')}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
 
           {/* Section Durations */}

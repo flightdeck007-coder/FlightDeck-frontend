@@ -27,6 +27,9 @@ export interface TodoItem {
   teamName?: string;
   archived: boolean;
   order: number;
+  linkedEntityType?: string | null;
+  linkedEntityId?: string | null;
+  linkedEntityTitle?: string | null;
 }
 
 function apiToItem(t: TodoApiItem): TodoItem {
@@ -40,6 +43,9 @@ function apiToItem(t: TodoApiItem): TodoItem {
     description: t.description ?? undefined,
     archived: t.archived,
     order: t.order,
+    linkedEntityType: t.linkedEntityType ?? null,
+    linkedEntityId: t.linkedEntityId ?? null,
+    linkedEntityTitle: t.linkedEntityTitle ?? null,
   };
 }
 
@@ -170,6 +176,9 @@ export function TodosProvider({
             description: item.description,
             dueDate: item.dueDate ?? undefined,
             assigneeId: undefined,
+            linkedEntityType: item.linkedEntityType ?? undefined,
+            linkedEntityId: item.linkedEntityId ?? undefined,
+            linkedEntityTitle: item.linkedEntityTitle ?? undefined,
           },
           meetingId
         );
@@ -207,6 +216,9 @@ export function TodosProvider({
             completedAt: patch.completed === true ? new Date().toISOString() : patch.completed === false ? undefined : undefined,
             archived: patch.archived,
             order: patch.order,
+            linkedEntityType: patch.linkedEntityType,
+            linkedEntityId: patch.linkedEntityId,
+            linkedEntityTitle: patch.linkedEntityTitle,
           },
           meetingId
         );

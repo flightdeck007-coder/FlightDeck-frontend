@@ -14,6 +14,7 @@ import {
   FileText,
   Trash2,
   ChevronDown,
+  Link2,
 } from "lucide-react";
 import dayjs, { type Dayjs } from "dayjs";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -42,6 +43,48 @@ const CREATE_TYPE_OPTIONS: { value: CreateType; label: string }[] = [
   { value: "headline", label: "Headline" },
   { value: "cascading_message", label: "Cascading message" },
 ];
+
+function linkedEntityTypeLabel(type: CreateType): string {
+  const map: Record<CreateType, string> = {
+    issue: "Turbulence (Issue)",
+    rock: "Waypoint (Rock)",
+    todo: "Clearance (To-Do)",
+    headline: "Headline",
+    cascading_message: "Cascading message",
+  };
+  return map[type] ?? type;
+}
+
+/** Card section shown when creating from a "Link" action: shows what we're linking from (above attachments). */
+function LinkingToSection({
+  linkedEntity,
+}: {
+  linkedEntity: { type: CreateType; id: string; title: string };
+}) {
+  return (
+    <div className="border-t border-b border-border py-4 my-4">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+        Linking to
+      </p>
+      <div className="rounded-lg border border-border bg-muted/30 p-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <Link2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-muted-foreground mb-0.5">
+              {linkedEntityTypeLabel(linkedEntity.type)}
+            </p>
+            <p className="text-sm font-semibold text-foreground break-words">
+              {linkedEntity.title}
+            </p>
+          </div>
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground mt-2">
+        The form below creates the new item linked to the one above.
+      </p>
+    </div>
+  );
+}
 
 const issueSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -179,6 +222,8 @@ interface CreatePopupProps {
   initialTitle?: string;
   /** Pre-fill description when opening Create To-Do or Create Issue (e.g. "Measurables:\n• Item 1") */
   initialDescription?: string;
+  /** When creating from a row (e.g. "Link issue" from rock): pre-set link so the new issue/todo is linked to this entity */
+  initialLinkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string };
   /** Meeting attendees for rock owner dropdown (and issue/todo assignees if needed) */
   meetingAttendances?: Array<{ id: string; user: { id: string; name?: string | null; email: string } }>;
   currentUserId?: string | null;
@@ -194,6 +239,7 @@ export function CreatePopup({
   initialType,
   initialTitle,
   initialDescription,
+  initialLinkedEntity,
   meetingAttendances = [],
   currentUserId,
 }: CreatePopupProps) {
@@ -202,6 +248,7 @@ export function CreatePopup({
   const [createType, setCreateType] = useState<CreateType>("issue");
   const [minimized, setMinimized] = useState(false);
   const [isModal, setIsModal] = useState(false);
+  const [linkedEntity, setLinkedEntity] = useState<{ type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } | undefined>(undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -437,10 +484,15 @@ export function CreatePopup({
       if (initialType === "todo") todoForm.reset({ title, description: desc, dueDate: "", repeat: "Don't repeat", teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""), private: false });
       if (initialType === "issue") reset({ title, description: desc, priority: "", who: "", teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""), interval: "short" });
     }
+    if (open && initialLinkedEntity) {
+      setLinkedEntity(initialLinkedEntity);
+    } else if (!open) {
+      setLinkedEntity(undefined);
+    }
     if (open && initialType === "rock" && currentUserId) {
       rockForm.setValue("ownerId", currentUserId);
     }
-  }, [open, reset, initialType, initialTitle, initialDescription, currentUserId]);
+  }, [open, reset, initialType, initialTitle, initialDescription, initialLinkedEntity, currentUserId]);
 
   const onIssueSubmit = async (data: IssueFormData) => {
     if (issuesApi) {
@@ -449,6 +501,11 @@ export function CreatePopup({
         description: data.description || undefined,
         priority: data.priority ? parseInt(data.priority, 10) : 0,
         termType: data.interval === "long" ? "long_term" : "short_term",
+        ...(linkedEntity && {
+          linkedEntityType: linkedEntity.type,
+          linkedEntityId: linkedEntity.id,
+          linkedEntityTitle: linkedEntity.title,
+        }),
       });
     }
     onClose();
@@ -485,6 +542,11 @@ export function CreatePopup({
         dueDate: data.dueDate || null,
         ownerInitials: "U",
         completed: false,
+        ...(linkedEntity && {
+          linkedEntityType: linkedEntity.type,
+          linkedEntityId: linkedEntity.id,
+          linkedEntityTitle: linkedEntity.title,
+        }),
       });
     }
     onClose();
@@ -751,6 +813,8 @@ export function CreatePopup({
                   </div>
                 </div>
 
+                {linkedEntity && <LinkingToSection linkedEntity={linkedEntity} />}
+
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1">
                     Attachments
@@ -964,6 +1028,8 @@ export function CreatePopup({
                     </div>
                   </div>
 
+                  {linkedEntity && <LinkingToSection linkedEntity={linkedEntity} />}
+
                   <div className="pt-4">
                     <hr className="border-border mb-4" />
                     <label className="block text-sm font-medium text-foreground mb-1">
@@ -1108,6 +1174,7 @@ export function CreatePopup({
                   <input type="checkbox" {...todoForm.register("private")} className="rounded border-border" />
                   <span className="text-sm text-foreground">Make this To-Do private.</span>
                 </label>
+                {linkedEntity && <LinkingToSection linkedEntity={linkedEntity} />}
                 <div className="pt-4">
                   <hr className="border-border mb-4" />
                   <label className="block text-sm font-medium text-foreground mb-1">Attachments</label>
@@ -1191,6 +1258,7 @@ export function CreatePopup({
                   />
                   <p className="mt-1 text-xs text-muted-foreground">Changing the team will affect which users the Headline can be assigned to.</p>
                 </div>
+                {linkedEntity && <LinkingToSection linkedEntity={linkedEntity} />}
                 <div className="pt-4">
                   <hr className="border-border mb-4" />
                   <label className="block text-sm font-medium text-foreground mb-1">Attachments</label>
@@ -1273,6 +1341,7 @@ export function CreatePopup({
                   />
                   <p className="mt-1 text-xs text-muted-foreground">Changing the team will affect which users can own the Cascading Message.</p>
                 </div>
+                {linkedEntity && <LinkingToSection linkedEntity={linkedEntity} />}
                 <div className="pt-4">
                   <hr className="border-border mb-4" />
                   <label className="block text-sm font-medium text-foreground mb-1">Attachments</label>

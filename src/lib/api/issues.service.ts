@@ -9,6 +9,9 @@ export interface IssueApiItem {
   resolvedAt: string | null;
   resolvedById: string | null;
   resolvedByName: string | null;
+  linkedEntityType?: string | null;
+  linkedEntityId?: string | null;
+  linkedEntityTitle?: string | null;
   createdAt: string;
   updatedAt: string;
   createdById: string | null;
@@ -41,6 +44,9 @@ export const issuesService = {
       description?: string;
       priority?: number;
       termType?: 'short_term' | 'long_term';
+      linkedEntityType?: string;
+      linkedEntityId?: string;
+      linkedEntityTitle?: string;
     },
     meetingId?: string
   ): Promise<IssueApiItem> => {
@@ -63,6 +69,9 @@ export const issuesService = {
       termType?: 'short_term' | 'long_term';
       resolvedAt?: string | null;
       resolvedById?: string | null;
+      linkedEntityType?: string | null;
+      linkedEntityId?: string | null;
+      linkedEntityTitle?: string | null;
     },
     meetingId?: string
   ): Promise<IssueApiItem> => {

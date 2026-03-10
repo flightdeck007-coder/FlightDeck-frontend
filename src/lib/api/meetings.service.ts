@@ -21,7 +21,7 @@ export interface MeetingRecapData {
     solveRatePercent: number;
   };
   sectionDurations?: Array<{ sectionTitle: string; durationMMSS: string }>;
-  ratings?: Array<{ attendanceId?: string; userName: string; rating: number | null }>;
+  ratings?: Array<{ attendanceId?: string; userName: string; rating: number | null; absent?: boolean }>;
   attachments?: Array<{ id: string; name: string; url?: string }>;
 }
 

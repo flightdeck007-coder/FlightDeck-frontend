@@ -9,6 +9,9 @@ export interface TodoApiItem {
   completedAt: string | null;
   order: number;
   archived: boolean;
+  linkedEntityType?: string | null;
+  linkedEntityId?: string | null;
+  linkedEntityTitle?: string | null;
   createdAt: string;
   updatedAt: string;
   assigneeId: string;
@@ -40,6 +43,9 @@ export const todosService = {
       dueDate?: string;
       assigneeId?: string;
       order?: number;
+      linkedEntityType?: string;
+      linkedEntityId?: string;
+      linkedEntityTitle?: string;
     },
     meetingId?: string
   ): Promise<TodoApiItem> => {
@@ -64,6 +70,9 @@ export const todosService = {
       assigneeId?: string;
       order?: number;
       archived?: boolean;
+      linkedEntityType?: string | null;
+      linkedEntityId?: string | null;
+      linkedEntityTitle?: string | null;
     },
     meetingId?: string
   ): Promise<TodoApiItem> => {

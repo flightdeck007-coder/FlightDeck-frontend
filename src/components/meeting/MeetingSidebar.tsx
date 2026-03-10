@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Pause, Play, Square, LogOut, FileText, AlertTriangle, Eye, EyeOff, Loader2, Users } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ChevronLeft, ChevronRight, Pause, Play, Square, LogOut, FileText, AlertTriangle, Eye, EyeOff, Loader2, Users, User, RefreshCw, X } from 'lucide-react';
 import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
+import { meetingsService } from '@/lib/api/meetings.service';
 
 interface MeetingSection {
   id: string;
@@ -38,6 +39,10 @@ interface MeetingSidebarProps {
   canShowTangentAndNotes?: boolean;
   /** Meeting id (for tangent broadcast) */
   meetingId?: string;
+  /** If true, Participants is a button that opens a modal to fetch & list participants (facilitator/scribe). Otherwise plain text. */
+  canOpenParticipantsModal?: boolean;
+  /** Required for fetching participants when modal is opened */
+  organizationId?: string;
 }
 
 export function MeetingSidebar({
@@ -65,11 +70,33 @@ export function MeetingSidebar({
   onSuspend,
   canShowTangentAndNotes = false,
   meetingId,
+  canOpenParticipantsModal = false,
+  organizationId,
 }: MeetingSidebarProps) {
   const { socket } = useMeetingSocket();
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   const [tangentModalOpen, setTangentModalOpen] = useState(false);
+  const [participantsModalOpen, setParticipantsModalOpen] = useState(false);
+  const [participantsList, setParticipantsList] = useState<Array<{ id: string; present: boolean; user: { id: string; email: string; name?: string } }>>([]);
+  const [participantsLoading, setParticipantsLoading] = useState(false);
   const currentIndex = sections.findIndex((s) => s.id === currentSection);
+
+  const fetchParticipants = useCallback(async () => {
+    if (!organizationId || !meetingId) return;
+    setParticipantsLoading(true);
+    try {
+      const meeting = await meetingsService.findOne(organizationId, meetingId);
+      setParticipantsList(meeting?.attendances ?? []);
+    } catch {
+      setParticipantsList([]);
+    } finally {
+      setParticipantsLoading(false);
+    }
+  }, [organizationId, meetingId]);
+
+  useEffect(() => {
+    if (participantsModalOpen && canOpenParticipantsModal) fetchParticipants();
+  }, [participantsModalOpen, canOpenParticipantsModal, fetchParticipants]);
 
   useEffect(() => {
     if (!socket) return;
@@ -90,10 +117,21 @@ export function MeetingSidebar({
       {/* Participants count only + Total & segment time on one row with space */}
       <div className="p-4 border-b border-border">
         {count >= 0 && (
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground/80 mb-3">
-            <Users className="w-4 h-4 shrink-0" />
-            <span>Participants ({count})</span>
-          </div>
+          canOpenParticipantsModal ? (
+            <button
+              type="button"
+              onClick={() => setParticipantsModalOpen(true)}
+              className="flex items-center gap-2 text-sm font-medium text-foreground/80 mb-3 hover:text-foreground hover:underline transition-colors cursor-pointer"
+            >
+              <Users className="w-4 h-4 shrink-0" />
+              <span>Participants ({count})</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground/80 mb-3">
+              <Users className="w-4 h-4 shrink-0" />
+              <span>Participants ({count})</span>
+            </div>
+          )
         )}
         <div className="flex items-baseline justify-between gap-4 mb-1">
           <span className="text-sm font-medium text-foreground/80">Total: {totalTime}</span>
@@ -268,6 +306,86 @@ export function MeetingSidebar({
                 >
                   Got it
                 </button>
+              </div>
+            </div>
+          </>
+        )}
+        {/* Participants modal (facilitator/scribe only) */}
+        {participantsModalOpen && (
+          <>
+            <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setParticipantsModalOpen(false)} aria-hidden />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="bg-card border border-border rounded-xl shadow-xl max-w-md w-full max-h-[80vh] flex flex-col">
+                <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
+                  <h3 className="text-lg font-semibold text-foreground">Participants</h3>
+                  <button
+                    type="button"
+                    onClick={() => setParticipantsModalOpen(false)}
+                    className="p-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    aria-label="Close"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 min-h-0">
+                  {participantsLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary" aria-label="Loading" />
+                    </div>
+                  ) : participantsList.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No participants in this meeting.</p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {participantsList.map((a) => (
+                        <li
+                          key={a.id}
+                          className="flex items-center gap-4 p-4 rounded-xl border border-border bg-muted/10 hover:bg-muted/20 transition-colors"
+                        >
+                          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                            <User className="w-6 h-6 text-primary" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-base font-bold text-foreground truncate">
+                              {a.user.name || a.user.email || a.user.id}
+                            </p>
+                            {a.user.name && (
+                              <p className="text-sm text-muted-foreground truncate mt-1">
+                                {a.user.email}
+                              </p>
+                            )}
+                          </div>
+                          <span
+                            className={`shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold ${
+                              a.present
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:bg-emerald-400/90 dark:text-emerald-950'
+                                : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {a.present ? 'In meeting' : 'Left'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div className="flex items-center justify-end gap-2 p-4 border-t border-border shrink-0">
+                  <button
+                    type="button"
+                    onClick={fetchParticipants}
+                    disabled={participantsLoading}
+                    className="flex items-center gap-2 px-4 py-2 rounded-md border border-border hover:bg-muted text-sm font-medium disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${participantsLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setParticipantsModalOpen(false)}
+                    className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           </>

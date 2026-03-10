@@ -16,7 +16,7 @@ interface MeetingContentProps {
   sectionId: string;
   sectionTitle: string;
   onOpenCreateIssue?: () => void;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string }) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
   onFinishMeeting?: () => Promise<void>;
   finishLoading?: boolean;
   meetingId?: string;

@@ -75,7 +75,7 @@ interface TodosSegmentViewProps {
   isFacilitator?: boolean;
   /** Scribe or facilitator can change filters and create (recording) */
   canRecord?: boolean;
-  onOpenCreate?: (type: CreatePopupType) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
   /** Meeting attendees for Owner multi-select (id, user with id, name, email) */
   meetingAttendances?: Array<{ id: string; user: { id: string; name?: string | null; email: string } }>;
 }
@@ -84,6 +84,18 @@ function formatDueDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function linkedEntityTypeLabel(type: string | null | undefined): string {
+  if (!type) return 'Item';
+  const map: Record<string, string> = {
+    issue: 'Turbulence (Issue)',
+    rock: 'Waypoint (Rock)',
+    todo: 'Clearance (To-Do)',
+    headline: 'Headline',
+    cascading_message: 'Cascading message',
+  };
+  return map[type] ?? type;
 }
 
 function getInitials(name?: string | null, email?: string): string {
@@ -521,6 +533,7 @@ export function TodosSegmentView({
                       onDelete={() => deleteTodo(item.id)}
                       onMoveToTop={() => moveToTop(item.id)}
                       onMoveToBottom={() => moveToBottom(item.id)}
+                      onOpenCreate={onOpenCreate}
                     />
                   ))}
                 </SortableContext>
@@ -629,6 +642,7 @@ function TodoRow({
   onDelete,
   onMoveToTop,
   onMoveToBottom,
+  onOpenCreate,
 }: {
   item: TodoItem;
   onEdit: () => void;
@@ -638,6 +652,7 @@ function TodoRow({
   onDelete: () => void;
   onMoveToTop: () => void;
   onMoveToBottom: () => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -705,10 +720,15 @@ function TodoRow({
           onMouseLeave={() => setHoverTitle(false)}
           onClick={onEdit}
         >
-          <div className="flex items-center gap-2">
-            <span>{item.title}</span>
-            {hoverTitle && (
-              <Pencil className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-2">
+              <span>{item.title}</span>
+              {hoverTitle && (
+                <Pencil className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              )}
+            </div>
+            {item.linkedEntityTitle && (
+              <span className="text-xs text-muted-foreground">Linked to: {item.linkedEntityTitle}</span>
             )}
           </div>
         </td>
@@ -766,6 +786,7 @@ function TodoRow({
           {menuOpen && anchorRect && typeof document !== 'undefined' && (
             <TodoRowMenu
               anchorRect={anchorRect}
+              item={item}
               onClose={() => {
                 setMenuOpen(false);
                 setAnchorRect(null);
@@ -774,6 +795,7 @@ function TodoRow({
               onMoveToBottom={onMoveToBottom}
               onArchive={onArchive}
               onDelete={onDelete}
+              onOpenCreate={onOpenCreate}
             />
           )}
         </td>
@@ -784,19 +806,24 @@ function TodoRow({
 
 function TodoRowMenu({
   anchorRect,
+  item,
   onClose,
   onMoveToTop,
   onMoveToBottom,
   onArchive,
   onDelete,
+  onOpenCreate,
 }: {
   anchorRect: DOMRect;
+  item: TodoItem;
   onClose: () => void;
   onMoveToTop: () => void;
   onMoveToBottom: () => void;
   onArchive: () => void;
   onDelete: () => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
 }) {
+  const linkedTodo = useMemo(() => ({ type: 'todo' as const, id: item.id, title: item.title }), [item.id, item.title]);
   const position = useMemo(() => {
     if (typeof window === 'undefined')
       return { top: anchorRect.top, left: anchorRect.right + MENU_GAP };
@@ -855,21 +882,21 @@ function TodoRowMenu({
         </div>
         <div className="border-t border-border my-1" />
         <div className="px-2 py-1">
-          <button type="button" className={btn} onClick={onClose} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('rock', { linkedEntity: linkedTodo }); onClose(); }} role="menuitem">
             <Mountain className={icon} />
-            Create linked Waypoint (Rock)
+            Link Waypoint (Rock)
           </button>
-          <button type="button" className={btn} onClick={onClose} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('todo', { title: `To-Do: ${item.title}`, linkedEntity: linkedTodo }); onClose(); }} role="menuitem">
             <CheckSquare className={icon} />
-            Create linked To-Do
+            Link To-Do
           </button>
-          <button type="button" className={btn} onClick={onClose} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('issue', { title: `Issue: ${item.title}`, linkedEntity: linkedTodo }); onClose(); }} role="menuitem">
             <AlertCircle className={icon} />
-            Create linked Issue
+            Link Issue
           </button>
-          <button type="button" className={btn} onClick={onClose} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('headline', { title: item.title, linkedEntity: linkedTodo }); onClose(); }} role="menuitem">
             <Megaphone className={icon} />
-            Create linked Headline
+            Link Headline
           </button>
         </div>
         <div className="border-t border-border my-1" />
@@ -991,6 +1018,24 @@ export function EditTodoPanel({
         </div>
       </header>
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+        {todo.linkedEntityTitle && (
+          <div className="border border-border rounded-lg bg-muted/30 p-4 shadow-sm">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+              Linked to
+            </p>
+            <div className="flex items-start gap-3">
+              <Link2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium text-muted-foreground mb-0.5">
+                  {linkedEntityTypeLabel(todo.linkedEntityType)}
+                </p>
+                <p className="text-sm font-semibold text-foreground break-words">
+                  {todo.linkedEntityTitle}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium text-foreground mb-1">
             Title
