@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { Select } from 'antd';
 import { useMeetingsData } from '@/hooks/useMeetingsData';
@@ -35,7 +35,7 @@ function formatRating(recap: MeetingRecapData | null | undefined): string {
   return `${avg} / 10`;
 }
 
-export default function MeetingsPastPage() {
+function PastMeetingsContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -253,5 +253,18 @@ export default function MeetingsPastPage() {
         />
       )}
     </>
+  );
+}
+
+export default function MeetingsPastPage() {
+  return (
+    <Suspense fallback={
+      <div className="max-w-4xl mx-auto space-y-6 p-6">
+        <div className="h-8 w-48 bg-muted rounded animate-pulse" />
+        <div className="h-64 bg-muted/30 rounded-xl animate-pulse" />
+      </div>
+    }>
+      <PastMeetingsContent />
+    </Suspense>
   );
 }

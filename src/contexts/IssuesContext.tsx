@@ -224,20 +224,26 @@ export function IssuesProvider({
       description?: string;
       priority?: number;
       termType?: 'short_term' | 'long_term';
+      linkedEntityType?: string;
+      linkedEntityId?: string;
+      linkedEntityTitle?: string;
     }): Promise<string> => {
       if (!organizationId || !teamId) return '';
       const term = data.termType ?? 'short_term';
       try {
+        const payload = {
+          title: data.title,
+          description: data.description,
+          priority: data.priority,
+          termType: term,
+          linkedEntityType: data.linkedEntityType,
+          linkedEntityId: data.linkedEntityId,
+          linkedEntityTitle: data.linkedEntityTitle,
+        };
         const created = await issuesService.create(
           organizationId,
           teamId,
-          {
-            ...data,
-            termType: term,
-            linkedEntityType: data.linkedEntityType,
-            linkedEntityId: data.linkedEntityId,
-            linkedEntityTitle: data.linkedEntityTitle,
-          },
+          payload,
           meetingId
         );
         const item = apiToItem(created);
