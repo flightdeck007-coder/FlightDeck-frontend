@@ -73,26 +73,26 @@ function statusBadgeClass(status: Rock['status']): string {
   const base = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium';
   switch (status) {
     case 'on_track':
-      return `${base} bg-primary/15 text-primary`;
+      return `${base} bg-green-500/15 text-green-700 dark:text-green-400`;
     case 'off_track':
-      return `${base} bg-destructive/15 text-destructive`;
+      return `${base} bg-red-500/15 text-red-700 dark:text-red-400`;
     case 'at_risk':
-      return `${base} bg-amber-500/15 text-amber-600 dark:text-amber-400`;
+      return `${base} bg-yellow-500/15 text-yellow-700 dark:text-yellow-400`;
     case 'done':
       return `${base} bg-emerald-500/15 text-emerald-600 dark:text-emerald-400`;
     case 'other':
-      return `${base} bg-muted/80 text-foreground`;
+      return `${base} bg-slate-400/15 text-slate-600 dark:text-slate-300`;
     default:
       return `${base} bg-muted text-muted-foreground`;
   }
 }
 
 const STATUS_OPTIONS: Array<{ value: Rock['status']; label: string; icon: React.ReactNode; optionClass: string }> = [
-  { value: 'off_track', label: 'Off-track', icon: <ThumbsDown className="w-3.5 h-3.5" />, optionClass: 'bg-destructive/10 text-destructive hover:bg-destructive/20' },
-  { value: 'on_track', label: 'On-track', icon: <ThumbsUp className="w-3.5 h-3.5" />, optionClass: 'bg-primary/10 text-primary hover:bg-primary/20' },
-  { value: 'at_risk', label: 'At-risk', icon: <AlertTriangle className="w-3.5 h-3.5" />, optionClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20' },
+  { value: 'off_track', label: 'Off-track', icon: <ThumbsDown className="w-3.5 h-3.5" />, optionClass: 'bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-500/20' },
+  { value: 'on_track', label: 'On-track', icon: <ThumbsUp className="w-3.5 h-3.5" />, optionClass: 'bg-green-500/10 text-green-700 dark:text-green-400 hover:bg-green-500/20' },
+  { value: 'at_risk', label: 'At-risk', icon: <AlertTriangle className="w-3.5 h-3.5" />, optionClass: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-500/20' },
   { value: 'done', label: 'Complete', icon: <CheckCircle className="w-3.5 h-3.5" />, optionClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20' },
-  { value: 'other', label: 'Other', icon: <HelpCircle className="w-3.5 h-3.5" />, optionClass: 'bg-muted/80 text-foreground hover:bg-muted' },
+  { value: 'other', label: 'Other', icon: <HelpCircle className="w-3.5 h-3.5" />, optionClass: 'bg-slate-400/10 text-slate-600 dark:text-slate-300 hover:bg-slate-400/20' },
 ];
 
 const DROPDOWN_OPTION_HEIGHT = 44;
