@@ -44,22 +44,26 @@ const CREATE_TYPE_OPTIONS: { value: CreateType; label: string }[] = [
   { value: "cascading_message", label: "Cascading message" },
 ];
 
-function linkedEntityTypeLabel(type: CreateType): string {
-  const map: Record<CreateType, string> = {
+/** Linked entity type for display (includes measurable for scorecard create-from-measurable). */
+type LinkedEntityType = CreateType | 'measurable';
+
+function linkedEntityTypeLabel(type: LinkedEntityType): string {
+  const map: Record<string, string> = {
     issue: "Turbulence (Issue)",
     rock: "Waypoint (Rock)",
     todo: "Clearance (To-Do)",
     headline: "Headline",
     cascading_message: "Cascading message",
+    measurable: "Measurable",
   };
   return map[type] ?? type;
 }
 
-/** Card section shown when creating from a "Link" action: shows what we're linking from (above attachments). */
+/** Card section shown when creating from a "Link" action or from measurable: shows what we're linking from (above attachments). */
 function LinkingToSection({
   linkedEntity,
 }: {
-  linkedEntity: { type: CreateType; id: string; title: string };
+  linkedEntity: { type: LinkedEntityType; id: string; title: string };
 }) {
   return (
     <div className="border-t border-b border-border py-4 my-4">
@@ -100,7 +104,7 @@ const rockSchema = z.object({
   description: z.string().optional(),
   dueBy: z.string().optional(),
   dueByTime: z.string().optional(),
-  status: z.enum(["on_track", "off_track", "at_risk", "done"]).optional(),
+  status: z.enum(["on_track", "off_track", "at_risk", "done", "other"]).optional(),
   isCompanyRock: z.boolean().optional(),
   ownerId: z.string().optional(),
   teamId: z.string().optional(),
@@ -191,7 +195,7 @@ function RockOtherTeamSelect({
       placeholder="Select team..."
       value={value || undefined}
       onChange={(v) => onChange(v ?? "")}
-      onDropdownVisibleChange={(visible) => setOpen(visible)}
+      onOpenChange={setOpen}
       loading={loading}
       options={teams.map((t) => ({ label: t.name, value: t.id }))}
       className="w-full"
@@ -217,13 +221,14 @@ interface CreatePopupProps {
   teamId?: string;
   teams?: Team[];
   organizationId?: string;
-  initialType?: CreateType;
+  /** When 'measurable', popup opens on To-Do tab with linked measurable (no measurable tab in popup). */
+  initialType?: CreateType | 'measurable';
   /** Pre-fill title when opening Create To-Do or Create Issue (e.g. "Review 3 Measurables") */
   initialTitle?: string;
   /** Pre-fill description when opening Create To-Do or Create Issue (e.g. "Measurables:\n• Item 1") */
   initialDescription?: string;
-  /** When creating from a row (e.g. "Link issue" from rock): pre-set link so the new issue/todo is linked to this entity */
-  initialLinkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string };
+  /** When creating from a row (e.g. "Link issue" from rock, or create from measurable): pre-set link so the new issue/todo shows "Linking to" (measurable is display-only; backend link types: rock, todo, issue, headline, cascading_message) */
+  initialLinkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message' | 'measurable'; id: string; title: string };
   /** Meeting attendees for rock owner dropdown (and issue/todo assignees if needed) */
   meetingAttendances?: Array<{ id: string; user: { id: string; name?: string | null; email: string } }>;
   currentUserId?: string | null;
@@ -248,7 +253,7 @@ export function CreatePopup({
   const [createType, setCreateType] = useState<CreateType>("issue");
   const [minimized, setMinimized] = useState(false);
   const [isModal, setIsModal] = useState(false);
-  const [linkedEntity, setLinkedEntity] = useState<{ type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } | undefined>(undefined);
+  const [linkedEntity, setLinkedEntity] = useState<{ type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message' | 'measurable'; id: string; title: string } | undefined>(undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -477,7 +482,7 @@ export function CreatePopup({
       headlineForm.reset();
       cascadingForm.reset();
     }
-    if (open && initialType) setCreateType(initialType);
+    if (open && initialType) setCreateType(initialType === 'measurable' ? 'todo' : initialType);
     if (open && (initialTitle != null || initialDescription != null) && initialType) {
       const title = initialTitle ?? "";
       const desc = initialDescription ?? "";
@@ -523,7 +528,7 @@ export function CreatePopup({
       ownerName: String(ownerName),
       ownerInitials: ownerInitials.slice(0, 2),
       dueBy,
-      status: (data.status as "on_track" | "off_track" | "at_risk" | "done") || "on_track",
+      status: (data.status as "on_track" | "off_track" | "at_risk" | "done" | "other") || "on_track",
       column: "current",
       achieved: false,
       isCompanyRock: isCompany,
@@ -964,10 +969,11 @@ export function CreatePopup({
                             value={field.value || undefined}
                             onChange={(v) => field.onChange(v ?? undefined)}
                             options={[
+                              { label: "Off-track", value: "off_track" },
                               { label: "On-track", value: "on_track" },
                               { label: "At-risk", value: "at_risk" },
-                              { label: "Off-track", value: "off_track" },
-                              { label: "Done", value: "done" },
+                              { label: "Complete", value: "done" },
+                              { label: "Other", value: "other" },
                             ]}
                             className="w-full"
                           />

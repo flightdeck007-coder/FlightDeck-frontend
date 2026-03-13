@@ -12,7 +12,7 @@ import {
 import { useMeetingSocket } from './MeetingSocketContext';
 import { meetingsService } from '@/lib/api/meetings.service';
 
-export type RockStatus = 'on_track' | 'off_track' | 'at_risk' | 'done';
+export type RockStatus = 'on_track' | 'off_track' | 'at_risk' | 'done' | 'other';
 export type RockColumnId =
   | 'current'
   | 'next'

@@ -131,6 +131,7 @@ function ScorecardTableCard({
   onRemoveFromGroup,
   onDelete,
   columnVisibility,
+  onPeriodValueChange,
 }: {
   title: string;
   data: MeasurableRow[];
@@ -157,6 +158,8 @@ function ScorecardTableCard({
   onRemoveFromGroup?: (measurableIds: string[]) => void;
   onDelete?: (measurableIds: string[]) => void;
   columnVisibility?: { showStatusIndicators: boolean; showOwnerColumn: boolean; showGoalColumn: boolean; showAverageColumn: boolean; showTotalColumn: boolean };
+  /** When set, period cells are editable number inputs; value changes update total/average for that row */
+  onPeriodValueChange?: (measurableId: string, periodKey: string, value: string) => void;
 }) {
   const effectiveGroupId = groupId ?? 'main';
   const visibility = columnVisibility ?? {
@@ -224,12 +227,27 @@ function ScorecardTableCard({
     const periodCols = (displayDirection === 'rtl' ? [...periodColumns].reverse() : periodColumns).map((label, i) => ({
       id: `period-${i}`,
       header: () => <span className="font-medium text-foreground text-xs whitespace-nowrap">{label}</span>,
-      cell: ({ row }: { row: { original: MeasurableRow } }) => row.original.periodValues[label] ?? '—',
+      cell: ({ row }: { row: { original: MeasurableRow } }) =>
+        onPeriodValueChange ? (
+          <input
+            type="text"
+            inputMode="decimal"
+            value={row.original.periodValues[label] ?? ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === '' || /^-?\d*\.?\d*$/.test(v)) onPeriodValueChange(row.original.id, label, v);
+            }}
+            className="w-full min-w-0 px-2 py-1 text-sm border border-border rounded bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+            placeholder="—"
+          />
+        ) : (
+          (row.original.periodValues[label] ?? '—')
+        ),
       size: 100,
     }));
     cols.push(...periodCols);
     return cols;
-  }, [periodColumns, selectedIds, data, displayDirection, visibility]);
+  }, [periodColumns, selectedIds, data, displayDirection, visibility, onPeriodValueChange]);
   const FIXED_COLUMN_IDS = useMemo(() => {
     const ids = ['select'];
     if (visibility.showStatusIndicators) ids.push('trend');
@@ -290,43 +308,46 @@ function ScorecardTableCard({
                 createPortal(
                   <>
                     <div
-                      className="fixed z-[100] py-2 bg-card border border-border rounded-md shadow-lg min-w-[220px]"
+                      className="fixed z-[100] py-2 bg-card border border-border rounded-md shadow-lg min-w-[240px]"
                       style={{ top: selectActionPosition.top, left: selectActionPosition.left }}
                     >
-                      <div className="space-y-1">
+                      {/* Move to another group (first) + Duplicate */}
+                      <div className="px-2 py-1 space-y-0.5">
                         {otherGroups && otherGroups.length > 0 && onMoveToGroup && (
-                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-sm" onClick={() => { setSelectActionOpen(false); setMoveModalOpen(true); }}>
-                            <ArrowRightToLine className="w-4 h-4 shrink-0" /> Move to group
+                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-md" onClick={() => { setSelectActionOpen(false); setMoveModalOpen(true); }}>
+                            <ArrowRightToLine className="w-4 h-4 shrink-0 text-muted-foreground" /> Move to another group
                           </button>
                         )}
                         {onDuplicate && (
-                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-sm" onClick={() => { setSelectActionOpen(false); onDuplicate(selectedList); setSelectedIds(new Set()); }}>
-                            <Copy className="w-4 h-4 shrink-0" /> Duplicate
+                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-md" onClick={() => { setSelectActionOpen(false); onDuplicate(selectedList); setSelectedIds(new Set()); }}>
+                            <Copy className="w-4 h-4 shrink-0 text-muted-foreground" /> Duplicate
                           </button>
                         )}
                       </div>
                       <div className="border-t border-border my-2" role="separator" />
-                      <div className="space-y-1">
+                      {/* Create To-Do / Create Issue (with linking to measurable) */}
+                      <div className="px-2 py-1 space-y-0.5">
                         {onCreateTodo && selectedMeasurables.length > 0 && (
-                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-sm" onClick={() => { setSelectActionOpen(false); onCreateTodo(selectedMeasurables); setSelectedIds(new Set()); }}>
-                            <CheckSquare className="w-4 h-4 shrink-0" /> Create To-Do
+                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-md" onClick={() => { setSelectActionOpen(false); onCreateTodo(selectedMeasurables); setSelectedIds(new Set()); }}>
+                            <CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create To-Do
                           </button>
                         )}
                         {onCreateIssue && selectedMeasurables.length > 0 && (
-                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-sm" onClick={() => { setSelectActionOpen(false); onCreateIssue(selectedMeasurables); setSelectedIds(new Set()); }}>
-                            <AlertTriangle className="w-4 h-4 shrink-0" /> Create Issue
+                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-md" onClick={() => { setSelectActionOpen(false); onCreateIssue(selectedMeasurables); setSelectedIds(new Set()); }}>
+                            <AlertTriangle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Issue
                           </button>
                         )}
                       </div>
                       <div className="border-t border-border my-2" role="separator" />
-                      <div className="space-y-1">
-                        {onRemoveFromGroup && (
-                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer text-destructive rounded-sm" onClick={() => { setSelectActionOpen(false); onRemoveFromGroup(selectedList); setSelectedIds(new Set()); }}>
-                            <MinusCircle className="w-4 h-4 shrink-0" /> Remove from group
+                      {/* Remove from group: only when in a custom group (not Main) */}
+                      <div className="px-2 py-1 space-y-0.5">
+                        {onRemoveFromGroup && effectiveGroupId !== 'main' && (
+                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-md text-foreground" onClick={() => { setSelectActionOpen(false); onRemoveFromGroup(selectedList); setSelectedIds(new Set()); }}>
+                            <MinusCircle className="w-4 h-4 shrink-0 text-muted-foreground" /> Remove from group
                           </button>
                         )}
                         {onDelete && (
-                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer text-destructive rounded-sm" onClick={() => { setSelectActionOpen(false); onDelete(selectedList); setSelectedIds(new Set()); }}>
+                          <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-md text-destructive" onClick={() => { setSelectActionOpen(false); onDelete(selectedList); setSelectedIds(new Set()); }}>
                             <Trash2 className="w-4 h-4 shrink-0" /> Delete
                           </button>
                         )}
@@ -533,7 +554,7 @@ interface InstrumentsSegmentViewProps {
   canRecord?: boolean;
   /** When true, meeting is scheduled in the future (not started); scorecard shows grey bg and disabled controls */
   isMeetingInFuture?: boolean;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string }) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message' | 'measurable'; id: string; title: string } }) => void;
   onOpenCreateIssue?: () => void;
   /** Meeting attendees for Person/Owner dropdowns (scorecard measurables) */
   meetingAttendances?: Array<{ id: string; user: { id: string; name?: string | null; email: string } }>;
@@ -1005,19 +1026,18 @@ export function InstrumentsSegmentView({
   );
   const handleRemoveFromGroup = useCallback(
     async (ids: string[]) => {
+      if (!organizationId || !meetingId || ids.length === 0) return;
       pushScorecardHistory();
-      if (organizationId && meetingId) {
-        try {
-          await Promise.all(
-            ids.map((id) =>
-              scorecardMeasurablesService.updateGroup(organizationId, meetingId, id, null)
-            )
-          );
-        } catch (e) {
-          console.error('Failed to remove from group', e);
-        }
+      try {
+        await Promise.all(
+          ids.map((id) =>
+            scorecardMeasurablesService.updateGroup(organizationId, meetingId, id, null)
+          )
+        );
+        setMeasurables((prev) => prev.map((m) => (ids.includes(m.id) ? { ...m, groupId: undefined } : m)));
+      } catch (e) {
+        console.error('Failed to remove from group', e);
       }
-      setMeasurables((prev) => prev.map((m) => (ids.includes(m.id) ? { ...m, groupId: undefined } : m)));
     },
     [organizationId, meetingId, pushScorecardHistory]
   );
@@ -1025,13 +1045,15 @@ export function InstrumentsSegmentView({
     const n = measurables.length;
     const title = `Review ${n} Measurable${n === 1 ? '' : 's'}`;
     const description = 'Measurables:\n' + measurables.map((m) => '• ' + m.title).join('\n');
-    onOpenCreate?.('todo', { title, description });
+    const first = measurables[0];
+    onOpenCreate?.('todo', { title, description, linkedEntity: first ? { type: 'measurable', id: first.id, title: first.title } : undefined });
   }, [onOpenCreate]);
   const handleCreateIssueFromMeasurable = useCallback((measurables: MeasurableRow[]) => {
     const n = measurables.length;
     const title = `Review ${n} Measurable${n === 1 ? '' : 's'}`;
     const description = 'Measurables:\n' + measurables.map((m) => '• ' + m.title).join('\n');
-    onOpenCreate?.('issue', { title, description });
+    const first = measurables[0];
+    onOpenCreate?.('issue', { title, description, linkedEntity: first ? { type: 'measurable', id: first.id, title: first.title } : undefined });
   }, [onOpenCreate]);
   const handleMoveToGroup = useCallback(
     async (measurableIds: string[], targetGroupId: string) => {
@@ -1071,8 +1093,64 @@ export function InstrumentsSegmentView({
     [organizationId, meetingId, pushScorecardHistory]
   );
 
+  const periodValueSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handlePeriodValueChange = useCallback(
+    (measurableId: string, periodKey: string, value: string) => {
+      pushScorecardHistory();
+      setMeasurables((prev) =>
+        prev.map((m) => {
+          if (m.id !== measurableId) return m;
+          const nextPv = { ...m.periodValues, [periodKey]: value };
+          const nums = Object.values(nextPv)
+            .map((v) => parseFloat(String(v).trim()))
+            .filter((n) => !Number.isNaN(n));
+          const total = nums.length ? nums.reduce((a, b) => a + b, 0) : 0;
+          const avg = nums.length ? total / nums.length : 0;
+          const round2 = (x: number) => Math.round(x * 100) / 100;
+          return {
+            ...m,
+            periodValues: nextPv,
+            total: String(round2(total)),
+            average: String(round2(avg)),
+          };
+        })
+      );
+      if (organizationId && meetingId) {
+        if (periodValueSaveTimerRef.current) clearTimeout(periodValueSaveTimerRef.current);
+        periodValueSaveTimerRef.current = setTimeout(() => {
+          periodValueSaveTimerRef.current = null;
+          const current = measurablesRef.current;
+          scorecardMeasurablesService
+            .upsert(
+              organizationId!,
+              meetingId!,
+              current.map((m, i) => ({
+                id: m.id,
+                scorecardGroupId: m.groupId === undefined || m.groupId === 'main' ? null : m.groupId,
+                title: m.title,
+                goal: m.goal,
+                average: m.average,
+                total: m.total,
+                trend: m.trend,
+                periodValues: m.periodValues,
+                order: i,
+              }))
+            )
+            .catch((e) => console.error('Failed to save period values', e));
+        }, 800);
+      }
+    },
+    [organizationId, meetingId, pushScorecardHistory]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (periodValueSaveTimerRef.current) clearTimeout(periodValueSaveTimerRef.current);
+    };
+  }, []);
+
   return (
-    <div className={`flex flex-col min-h-0 h-full ${wrap} ${isMeetingInFuture ? 'bg-muted/40 cursor-not-allowed' : ''}`}>
+    <div className={`flex flex-col min-h-0 h-full min-w-0 overflow-x-hidden ${wrap} ${isMeetingInFuture ? 'bg-muted/40 cursor-not-allowed' : ''}`}>
       {/* Section-style tabs: Weekly / Monthly / Quarterly / Annual (like Upcoming / Past / Agenda) */}
       <div className="-mx-6 border-b border-border shrink-0 bg-background mt-0">
         <div className="flex gap-0">
@@ -1098,9 +1176,9 @@ export function InstrumentsSegmentView({
         </div>
       </div>
       {/* Filters row: dropdowns + LTR/RTL | space | undo/redo/search/actions */}
-      <div className={`-mx-6 px-4 border-b border-border shrink-0 py-2.5 ${isMeetingInFuture ? 'bg-muted/50' : 'bg-muted/30'}`}>
-        <div className="flex flex-nowrap items-center justify-between gap-4 min-w-0">
-          <div className="flex flex-nowrap items-center gap-4 shrink-0">
+      <div className={`-mx-6 px-4 border-b border-border shrink-0 py-2.5 overflow-x-hidden ${isMeetingInFuture ? 'bg-muted/50' : 'bg-muted/30'}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 min-w-0">
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
             <Select
               value={teamName}
               options={[{ label: 'Leadership Team', value: teamName }]}
@@ -1167,12 +1245,12 @@ export function InstrumentsSegmentView({
               </button>
             </div>
           </div>
-          <div className="flex flex-nowrap items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 min-w-0 shrink">
             <button type="button" disabled={!canUseFilters || scorecardHistory.length === 0} onClick={handleUndoScorecard} className="p-1.5 rounded-md border border-border hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer disabled:bg-muted/50 shrink-0" title="Undo score change"><RotateCcw className="w-4 h-4" /></button>
             <button type="button" disabled={!canUseFilters || scorecardRedo.length === 0} onClick={handleRedoScorecard} className="p-1.5 rounded-md border border-border hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer disabled:bg-muted/50 shrink-0" title="Redo score change"><RotateCw className="w-4 h-4" /></button>
             <button type="button" disabled={!canUseFilters} onClick={() => { setEditGroupId(null); setEditGroupInitial(null); setCreateGroupName(''); setCreateGroupDescription(''); setCreateGroupOpen(true); }} className={`flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-md text-xs font-medium shrink-0 ${canUseFilters ? 'text-primary hover:bg-accent cursor-pointer' : 'text-muted-foreground bg-muted/50 cursor-not-allowed opacity-60'}`}><Plus className="w-3.5 h-3.5" /> New group</button>
             {meetingId ? <Link href={`/meeting/${meetingId}?segment=scorecard&manager=1`} className="px-2.5 py-1.5 border border-border rounded-md hover:bg-accent text-xs font-medium text-primary cursor-pointer inline-flex items-center shrink-0 whitespace-nowrap">Go to Measurable Manager</Link> : <button type="button" disabled={!canUseFilters} className="px-2.5 py-1.5 border border-border rounded-md hover:bg-accent text-xs font-medium text-primary shrink-0 whitespace-nowrap disabled:opacity-60 disabled:bg-muted/50 disabled:cursor-not-allowed">Go to Measurable Manager</button>}
-            <Input.Search placeholder="Search KPIs..." value={searchKpis} onChange={(e) => setSearchKpis(e.target.value)} allowClear className="w-[160px] min-w-[140px] text-sm shrink-0" disabled={!canUseFilters} />
+            <Input.Search placeholder="Search KPIs..." value={searchKpis} onChange={(e) => setSearchKpis(e.target.value)} allowClear className="max-w-[180px] min-w-0 w-full text-sm shrink" disabled={!canUseFilters} />
             {canUseFilters && (
               <div className="relative shrink-0">
                 <button ref={moreMenuBtnRef} type="button" onClick={() => setMoreMenuOpen((o) => !o)} className="p-1.5 rounded-md border border-border hover:bg-accent hover:text-foreground text-muted-foreground transition-colors cursor-pointer" title="More options">
@@ -1747,6 +1825,7 @@ export function InstrumentsSegmentView({
                 onCreateIssue={handleCreateIssueFromMeasurable}
                 onRemoveFromGroup={handleRemoveFromGroup}
                 onDelete={handleDeleteMeasurables}
+                onPeriodValueChange={canUseFilters ? handlePeriodValueChange : undefined}
               />
             ) : currentGroups.find((g) => g.id === expandedGroupId) ? (
               <ScorecardTableCard
@@ -1776,6 +1855,7 @@ export function InstrumentsSegmentView({
                 onCreateIssue={handleCreateIssueFromMeasurable}
                 onRemoveFromGroup={handleRemoveFromGroup}
                 onDelete={handleDeleteMeasurables}
+                onPeriodValueChange={canUseFilters ? handlePeriodValueChange : undefined}
               />
             ) : null}
             <div className="flex-1 min-h-0 overflow-auto flex flex-col gap-4">
@@ -1808,6 +1888,7 @@ export function InstrumentsSegmentView({
                     onCreateIssue={handleCreateIssueFromMeasurable}
                     onRemoveFromGroup={handleRemoveFromGroup}
                     onDelete={handleDeleteMeasurables}
+                    onPeriodValueChange={canUseFilters ? handlePeriodValueChange : undefined}
                   />
                 ))
               ) : (
@@ -1838,6 +1919,7 @@ export function InstrumentsSegmentView({
                     onCreateIssue={handleCreateIssueFromMeasurable}
                     onRemoveFromGroup={handleRemoveFromGroup}
                     onDelete={handleDeleteMeasurables}
+                    onPeriodValueChange={canUseFilters ? handlePeriodValueChange : undefined}
                   />
                   )}
                   {currentGroups.filter((g) => g.id !== expandedGroupId).map((g) => (
@@ -1868,6 +1950,7 @@ export function InstrumentsSegmentView({
                       onCreateIssue={handleCreateIssueFromMeasurable}
                       onRemoveFromGroup={handleRemoveFromGroup}
                       onDelete={handleDeleteMeasurables}
+                      onPeriodValueChange={canUseFilters ? handlePeriodValueChange : undefined}
                     />
                   ))}
                 </>
@@ -1903,6 +1986,7 @@ export function InstrumentsSegmentView({
               onCreateIssue={handleCreateIssueFromMeasurable}
               onRemoveFromGroup={handleRemoveFromGroup}
               onDelete={handleDeleteMeasurables}
+              onPeriodValueChange={canUseFilters ? handlePeriodValueChange : undefined}
             />
             )}
             {currentGroups.map((g) => (
@@ -1932,6 +2016,7 @@ export function InstrumentsSegmentView({
                 onCreateIssue={handleCreateIssueFromMeasurable}
                 onRemoveFromGroup={handleRemoveFromGroup}
                 onDelete={handleDeleteMeasurables}
+                onPeriodValueChange={canUseFilters ? handlePeriodValueChange : undefined}
               />
             ))}
           </div>

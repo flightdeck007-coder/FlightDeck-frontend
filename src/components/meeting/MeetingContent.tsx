@@ -10,13 +10,13 @@ import { IssuesSegmentView } from './IssuesSegmentView';
 import { ConcludeSegmentView } from './ConcludeSegmentView';
 import { formatDateOrPass } from '@/lib/formatDate';
 
-export type CreatePopupType = 'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message';
+export type CreatePopupType = 'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | 'measurable';
 
 interface MeetingContentProps {
   sectionId: string;
   sectionTitle: string;
   onOpenCreateIssue?: () => void;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message' | 'measurable'; id: string; title: string } }) => void;
   onFinishMeeting?: () => Promise<void>;
   finishLoading?: boolean;
   meetingId?: string;

@@ -31,6 +31,11 @@ import {
   LayoutGrid,
   Archive as ArchiveIcon,
   ThumbsUp,
+  ThumbsDown,
+  CheckCircle,
+  XCircle,
+  HelpCircle,
+  AlertTriangle,
   Filter,
   Pencil,
   X,
@@ -57,10 +62,11 @@ const COLUMN_LABELS: Record<RockColumnId, string> = {
 };
 
 const STATUS_LABEL: Record<Rock['status'], string> = {
-  on_track: 'On track',
-  off_track: 'Off track',
-  at_risk: 'At risk',
-  done: 'Done',
+  on_track: 'On-track',
+  off_track: 'Off-track',
+  at_risk: 'At-risk',
+  done: 'Complete',
+  other: 'Other',
 };
 
 function statusBadgeClass(status: Rock['status']): string {
@@ -73,10 +79,100 @@ function statusBadgeClass(status: Rock['status']): string {
     case 'at_risk':
       return `${base} bg-amber-500/15 text-amber-600 dark:text-amber-400`;
     case 'done':
-      return `${base} bg-muted text-muted-foreground`;
+      return `${base} bg-emerald-500/15 text-emerald-600 dark:text-emerald-400`;
+    case 'other':
+      return `${base} bg-muted/80 text-foreground`;
     default:
       return `${base} bg-muted text-muted-foreground`;
   }
+}
+
+const STATUS_OPTIONS: Array<{ value: Rock['status']; label: string; icon: React.ReactNode; optionClass: string }> = [
+  { value: 'off_track', label: 'Off-track', icon: <ThumbsDown className="w-3.5 h-3.5" />, optionClass: 'bg-destructive/10 text-destructive hover:bg-destructive/20' },
+  { value: 'on_track', label: 'On-track', icon: <ThumbsUp className="w-3.5 h-3.5" />, optionClass: 'bg-primary/10 text-primary hover:bg-primary/20' },
+  { value: 'at_risk', label: 'At-risk', icon: <AlertTriangle className="w-3.5 h-3.5" />, optionClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20' },
+  { value: 'done', label: 'Complete', icon: <CheckCircle className="w-3.5 h-3.5" />, optionClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20' },
+  { value: 'other', label: 'Other', icon: <HelpCircle className="w-3.5 h-3.5" />, optionClass: 'bg-muted/80 text-foreground hover:bg-muted' },
+];
+
+const DROPDOWN_OPTION_HEIGHT = 44;
+const DROPDOWN_PADDING = 12;
+const DROPDOWN_GAP = 4;
+const DROPDOWN_EST_HEIGHT = STATUS_OPTIONS.length * DROPDOWN_OPTION_HEIGHT + DROPDOWN_PADDING * 2;
+
+function RockStatusDropdown({ rock, onStatusChange }: { rock: Rock; onStatusChange: (status: Rock['status']) => void }) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number; openUp: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!open || !btnRef.current) {
+      setPosition(null);
+      return;
+    }
+    const rect = btnRef.current.getBoundingClientRect();
+    const viewportH = typeof window !== 'undefined' ? window.innerHeight : 600;
+    const spaceBelow = viewportH - rect.bottom - DROPDOWN_GAP;
+    const openUp = spaceBelow < DROPDOWN_EST_HEIGHT && rect.top > spaceBelow;
+    const rawTop = openUp ? rect.top - DROPDOWN_EST_HEIGHT - DROPDOWN_GAP : rect.bottom + DROPDOWN_GAP;
+    const top = typeof window !== 'undefined' ? Math.max(8, rawTop) : rawTop;
+    const minW = 140;
+    let left = rect.left;
+    if (typeof window !== 'undefined') {
+      if (left + minW > window.innerWidth) left = window.innerWidth - minW - 8;
+      if (left < 8) left = 8;
+    }
+    setPosition({ top, left, openUp });
+  }, [open]);
+
+  const current = STATUS_OPTIONS.find((o) => o.value === rock.status) ?? STATUS_OPTIONS[0];
+
+  return (
+    <div className="relative inline-block">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border border-transparent cursor-pointer transition-colors ${statusBadgeClass(rock.status)} hover:opacity-90`}
+      >
+        {current.icon}
+        <span>{current.label}</span>
+        <ChevronDown className={`w-3 h-3 opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && position && typeof document !== 'undefined' &&
+        createPortal(
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} aria-hidden />
+            <div
+              className="fixed z-20 py-1.5 min-w-[140px] overflow-y-auto rounded-lg border border-border bg-card shadow-xl"
+              style={{
+                top: position.top,
+                left: position.left,
+                maxHeight:
+                  typeof window !== 'undefined'
+                    ? position.openUp
+                      ? Math.min(280, position.top - 8)
+                      : Math.min(280, window.innerHeight - position.top - 8)
+                    : 280,
+              }}
+            >
+              {STATUS_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onStatusChange(opt.value); setOpen(false); }}
+                  className={`w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm font-medium rounded-md transition-colors ${opt.optionClass} ${rock.status === opt.value ? 'ring-1 ring-inset ring-current/30' : ''}`}
+                >
+                  {opt.icon}
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </>,
+          document.body
+        )}
+    </div>
+  );
 }
 
 /** Estimated width of the rock actions dropdown so we can keep it on-screen */
@@ -250,6 +346,9 @@ export function RocksSegmentView({
               { label: 'All', value: 'All' },
               { label: 'On-track', value: 'On-track' },
               { label: 'Off-track', value: 'Off-track' },
+              { label: 'At-risk', value: 'At-risk' },
+              { label: 'Complete', value: 'Complete' },
+              { label: 'Other', value: 'Other' },
             ]}
             className="w-[120px]"
           />
@@ -974,34 +1073,6 @@ function RockDetailPanel({
   const [dueBy, setDueBy] = useState(rock.dueBy);
   const { updateRock } = useRocks();
 
-  // V/TO section: edit mode and fields
-  const [vtoEditMode, setVtoEditMode] = useState(false);
-  const [vto90Days, setVto90Days] = useState('90 Days');
-  const [vtoFutureDate, setVtoFutureDate] = useState(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() + 3);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  });
-  type VtoRow = { id: string; description: string; value: string };
-  const [revenueRows, setRevenueRows] = useState<VtoRow[]>([]);
-  const [profitRows, setProfitRows] = useState<VtoRow[]>([]);
-  const [measurablesRows, setMeasurablesRows] = useState<VtoRow[]>([]);
-
-  const addVtoRow = (setter: React.Dispatch<React.SetStateAction<VtoRow[]>>) => {
-    setter((prev) => [...prev, { id: crypto.randomUUID(), description: '', value: '' }]);
-  };
-  const updateVtoRow = (setter: React.Dispatch<React.SetStateAction<VtoRow[]>>, id: string, field: 'description' | 'value', value: string) => {
-    setter((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
-  };
-  const removeVtoRow = (setter: React.Dispatch<React.SetStateAction<VtoRow[]>>, id: string) => {
-    setter((prev) => prev.filter((r) => r.id !== id));
-  };
-
-  const handleVtoSave = () => {
-    setVtoEditMode(false);
-    // Persist could go here when API exists
-  };
-
   useEffect(() => {
     setTitle(rock.title);
     setDueBy(rock.dueBy);
@@ -1027,7 +1098,7 @@ function RockDetailPanel({
             <button type="button" onClick={onClose} className="p-2 rounded-md hover:bg-muted text-muted-foreground" aria-label="Close"><X className="w-5 h-5" /></button>
           </div>
         </header>
-        <div className="flex-1 overflow-y-auto px-[4.5rem] py-6 space-y-0">
+        <div className="flex-1 overflow-y-auto px-5 py-6 space-y-0">
           {/* Rock details block */}
           <section className="pb-10 border-b border-border">
             {rock.isCompanyRock && (
@@ -1089,144 +1160,7 @@ function RockDetailPanel({
             </div>
           </section>
 
-          {/* V/TO® | Revenue, Profit, Measurables — clearly separated sections with spacer and border */}
-          <section className="py-6 border-b border-border">
-            <div className="flex items-center justify-between gap-2 mb-5">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-9 h-9 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
-                  <span className="text-amber-600 dark:text-amber-400 font-semibold text-sm">V</span>
-                </div>
-                <h4 className="font-semibold text-foreground truncate">V/TO® | Revenue, Profit, Measurables</h4>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {vtoEditMode ? (
-                  <button type="button" onClick={handleVtoSave} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground" aria-label="Save"><Check className="w-4 h-4" /></button>
-                ) : (
-                  <button type="button" onClick={(e) => { e.stopPropagation(); setVtoEditMode(true); }} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground" aria-label="Edit"><Pencil className="w-4 h-4" /></button>
-                )}
-                <button type="button" className="p-1.5 rounded-md hover:bg-muted text-muted-foreground" aria-label="Collapse"><ChevronUp className="w-4 h-4" /></button>
-              </div>
-            </div>
-
-            {/* 90 Days — view: text only; edit: label above + input (save is in V/TO header) */}
-            <div className="pt-4 mt-4 border-t border-border">
-              <div className="py-2">
-                {vtoEditMode ? (
-                  <div className="space-y-1.5">
-                    <label className="text-sm text-muted-foreground block">90 Days</label>
-                    <input
-                      type="text"
-                      value={vto90Days}
-                      onChange={(e) => setVto90Days(e.target.value)}
-                      className="w-full px-3 py-2 border border-border rounded-md bg-white text-foreground text-sm placeholder:text-muted-foreground"
-                      placeholder="90 Days"
-                    />
-                  </div>
-                ) : (
-                  <span className="font-medium text-foreground">{vto90Days}</span>
-                )}
-              </div>
-            </div>
-
-            {/* Future Date — label above; date + calendar icon inside one bordered field */}
-            <div className="pt-5 mt-5 border-t border-border">
-              <div className="py-2">
-                {vtoEditMode ? (
-                  <div className="space-y-1.5">
-                    <label className="text-sm text-muted-foreground block">Future Date</label>
-                    <div className="flex items-center border border-border rounded-md bg-white overflow-hidden">
-                      <input
-                        type="date"
-                        value={(() => {
-                          try {
-                            const d = new Date(vtoFutureDate);
-                            if (Number.isNaN(d.getTime())) return '';
-                            const y = d.getFullYear();
-                            const m = String(d.getMonth() + 1).padStart(2, '0');
-                            const day = String(d.getDate()).padStart(2, '0');
-                            return `${y}-${m}-${day}`;
-                          } catch {
-                            return '';
-                          }
-                        })()}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (v) setVtoFutureDate(new Date(v + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }));
-                        }}
-                        className="flex-1 min-w-0 px-3 py-2 border-0 bg-transparent text-foreground text-sm focus:outline-none focus:ring-0"
-                      />
-                      <span className="pr-3 flex items-center pointer-events-none text-muted-foreground"><CalendarIcon className="w-4 h-4" /></span>
-                    </div>
-                  </div>
-                ) : (
-                  <span className="text-sm text-foreground">Future Date: {vtoFutureDate}</span>
-                )}
-              </div>
-            </div>
-
-            {/* Revenue — label + circular add (light grey border & fill, black plus) */}
-            <div className="pt-5 mt-5 border-t border-border">
-              <div className="flex items-center gap-2 py-3">
-                <span className="text-sm font-medium text-foreground">Revenue:</span>
-                {vtoEditMode && (
-                  <button type="button" onClick={() => addVtoRow(setRevenueRows)} className="w-7 h-7 rounded-full border border-border bg-muted/50 flex items-center justify-center text-foreground hover:bg-muted" aria-label="Add revenue"><Plus className="w-3.5 h-3.5" /></button>
-                )}
-              </div>
-              {vtoEditMode && (
-                <div className="space-y-2 mt-2">
-                  {revenueRows.map((row) => (
-                    <div key={row.id} className="flex flex-row items-center gap-2">
-                      <input type="text" value={row.description} onChange={(e) => updateVtoRow(setRevenueRows, row.id, 'description', e.target.value)} placeholder="Description" className="flex-1 min-w-0 px-2 py-1.5 border border-border rounded bg-background text-foreground text-sm" />
-                      <input type="text" value={row.value} onChange={(e) => updateVtoRow(setRevenueRows, row.id, 'value', e.target.value)} placeholder="Value" className="w-28 shrink-0 px-2 py-1.5 border border-border rounded bg-background text-foreground text-sm" />
-                      <button type="button" onClick={() => removeVtoRow(setRevenueRows, row.id)} className="shrink-0 p-1 rounded text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Remove"><X className="w-4 h-4" /></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Profit */}
-            <div className="pt-5 mt-5 border-t border-border">
-              <div className="flex items-center gap-2 py-3">
-                <span className="text-sm font-medium text-foreground">Profit:</span>
-                {vtoEditMode && (
-                  <button type="button" onClick={() => addVtoRow(setProfitRows)} className="w-7 h-7 rounded-full border border-border bg-muted/50 flex items-center justify-center text-foreground hover:bg-muted" aria-label="Add profit"><Plus className="w-3.5 h-3.5" /></button>
-                )}
-              </div>
-              {vtoEditMode && (
-                <div className="space-y-2 mt-2">
-                  {profitRows.map((row) => (
-                    <div key={row.id} className="flex flex-row items-center gap-2">
-                      <input type="text" value={row.description} onChange={(e) => updateVtoRow(setProfitRows, row.id, 'description', e.target.value)} placeholder="Description" className="flex-1 min-w-0 px-2 py-1.5 border border-border rounded bg-background text-foreground text-sm" />
-                      <input type="text" value={row.value} onChange={(e) => updateVtoRow(setProfitRows, row.id, 'value', e.target.value)} placeholder="Value" className="w-28 shrink-0 px-2 py-1.5 border border-border rounded bg-background text-foreground text-sm" />
-                      <button type="button" onClick={() => removeVtoRow(setProfitRows, row.id)} className="shrink-0 p-1 rounded text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Remove"><X className="w-4 h-4" /></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Measurables */}
-            <div className="pt-5 mt-5 border-t border-border">
-              <div className="flex items-center gap-2 py-3">
-                <span className="text-sm font-medium text-foreground">Measurables:</span>
-                {vtoEditMode && (
-                  <button type="button" onClick={() => addVtoRow(setMeasurablesRows)} className="w-7 h-7 rounded-full border border-border bg-muted/50 flex items-center justify-center text-foreground hover:bg-muted" aria-label="Add measurable"><Plus className="w-3.5 h-3.5" /></button>
-                )}
-              </div>
-              {vtoEditMode && (
-                <div className="space-y-2 mt-2">
-                  {measurablesRows.map((row) => (
-                    <div key={row.id} className="flex flex-row items-center gap-2">
-                      <input type="text" value={row.description} onChange={(e) => updateVtoRow(setMeasurablesRows, row.id, 'description', e.target.value)} placeholder="Description" className="flex-1 min-w-0 px-2 py-1.5 border border-border rounded bg-background text-foreground text-sm" />
-                      <input type="text" value={row.value} onChange={(e) => updateVtoRow(setMeasurablesRows, row.id, 'value', e.target.value)} placeholder="Value" className="w-28 shrink-0 px-2 py-1.5 border border-border rounded bg-background text-foreground text-sm" />
-                      <button type="button" onClick={() => removeVtoRow(setMeasurablesRows, row.id)} className="shrink-0 p-1 rounded text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Remove"><X className="w-4 h-4" /></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
+          <hr className="border-border my-0" />
 
           {/* Milestones — title + button opens modal (no accordion) */}
           <section className="py-6 border-b border-border">
@@ -1445,11 +1379,8 @@ function RockRow({
             </button>
           </td>
         )}
-        <td className="px-4 py-3 align-middle">
-          <span className={statusBadgeClass(rock.status)}>
-            {rock.status === 'on_track' && <ThumbsUp className="w-3.5 h-3.5" />}
-            {STATUS_LABEL[rock.status]}
-          </span>
+        <td className="px-4 py-3 align-middle" onClick={(e) => e.stopPropagation()}>
+          <RockStatusDropdown rock={rock} onStatusChange={(status) => updateRock(rock.id, { status })} />
         </td>
         <td className="px-4 py-3 font-medium text-foreground align-middle" onClick={(e) => e.stopPropagation()}>
           {editingTitle ? (

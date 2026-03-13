@@ -1,9 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Pause, Play, Square, LogOut, FileText, AlertTriangle, Eye, EyeOff, Loader2, Users, User, RefreshCw, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pause, Play, Square, LogOut, FileText, AlertTriangle, Eye, EyeOff, Loader2, Users, User, RefreshCw, X, UserCog, Pencil, Settings } from 'lucide-react';
 import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
-import { meetingsService } from '@/lib/api/meetings.service';
+import { useSettings } from '@/contexts/SettingsContext';
+import { meetingsService, type Meeting } from '@/lib/api/meetings.service';
+import { teamsService, type TeamMember } from '@/lib/api/teams.service';
+import { Select } from 'antd';
 
 interface MeetingSection {
   id: string;
@@ -43,6 +46,8 @@ interface MeetingSidebarProps {
   canOpenParticipantsModal?: boolean;
   /** Required for fetching participants when modal is opened */
   organizationId?: string;
+  /** Called after scribe is updated so parent can set meeting state; also used so other clients get update via socket */
+  onMeetingUpdated?: (meeting: Meeting) => void;
 }
 
 export function MeetingSidebar({
@@ -72,13 +77,20 @@ export function MeetingSidebar({
   meetingId,
   canOpenParticipantsModal = false,
   organizationId,
+  onMeetingUpdated,
 }: MeetingSidebarProps) {
   const { socket } = useMeetingSocket();
+  const { openSettings } = useSettings();
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   const [tangentModalOpen, setTangentModalOpen] = useState(false);
   const [participantsModalOpen, setParticipantsModalOpen] = useState(false);
+  const [fetchedMeeting, setFetchedMeeting] = useState<Meeting | null>(null);
   const [participantsList, setParticipantsList] = useState<Array<{ id: string; present: boolean; user: { id: string; email: string; name?: string } }>>([]);
   const [participantsLoading, setParticipantsLoading] = useState(false);
+  const [changeScribeOpen, setChangeScribeOpen] = useState(false);
+  const [changeScribeLoading, setChangeScribeLoading] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [selectedNewScribeId, setSelectedNewScribeId] = useState<string | null>(null);
   const currentIndex = sections.findIndex((s) => s.id === currentSection);
 
   const fetchParticipants = useCallback(async () => {
@@ -86,17 +98,51 @@ export function MeetingSidebar({
     setParticipantsLoading(true);
     try {
       const meeting = await meetingsService.findOne(organizationId, meetingId);
+      setFetchedMeeting(meeting ?? null);
       setParticipantsList(meeting?.attendances ?? []);
     } catch {
+      setFetchedMeeting(null);
       setParticipantsList([]);
     } finally {
       setParticipantsLoading(false);
     }
   }, [organizationId, meetingId]);
 
+  const fetchTeamMembers = useCallback(async () => {
+    if (!organizationId || !fetchedMeeting?.teamId) return;
+    try {
+      const teams = await teamsService.list(organizationId);
+      const team = teams.find((t) => t.id === fetchedMeeting.teamId);
+      setTeamMembers(team?.members ?? []);
+    } catch {
+      setTeamMembers([]);
+    }
+  }, [organizationId, fetchedMeeting?.teamId]);
+
+  const handleChangeScribe = useCallback(async () => {
+    if (!organizationId || !meetingId || !selectedNewScribeId || !onMeetingUpdated) return;
+    setChangeScribeLoading(true);
+    try {
+      const updated = await meetingsService.update(organizationId, meetingId, { scribeId: selectedNewScribeId });
+      onMeetingUpdated(updated);
+      setChangeScribeOpen(false);
+      setSelectedNewScribeId(null);
+      // Refresh participants so modal shows correct list and scribe (API update response may not include attendances)
+      await fetchParticipants();
+    } catch {
+      // keep modal open on error
+    } finally {
+      setChangeScribeLoading(false);
+    }
+  }, [organizationId, meetingId, selectedNewScribeId, onMeetingUpdated, fetchParticipants]);
+
   useEffect(() => {
     if (participantsModalOpen && canOpenParticipantsModal) fetchParticipants();
   }, [participantsModalOpen, canOpenParticipantsModal, fetchParticipants]);
+
+  useEffect(() => {
+    if (changeScribeOpen && fetchedMeeting) fetchTeamMembers();
+  }, [changeScribeOpen, fetchedMeeting, fetchTeamMembers]);
 
   useEffect(() => {
     if (!socket) return;
@@ -278,6 +324,14 @@ export function MeetingSidebar({
               )}
             </button>
           )}
+          <button
+            type="button"
+            onClick={openSettings}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-md hover:bg-foreground/10 transition-colors text-sm bg-background text-foreground"
+          >
+            <Settings className="w-4 h-4 text-foreground/70" />
+            Settings
+          </button>
         </div>
         {/* Tangent Called! modal */}
         {tangentModalOpen && (
@@ -328,6 +382,47 @@ export function MeetingSidebar({
                   </button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 min-h-0">
+                  {fetchedMeeting && !participantsLoading && (
+                    <div className="mb-4 p-3 rounded-lg border border-border bg-muted/20 space-y-2">
+                      <div className="flex items-center gap-2 text-sm">
+                        <UserCog className="w-4 h-4 text-primary shrink-0" />
+                        <span className="text-muted-foreground">Facilitator:</span>
+                        <span className="font-medium text-foreground">
+                          {fetchedMeeting.facilitatorId
+                            ? (participantsList.find((a) => a.user.id === fetchedMeeting.facilitatorId)?.user?.name ||
+                                participantsList.find((a) => a.user.id === fetchedMeeting.facilitatorId)?.user?.email ||
+                                '—')
+                            : '—'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-sm">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-primary shrink-0" />
+                          <span className="text-muted-foreground">Scribe:</span>
+                          <span className="font-medium text-foreground">
+                            {fetchedMeeting.scribeId
+                              ? (participantsList.find((a) => a.user.id === fetchedMeeting.scribeId)?.user?.name ||
+                                  participantsList.find((a) => a.user.id === fetchedMeeting.scribeId)?.user?.email ||
+                                  '—')
+                              : '—'}
+                          </span>
+                        </div>
+                        {isFacilitator && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedNewScribeId(fetchedMeeting.scribeId ?? null);
+                              setChangeScribeOpen(true);
+                            }}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-border hover:bg-muted text-xs font-medium text-foreground"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            Change scribe
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {participantsLoading ? (
                     <div className="flex items-center justify-center py-8">
                       <Loader2 className="w-8 h-8 animate-spin text-primary" aria-label="Loading" />
@@ -388,6 +483,67 @@ export function MeetingSidebar({
                 </div>
               </div>
             </div>
+            {/* Change scribe modal */}
+            {changeScribeOpen && (
+              <>
+                <div className="fixed inset-0 bg-black/30 z-[60]" onClick={() => !changeScribeLoading && setChangeScribeOpen(false)} aria-hidden />
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+                  <div className="bg-card border border-border rounded-xl shadow-xl max-w-md w-full flex flex-col max-h-[85vh]">
+                    <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
+                      <h3 className="text-lg font-semibold text-foreground">Change scribe</h3>
+                      <button
+                        type="button"
+                        onClick={() => !changeScribeLoading && setChangeScribeOpen(false)}
+                        className="p-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                        aria-label="Close"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 min-h-0">
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Select a team member. They will be able to add and edit notes, todos, and issues.
+                      </p>
+                      <Select
+                        value={selectedNewScribeId ?? undefined}
+                        onChange={(v) => setSelectedNewScribeId(v ?? null)}
+                        options={teamMembers.map((m) => ({
+                          label: m.user.name || m.user.email || m.user.id,
+                          value: m.user.id,
+                        }))}
+                        className="w-full"
+                        placeholder="Select scribe"
+                        showSearch
+                        filterOption={(input, opt) =>
+                          (opt?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())
+                        }
+                      />
+                    </div>
+                    <div className="flex items-center justify-end gap-2 p-4 border-t border-border shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setChangeScribeOpen(false)}
+                        disabled={changeScribeLoading}
+                        className="px-4 py-2 rounded-md border border-border hover:bg-muted text-sm font-medium disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleChangeScribe}
+                        disabled={changeScribeLoading || !selectedNewScribeId}
+                        className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {changeScribeLoading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : null}
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </>
         )}
         {/* Finish (facilitator) or Exit (member) */}

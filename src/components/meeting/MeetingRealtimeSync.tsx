@@ -87,6 +87,22 @@ export function MeetingRealtimeSync({
     };
   }, [socket, setMeeting]);
 
+  // Listen for meeting_updated (e.g. scribe changed) so all participants see new permissions without refresh
+  useEffect(() => {
+    if (!socket || !setMeeting) return;
+    const onMeetingUpdated = (payload: Partial<Meeting>) => {
+      if (!payload || typeof payload !== 'object') return;
+      setMeeting((prev) => {
+        if (!prev) return null;
+        return { ...prev, ...payload, attendances: (payload as Meeting).attendances ?? prev.attendances };
+      });
+    };
+    socket.on('meeting_updated', onMeetingUpdated);
+    return () => {
+      socket.off('meeting_updated', onMeetingUpdated);
+    };
+  }, [socket, setMeeting]);
+
   // When facilitator ends meeting, all members are kicked (redirect to meetings list)
   useEffect(() => {
     if (!socket || !onMeetingEnded) return;

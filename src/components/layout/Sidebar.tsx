@@ -13,6 +13,7 @@ import {
   Target,
   AlertTriangle,
   TrendingUp,
+  Megaphone,
   LogOut,
   Building2,
   Users,
@@ -31,6 +32,7 @@ const sidebarLinks = [
   { href: ROUTES.ROCKS, label: FLIGHT_TERMS.ROCKS, icon: Target },
   { href: ROUTES.ISSUES, label: FLIGHT_TERMS.ISSUES, icon: AlertTriangle },
   { href: ROUTES.SCORECARD, label: FLIGHT_TERMS.SCORECARD, icon: TrendingUp },
+  { href: ROUTES.HEADLINES, label: FLIGHT_TERMS.HEADLINES, icon: Megaphone },
 ];
 
 export function Sidebar() {

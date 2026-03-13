@@ -18,4 +18,5 @@ export const ROUTES = {
   ROCKS: '/dashboard/rocks',
   ISSUES: '/dashboard/issues',
   SCORECARD: '/dashboard/scorecard',
+  HEADLINES: '/dashboard/headlines',
 } as const;

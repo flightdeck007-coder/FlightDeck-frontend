@@ -3,14 +3,15 @@
 import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MeetingSocketProvider } from '@/contexts/MeetingSocketContext';
-import { InstrumentsSegmentView } from '@/components/meeting/InstrumentsSegmentView';
+import { HeadlinesProvider } from '@/contexts/HeadlinesContext';
+import { HeadlinesSegmentView } from '@/components/meeting/HeadlinesSegmentView';
 import { CreatePopup } from '@/components/meeting/CreatePopup';
 import { useMeetingsData } from '@/hooks/useMeetingsData';
 import { meetingsService } from '@/lib/api/meetings.service';
 import { Select } from 'antd';
 import { formatDate } from '@/lib/formatDate';
 
-export default function ScorecardPage() {
+export default function HeadlinesPage() {
   const {
     organizationId,
     teams,
@@ -19,7 +20,6 @@ export default function ScorecardPage() {
     meetings,
     isLoading: teamsLoading,
     selectedTeam,
-    refetch,
   } = useMeetingsData();
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | undefined>(undefined);
   const [selectedMeeting, setSelectedMeeting] = useState<Awaited<ReturnType<typeof meetingsService.findOne>> | null>(null);
@@ -60,9 +60,9 @@ export default function ScorecardPage() {
       <div className="p-6 flex flex-col min-h-0 h-full">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4 shrink-0">
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Flight Desk (Scorecard)</h1>
+            <h1 className="text-2xl font-semibold text-foreground">Crew Headlines (Customer/Employee)</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Key metrics and measurables. Select a meeting to view or edit its scorecard.
+              Headlines and cascading messages are per meeting. Select a meeting to view or edit.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -88,42 +88,37 @@ export default function ScorecardPage() {
 
         {!selectedMeetingId ? (
           <div className="flex-1 flex items-center justify-center rounded-xl border border-border bg-muted/20">
-            <p className="text-muted-foreground">Select a team and meeting to view the scorecard.</p>
+            <p className="text-muted-foreground">Select a team and meeting to view headlines.</p>
           </div>
         ) : (
           <MeetingSocketProvider meetingId={selectedMeetingId} organizationId={organizationId}>
-            <div className="flex-1 min-h-0 flex flex-col">
-              <InstrumentsSegmentView
-                teamName={teamName}
-                meetingId={selectedMeetingId}
-                organizationId={organizationId}
-                canRecord
-                isMeetingInFuture={false}
-                meetingAttendances={selectedMeeting?.attendances}
-                onOpenCreate={(type) => {
-                  setCreateType(type);
-                  setCreateOpen(true);
-                }}
-                onOpenCreateIssue={() => {
-                  setCreateType('issue');
-                  setCreateOpen(true);
-                }}
-              />
-            </div>
+            <HeadlinesProvider meetingId={selectedMeetingId} organizationId={organizationId}>
+              <div className="flex-1 min-h-0 flex flex-col">
+                <HeadlinesSegmentView
+                  teamName={teamName}
+                  meetingId={selectedMeetingId}
+                  canRecord
+                  onOpenCreate={(type) => {
+                    setCreateType(type);
+                    setCreateOpen(true);
+                  }}
+                />
+              </div>
 
-            <CreatePopup
-              open={createOpen}
-              onClose={() => {
-                setCreateOpen(false);
-                setCreateType(undefined);
-              }}
-              teamName={teamName}
-              teamId={selectedTeamId || undefined}
-              teams={teams}
-              organizationId={organizationId}
-              initialType={createType}
-              meetingAttendances={selectedMeeting?.attendances}
-            />
+              <CreatePopup
+                open={createOpen}
+                onClose={() => {
+                  setCreateOpen(false);
+                  setCreateType(undefined);
+                }}
+                teamName={teamName}
+                teamId={selectedTeamId || undefined}
+                teams={teams}
+                organizationId={organizationId}
+                initialType={createType}
+                meetingAttendances={selectedMeeting?.attendances}
+              />
+            </HeadlinesProvider>
           </MeetingSocketProvider>
         )}
       </div>

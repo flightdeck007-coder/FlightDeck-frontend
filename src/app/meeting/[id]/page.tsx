@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { MeetingLayout } from '@/components/meeting/MeetingLayout';
 import { MeetingSidebar } from '@/components/meeting/MeetingSidebar';
-import { MeetingContent } from '@/components/meeting/MeetingContent';
+import { MeetingContent, type CreatePopupType } from '@/components/meeting/MeetingContent';
 import { MeetingNotesSection } from '@/components/meeting/MeetingNotesSection';
 import { CreatePopup } from '@/components/meeting/CreatePopup';
 import { RocksProvider } from '@/contexts/RocksContext';
@@ -92,10 +92,10 @@ export default function MeetingPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isSuspended, setIsSuspended] = useState(false);
   const [createPopupOpen, setCreatePopupOpen] = useState(false);
-  const [createPopupInitialType, setCreatePopupInitialType] = useState<'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | undefined>(undefined);
+  const [createPopupInitialType, setCreatePopupInitialType] = useState<CreatePopupType | undefined>(undefined);
   const [createPopupInitialTitle, setCreatePopupInitialTitle] = useState<string | undefined>(undefined);
   const [createPopupInitialDescription, setCreatePopupInitialDescription] = useState<string | undefined>(undefined);
-  const [createPopupInitialLinkedEntity, setCreatePopupInitialLinkedEntity] = useState<{ type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } | undefined>(undefined);
+  const [createPopupInitialLinkedEntity, setCreatePopupInitialLinkedEntity] = useState<{ type: CreatePopupType; id: string; title: string } | undefined>(undefined);
   const [teams, setTeams] = useState<Team[]>([]);
   const [finishLoading, setFinishLoading] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
@@ -722,6 +722,11 @@ export default function MeetingPage() {
             meetingId={meetingId}
             canOpenParticipantsModal={canRecord}
             organizationId={organizationId || undefined}
+            onMeetingUpdated={(updated) =>
+              setMeeting((prev) =>
+                prev ? { ...updated, attendances: (updated as Meeting).attendances ?? prev.attendances } : updated
+              )
+            }
           />
         </div>
       )}
