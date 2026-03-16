@@ -34,6 +34,11 @@ export const teamsService = {
     return res.data;
   },
 
+  async getOne(organizationId: string, teamId: string): Promise<Team> {
+    const res = await apiClient.get<Team>(`/teams/${teamId}?organizationId=${organizationId}`);
+    return res.data;
+  },
+
   async create(dto: CreateTeamDto): Promise<Team> {
     const res = await apiClient.post<Team>('/teams', dto);
     return res.data;

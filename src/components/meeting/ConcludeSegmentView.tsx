@@ -31,6 +31,9 @@ const PAGE_SIZES = [10, 25, 50, 100];
 
 interface ConcludeSegmentViewProps {
   teamName?: string;
+  teamId?: string | null;
+  teams?: Array<{ id: string; name: string }>;
+  organizationId?: string | null;
   embedded?: boolean;
   onFinishMeeting?: () => Promise<void>;
   finishLoading?: boolean;
@@ -62,6 +65,9 @@ function formatDueDate(iso: string | null): string {
 
 export function ConcludeSegmentView({
   teamName = 'Leadership Team',
+  teamId: currentTeamId,
+  teams = [],
+  organizationId,
   embedded = false,
   onFinishMeeting,
   finishLoading = false,
@@ -582,6 +588,9 @@ export function ConcludeSegmentView({
             todo={todo}
             onClose={() => setEditTodoId(null)}
             onUpdate={(patch) => updateTodo(editTodoId, patch)}
+            teams={teams}
+            currentTeamId={currentTeamId}
+            organizationId={organizationId}
           />
         );
       })()}
@@ -642,9 +651,13 @@ function RecapTodoRow({
         <td className="px-4 py-2 font-medium text-foreground align-middle">{item.title}</td>
         <td className="px-4 py-2 text-muted-foreground align-middle">{formatDueDate(item.dueDate)}</td>
         <td className="px-4 py-2 align-middle">
-          <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
-            {item.ownerInitials}
-          </div>
+          {item.assigneeId ? (
+            <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground" title="Assigned">
+              {item.ownerInitials}
+            </div>
+          ) : (
+            <span className="text-muted-foreground text-sm">—</span>
+          )}
         </td>
         <td className="px-4 py-2 align-middle text-right" onClick={(e) => e.stopPropagation()}>
           <button

@@ -81,6 +81,9 @@ export default function TodosPage() {
               <div className="flex-1 min-h-0">
                 <TodosSegmentView
                   teamName={teamName}
+                  teamId={selectedTeamId || undefined}
+                  teams={teams.map((t) => ({ id: t.id, name: t.name }))}
+                  organizationId={organizationId}
                   meetingId={undefined}
                   canRecord
                   meetingAttendances={meetingAttendances}

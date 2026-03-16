@@ -117,7 +117,8 @@ const todoSchema = z.object({
   description: z.string().optional(),
   dueDate: z.string().optional(),
   repeat: z.string().optional(),
-  teamId: z.string().optional(),
+  teamId: z.string().min(1, "Team is required"),
+  assigneeId: z.string().optional(),
   private: z.boolean().optional(),
 });
 
@@ -450,8 +451,23 @@ export function CreatePopup({
 
   const todoForm = useForm<TodoFormData>({
     resolver: zodResolver(todoSchema),
-    defaultValues: { title: "", description: "", dueDate: "", repeat: "Don't repeat", teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""), private: false },
+    defaultValues: { title: "", description: "", dueDate: "", repeat: "Don't repeat", teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""), assigneeId: "", private: false },
   });
+
+  const todoTeamId = useWatch({ control: todoForm.control, name: "teamId", defaultValue: defaultTeamId || (teamsForSelect[0]?.id ?? "") });
+  const [todoTeamMembers, setTodoTeamMembers] = useState<Team["members"]>([]);
+  useEffect(() => {
+    const fromList = (teamsList as Team[]).find((t) => t.id === todoTeamId)?.members;
+    if (fromList?.length) {
+      setTodoTeamMembers(fromList);
+      return;
+    }
+    if (!organizationId || !todoTeamId) {
+      setTodoTeamMembers([]);
+      return;
+    }
+    teamsService.getOne(organizationId, todoTeamId).then((team) => setTodoTeamMembers(team.members ?? [])).catch(() => setTodoTeamMembers([]));
+  }, [organizationId, todoTeamId, teamsList]);
 
   const headlineForm = useForm<HeadlineFormData>({
     resolver: zodResolver(headlineSchema),
@@ -486,7 +502,7 @@ export function CreatePopup({
     if (open && (initialTitle != null || initialDescription != null) && initialType) {
       const title = initialTitle ?? "";
       const desc = initialDescription ?? "";
-      if (initialType === "todo") todoForm.reset({ title, description: desc, dueDate: "", repeat: "Don't repeat", teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""), private: false });
+      if (initialType === "todo") todoForm.reset({ title, description: desc, dueDate: "", repeat: "Don't repeat", teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""), assigneeId: "", private: false });
       if (initialType === "issue") reset({ title, description: desc, priority: "", who: "", teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""), interval: "short" });
     }
     if (open && initialLinkedEntity) {
@@ -541,12 +557,16 @@ export function CreatePopup({
 
   const onTodoSubmit = async (data: TodoFormData) => {
     if (todosApi) {
+      const selectedTeam = (teamsList as Team[]).find((t) => t.id === data.teamId);
       await todosApi.addTodo({
         title: data.title,
         description: data.description || undefined,
         dueDate: data.dueDate || null,
         ownerInitials: "U",
         completed: false,
+        teamId: data.teamId,
+        teamName: selectedTeam?.name,
+        assigneeId: data.assigneeId || undefined,
         ...(linkedEntity && {
           linkedEntityType: linkedEntity.type,
           linkedEntityId: linkedEntity.id,
@@ -1156,25 +1176,51 @@ export function CreatePopup({
                     />
                   </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Team</label>
-                  <Controller
-                    name="teamId"
-                    control={todoForm.control}
-                    render={({ field }) => (
-                      <Select
-                        value={field.value || undefined}
-                        onChange={(v) => field.onChange(v ?? "")}
-                        options={
-                          teamsForSelect.length > 0
-                            ? teamsForSelect.map((t) => ({ label: t.name, value: t.id }))
-                            : [{ label: teamName, value: defaultTeamId || "" }]
-                        }
-                        className="w-full"
-                      />
-                    )}
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">Changing the team will affect which users the To-Do can be assigned to.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Team <span className="text-red-500">*</span></label>
+                    <Controller
+                      name="teamId"
+                      control={todoForm.control}
+                      render={({ field }) => (
+                        <Select
+                          value={field.value || undefined}
+                          onChange={(v) => {
+                            field.onChange(v ?? "");
+                            todoForm.setValue("assigneeId", "");
+                          }}
+                          options={
+                            teamsForSelect.length > 0
+                              ? teamsForSelect.map((t) => ({ label: t.name, value: t.id }))
+                              : [{ label: teamName, value: defaultTeamId || "" }]
+                          }
+                          className="w-full"
+                        />
+                      )}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">To-Do must be assigned to a team.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Team member (optional)</label>
+                    <Controller
+                      name="assigneeId"
+                      control={todoForm.control}
+                      render={({ field }) => (
+                        <Select
+                          value={field.value || undefined}
+                          onChange={(v) => field.onChange(v ?? "")}
+                          allowClear
+                          placeholder="Unassigned"
+                          options={[
+                            { label: "Unassigned", value: "" },
+                            ...(todoTeamMembers ?? []).map((m) => ({ label: m.user?.name || m.user?.email || m.userId, value: m.user?.id ?? m.userId })),
+                          ]}
+                          className="w-full"
+                        />
+                      )}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">Optionally assign to a member of the selected team.</p>
+                  </div>
                 </div>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" {...todoForm.register("private")} className="rounded border-border" />

@@ -73,6 +73,7 @@ export const todosService = {
       linkedEntityType?: string | null;
       linkedEntityId?: string | null;
       linkedEntityTitle?: string | null;
+      teamId?: string;
     },
     meetingId?: string
   ): Promise<TodoApiItem> => {

@@ -821,6 +821,8 @@ export default function MeetingPage() {
                 canRecord={canRecord}
                 isMeetingInFuture={isMeetingInFuture}
                 teamName={meeting?.team?.name}
+                teamId={meeting?.teamId}
+                teams={teams}
                 facilitatorId={meeting?.facilitatorId}
                 currentUserId={currentUserId}
                 onOpenCreateIssue={() => {

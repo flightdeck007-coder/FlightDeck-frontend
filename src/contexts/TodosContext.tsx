@@ -46,6 +46,8 @@ function apiToItem(t: TodoApiItem): TodoItem {
     linkedEntityType: t.linkedEntityType ?? null,
     linkedEntityId: t.linkedEntityId ?? null,
     linkedEntityTitle: t.linkedEntityTitle ?? null,
+    teamId: (t as TodoApiItem & { teamId?: string }).teamId,
+    teamName: (t as TodoApiItem & { teamName?: string }).teamName,
   };
 }
 
@@ -168,14 +170,16 @@ export function TodosProvider({
         return id;
       }
       try {
+        const createTeamId = item.teamId ?? teamId;
+        if (!createTeamId) throw new Error("Team is required");
         const created = await todosService.create(
           organizationId,
-          teamId,
+          createTeamId,
           {
             title: item.title,
             description: item.description,
             dueDate: item.dueDate ?? undefined,
-            assigneeId: undefined,
+            assigneeId: item.assigneeId ?? undefined,
             linkedEntityType: item.linkedEntityType ?? undefined,
             linkedEntityId: item.linkedEntityId ?? undefined,
             linkedEntityTitle: item.linkedEntityTitle ?? undefined,
@@ -219,6 +223,8 @@ export function TodosProvider({
             linkedEntityType: patch.linkedEntityType,
             linkedEntityId: patch.linkedEntityId,
             linkedEntityTitle: patch.linkedEntityTitle,
+            ...(patch.teamId != null && { teamId: patch.teamId }),
+            ...(patch.assigneeId !== undefined && { assigneeId: patch.assigneeId ?? undefined }),
           },
           meetingId
         );

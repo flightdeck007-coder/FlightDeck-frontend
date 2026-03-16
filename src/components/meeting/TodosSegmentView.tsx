@@ -48,6 +48,8 @@ import { MobileDatePicker } from '@mui/x-date-pickers/MobileDatePicker';
 import { useTodos, type TodoItem } from '@/contexts/TodosContext';
 import { RichTextEditor } from './RichTextEditor';
 import { ContentAreaLoader } from '@/components/ui/loaders';
+import { teamsService } from '@/lib/api/teams.service';
+import type { TeamMember } from '@/lib/api/teams.service';
 
 const datePickerTextFieldSx = {
   '& .MuiInputLabel-root': { color: 'var(--foreground) !important', '&.Mui-focused': { color: 'var(--primary) !important' } },
@@ -70,6 +72,12 @@ type CreatePopupType = 'issue' | 'rock' | 'todo' | 'headline' | 'cascading_messa
 
 interface TodosSegmentViewProps {
   teamName?: string;
+  /** Current team id (for edit-todo team dropdown initial value) */
+  teamId?: string | null;
+  /** All teams (for edit-todo team dropdown) */
+  teams?: Array<{ id: string; name: string }>;
+  /** Organization id (for edit-todo team member fetch) */
+  organizationId?: string | null;
   embedded?: boolean;
   meetingId?: string;
   isFacilitator?: boolean;
@@ -110,6 +118,9 @@ function getInitials(name?: string | null, email?: string): string {
 
 export function TodosSegmentView({
   teamName = 'Leadership Team',
+  teamId: currentTeamId,
+  teams = [],
+  organizationId,
   embedded = false,
   meetingId,
   isFacilitator = true,
@@ -627,6 +638,9 @@ export function TodosSegmentView({
           todo={todos.find((t) => t.id === editTodoId)!}
           onClose={() => setEditTodoId(null)}
           onUpdate={(patch) => updateTodo(editTodoId, patch)}
+          teams={teams}
+          currentTeamId={currentTeamId}
+          organizationId={organizationId}
         />
       )}
     </div>
@@ -769,9 +783,13 @@ function TodoRow({
           )}
         </td>
         <td className="px-4 py-2 align-middle">
-          <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
-            {item.ownerInitials}
-          </div>
+          {item.assigneeId ? (
+            <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground" title="Assigned">
+              {item.ownerInitials}
+            </div>
+          ) : (
+            <span className="text-muted-foreground text-sm">—</span>
+          )}
         </td>
         <td className="px-4 py-2 align-middle text-right">
           <button
@@ -943,10 +961,19 @@ export function EditTodoPanel({
   todo,
   onClose,
   onUpdate,
+  teams = [],
+  currentTeamId,
+  organizationId,
 }: {
   todo: TodoItem;
   onClose: () => void;
   onUpdate: (patch: Partial<TodoItem>) => void;
+  /** List of teams for the Team dropdown; when empty, a single "Leadership Team" option is shown */
+  teams?: Array<{ id: string; name: string }>;
+  /** Current team id (e.g. selected team or meeting team); used as initial value when todo has no teamId */
+  currentTeamId?: string | null;
+  /** Organization id for fetching team members when team changes */
+  organizationId?: string | null;
 }) {
   const [title, setTitle] = useState(todo.title);
   const [description, setDescription] = useState(todo.description || '');
@@ -955,19 +982,43 @@ export function EditTodoPanel({
   );
   const [repeat, setRepeat] = useState(todo.repeat || "Don't repeat");
   const [privateTodo, setPrivateTodo] = useState(todo.private ?? false);
-  const [team, setTeam] = useState(todo.teamName || 'Leadership Team');
+  const teamOptions = teams.length > 0
+    ? teams.map((t) => ({ label: t.name, value: t.id }))
+    : [{ label: 'Leadership Team', value: 'Leadership Team' }];
+  const initialTeamId = todo.teamId ?? currentTeamId ?? teams[0]?.id ?? teamOptions[0]?.value ?? '';
+  const [teamId, setTeamId] = useState(initialTeamId);
+  const [assigneeId, setAssigneeId] = useState<string>(todo.assigneeId ?? '');
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+
+  useEffect(() => {
+    setTeamId(todo.teamId ?? currentTeamId ?? teams[0]?.id ?? (teams.length === 0 ? 'Leadership Team' : ''));
+    setAssigneeId(todo.assigneeId ?? '');
+  }, [todo.id, todo.teamId, todo.assigneeId, currentTeamId, teams]);
+
+  useEffect(() => {
+    const isTeamIdFromList = teams.some((t) => t.id === teamId);
+    if (!organizationId || !teamId || !isTeamIdFromList) {
+      setTeamMembers([]);
+      return;
+    }
+    teamsService.getOne(organizationId, teamId).then((team) => setTeamMembers(team.members ?? [])).catch(() => setTeamMembers([]));
+  }, [organizationId, teamId, teams]);
 
   const handleSave = (andClose = false) => {
     const isoDate = dueDateValue
       ? dueDateValue.toISOString().slice(0, 10)
       : null;
+    const teamName = teams.find((t) => t.id === teamId)?.name ?? (teams.length === 0 && teamId ? String(teamId) : undefined);
+    const isTeamIdFromList = teams.some((t) => t.id === teamId);
     onUpdate({
       title,
       description: description || undefined,
       dueDate: isoDate,
       repeat,
       private: privateTodo,
-      teamName: team,
+      ...(isTeamIdFromList && teamId && { teamId }),
+      ...(teamName && { teamName }),
+      assigneeId: assigneeId || undefined,
     });
     if (andClose) onClose();
   };
@@ -1113,20 +1164,45 @@ export function EditTodoPanel({
             </span>
           </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
-            Team
-          </label>
-          <Select
-            value={team}
-            onChange={setTeam}
-            options={[{ label: 'Leadership Team', value: 'Leadership Team' }]}
-            className="w-full"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Changing the team will affect which users the To-Do can be assigned
-            to.
-          </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              Team <span className="text-red-500">*</span>
+            </label>
+            <Select
+              value={teamId || teamOptions[0]?.value}
+              onChange={(v) => {
+                if (v != null) {
+                  setTeamId(v);
+                  setAssigneeId('');
+                }
+              }}
+              options={teamOptions}
+              className="w-full"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              To-Do must be assigned to a team.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              Team member (optional)
+            </label>
+            <Select
+              value={assigneeId || undefined}
+              onChange={(v) => setAssigneeId(v ?? '')}
+              allowClear
+              placeholder="Unassigned"
+              options={[
+                { label: 'Unassigned', value: '' },
+                ...teamMembers.map((m) => ({ label: m.user?.name || m.user?.email || m.userId, value: m.user?.id ?? m.userId })),
+              ]}
+              className="w-full"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Optionally assign to a member of the selected team.
+            </p>
+          </div>
         </div>
         <section className="pt-6 mt-6 border-t border-border">
           <div className="flex items-center justify-between mb-3">

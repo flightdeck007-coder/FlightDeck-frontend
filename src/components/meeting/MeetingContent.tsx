@@ -35,6 +35,10 @@ interface MeetingContentProps {
   isMeetingInFuture?: boolean;
   /** Meeting's team name (from meeting.team.name); used for todos, headlines, issues segments */
   teamName?: string;
+  /** Meeting's team id; used for edit-todo team dropdown */
+  teamId?: string | null;
+  /** All teams for edit-todo team dropdown (meeting and dashboard) */
+  teams?: Array<{ id: string; name: string }>;
 }
 
 // Demo data for different sections (L10-style; flight wording in UI)
@@ -90,7 +94,7 @@ const demoData: Record<string, any> = {
   },
 };
 
-export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onOpenCreate, onFinishMeeting, finishLoading, meetingId, organizationId, isFacilitator, canRecord, facilitatorId, currentUserId, meetingAttendances, isMeetingInFuture, teamName: meetingTeamName }: MeetingContentProps) {
+export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onOpenCreate, onFinishMeeting, finishLoading, meetingId, organizationId, isFacilitator, canRecord, facilitatorId, currentUserId, meetingAttendances, isMeetingInFuture, teamName: meetingTeamName, teamId: meetingTeamId, teams: meetingTeams = [] }: MeetingContentProps) {
   const canRecordOrFacilitator = canRecord ?? isFacilitator;
   const data = demoData[sectionId.toLowerCase()] || demoData.segue;
   const isMinimalPrompt = data.type === 'prompt' && data.empty; // Segue, Headlines: prompt + empty only
@@ -159,7 +163,10 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
         {sectionId === 'todos' && (
           <TodosSegmentView
             embedded
-            teamName="Leadership Team"
+            teamName={meetingTeamName ?? 'Leadership Team'}
+            teamId={meetingTeamId}
+            teams={meetingTeams}
+            organizationId={organizationId}
             meetingId={meetingId}
             isFacilitator={isFacilitator}
             canRecord={canRecordOrFacilitator}
@@ -181,6 +188,9 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
           <ConcludeSegmentView
             embedded
             teamName={meetingTeamName ?? 'Leadership Team'}
+            teamId={meetingTeamId}
+            teams={meetingTeams}
+            organizationId={organizationId}
             onFinishMeeting={onFinishMeeting}
             finishLoading={finishLoading}
             meetingId={meetingId}
