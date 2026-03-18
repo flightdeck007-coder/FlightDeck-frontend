@@ -67,6 +67,7 @@ export default function MeetingsUpcomingPage() {
     durationMinutes?: number;
   } | null>(null);
   const [orgRole, setOrgRole] = useState<string | null>(null);
+  const [startScheduleHint, setStartScheduleHint] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = typeof window !== 'undefined' ? localStorage.getItem('organizationRole') : null;
@@ -125,6 +126,11 @@ export default function MeetingsUpcomingPage() {
     if (!organizationId || !selectedTeamId) return;
     meetingSeriesService.list(organizationId, selectedTeamId).then(setAgendas).catch(() => setAgendas([]));
   }, [organizationId, selectedTeamId]);
+
+  useEffect(() => {
+    if (!selectedTeamId) return;
+    setStartScheduleHint(null);
+  }, [selectedTeamId]);
 
   // Refetch when user returns to this tab so all team members see in-progress/scheduled updates
   useEffect(() => {
@@ -241,12 +247,21 @@ export default function MeetingsUpcomingPage() {
           </div>
           <Select
             value={selectedTeamId || undefined}
-            onChange={(v) => setSelectedTeamId(v ?? '')}
+            onChange={(v) => {
+              setSelectedTeamId(v ?? '');
+              setStartScheduleHint(null);
+            }}
             options={teams.map((t) => ({ label: t.name, value: t.id }))}
             className="min-w-[180px]"
             placeholder="Select team"
           />
         </div>
+
+        {startScheduleHint && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-foreground">
+            {startScheduleHint}
+          </div>
+        )}
 
         {/* Hero: background image with text and Start / Schedule buttons (admin/manager only, when no meeting in progress) */}
         {isAdminOrManager && !inProgressMeeting && (
@@ -270,17 +285,32 @@ export default function MeetingsUpcomingPage() {
               <div className="flex flex-wrap items-center justify-center gap-3 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setQuickStartModalOpen(true)}
-                  disabled={schedulingMeeting}
+                  onClick={() => {
+                    if (!organizationId || !selectedTeamId) {
+                      setStartScheduleHint('Select a team first to start a quick meeting.');
+                      return;
+                    }
+                    setQuickStartModalOpen(true);
+                  }}
+                  disabled={schedulingMeeting || !organizationId || !selectedTeamId}
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-70 disabled:cursor-not-allowed"
+                  title={!selectedTeamId ? 'Select a team first' : undefined}
                 >
                   <Calendar className="w-4 h-4" />
                   Start a quick meeting
                 </button>
                 <button
                   type="button"
-                  onClick={() => setScheduleModalOpen(true)}
+                  onClick={() => {
+                    if (!organizationId || !selectedTeamId) {
+                      setStartScheduleHint('Select a team first to schedule a meeting.');
+                      return;
+                    }
+                    setScheduleModalOpen(true);
+                  }}
+                  disabled={!organizationId || !selectedTeamId}
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-white/80 text-white bg-white/10 hover:bg-white/20 text-sm font-medium"
+                  title={!selectedTeamId ? 'Select a team first' : undefined}
                 >
                   <Clock className="w-4 h-4" />
                   Schedule a meeting

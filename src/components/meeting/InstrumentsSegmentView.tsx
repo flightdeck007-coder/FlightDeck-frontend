@@ -223,11 +223,16 @@ function ScorecardTableCard({
     cols.push(
       { id: 'title', header: () => <span className="font-medium text-foreground">Title</span>, cell: ({ row }) => (
         <div
-          className={`flex items-center gap-2 ${onEditMeasurable ? 'cursor-pointer select-none rounded px-1 -mx-1 hover:bg-muted/60' : ''}`}
+          className={`flex items-center gap-2 min-w-0 ${onEditMeasurable ? 'cursor-pointer select-none rounded px-1 -mx-1 hover:bg-muted/60' : ''}`}
           onDoubleClick={onEditMeasurable ? () => onEditMeasurable(row.original) : undefined}
           title={onEditMeasurable ? 'Double-click to edit' : undefined}
         >
-          <span>{row.original.title}</span>
+          <span
+            className={`flex-1 min-w-0 ${isExpanded ? 'whitespace-normal break-words' : 'truncate'}`}
+            title={!isExpanded ? row.original.title : undefined}
+          >
+            {row.original.title}
+          </span>
           {visibility.showOwnerColumn && <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs text-foreground/70"><User className="w-3 h-3" /></span>}
         </div>
       ), size: 180 }
@@ -258,7 +263,7 @@ function ScorecardTableCard({
     }));
     cols.push(...periodCols);
     return cols;
-  }, [periodColumns, selectedIds, data, displayDirection, visibility, onPeriodValueChange, onEditMeasurable]);
+  }, [periodColumns, selectedIds, data, displayDirection, visibility, onPeriodValueChange, onEditMeasurable, isExpanded]);
   const FIXED_COLUMN_IDS = useMemo(() => {
     const ids = ['select'];
     if (visibility.showStatusIndicators) ids.push('trend');
