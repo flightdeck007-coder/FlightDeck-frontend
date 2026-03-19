@@ -5,7 +5,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MeetingSocketProvider } from '@/contexts/MeetingSocketContext';
 import { RocksProvider } from '@/contexts/RocksContext';
 import { RocksSegmentView } from '@/components/meeting/RocksSegmentView';
-import { CreatePopup } from '@/components/meeting/CreatePopup';
+import { CreatePopup, type CreatePopupLinkedEntity } from '@/components/meeting/CreatePopup';
 import { useMeetingsData } from '@/hooks/useMeetingsData';
 import { meetingsService } from '@/lib/api/meetings.service';
 import { Select } from 'antd';
@@ -27,7 +27,7 @@ export default function RocksPage() {
   const [createType, setCreateType] = useState<'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | undefined>(undefined);
   const [createTitle, setCreateTitle] = useState<string | undefined>(undefined);
   const [createDescription, setCreateDescription] = useState<string | undefined>(undefined);
-  const [createLinkedEntity, setCreateLinkedEntity] = useState<{ type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } | undefined>(undefined);
+  const [createLinkedEntity, setCreateLinkedEntity] = useState<CreatePopupLinkedEntity | undefined>(undefined);
 
   const teamName = selectedTeam?.name ?? 'Leadership Team';
   const meetingAttendances = (selectedTeam?.members ?? []).map((m) => ({
@@ -104,6 +104,9 @@ export default function RocksPage() {
                 <RocksSegmentView
                   sectionTitle="Waypoint Review (Rocks)"
                   meetingId={selectedMeetingId}
+                  organizationId={organizationId}
+                  teamId={selectedTeamId || undefined}
+                  teamName={teamName}
                   canRecord
                   onOpenCreate={(type, options) => {
                     setCreateType(type);

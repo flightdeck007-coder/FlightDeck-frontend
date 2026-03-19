@@ -225,6 +225,7 @@ export const meetingsService = {
       achieved: boolean;
       isCompanyRock?: boolean;
       milestoneLabel?: string | null;
+      milestones?: Array<{ id: string; title: string; dueDate: string; description?: string; completed?: boolean }>;
     }>;
   },
   createRock: async (
@@ -240,6 +241,7 @@ export const meetingsService = {
       achieved?: boolean;
       isCompanyRock?: boolean;
       milestoneLabel?: string;
+      milestones?: Array<{ id: string; title: string; dueDate: string; description?: string; completed?: boolean }>;
     },
   ) => {
     const response = await apiClient.post(
@@ -262,6 +264,7 @@ export const meetingsService = {
       achieved: boolean;
       isCompanyRock: boolean;
       milestoneLabel: string | null;
+      milestones: Array<{ id: string; title: string; dueDate: string; description?: string; completed?: boolean }>;
     }>,
   ) => {
     const response = await apiClient.put(

@@ -95,7 +95,9 @@ export default function MeetingPage() {
   const [createPopupInitialType, setCreatePopupInitialType] = useState<CreatePopupType | undefined>(undefined);
   const [createPopupInitialTitle, setCreatePopupInitialTitle] = useState<string | undefined>(undefined);
   const [createPopupInitialDescription, setCreatePopupInitialDescription] = useState<string | undefined>(undefined);
-  const [createPopupInitialLinkedEntity, setCreatePopupInitialLinkedEntity] = useState<{ type: CreatePopupType; id: string; title: string } | undefined>(undefined);
+  const [createPopupInitialLinkedEntity, setCreatePopupInitialLinkedEntity] = useState<
+    { type: CreatePopupType | 'rock_milestone'; id: string; title: string } | undefined
+  >(undefined);
   const [teams, setTeams] = useState<Team[]>([]);
   const [finishLoading, setFinishLoading] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);

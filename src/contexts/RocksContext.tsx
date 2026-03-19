@@ -30,7 +30,8 @@ export interface Rock {
   column: RockColumnId;
   achieved: boolean;
   isCompanyRock?: boolean;
-  milestoneLabel?: string;
+  milestoneLabel?: string | null;
+  milestones?: Array<{ id: string; title: string; dueDate: string; description?: string; completed?: boolean }>;
 }
 
 const COLUMN_ORDER: RockColumnId[] = [
@@ -52,6 +53,7 @@ function apiToRock(r: {
   achieved: boolean;
   isCompanyRock?: boolean;
   milestoneLabel?: string | null;
+  milestones?: Array<{ id: string; title: string; dueDate: string; description?: string; completed?: boolean }>;
 }): Rock {
   return {
     id: r.id,
@@ -64,6 +66,7 @@ function apiToRock(r: {
     achieved: r.achieved,
     isCompanyRock: r.isCompanyRock,
     milestoneLabel: r.milestoneLabel ?? undefined,
+    milestones: r.milestones ?? [],
   };
 }
 
@@ -160,7 +163,8 @@ export function RocksProvider({
           column: rock.column,
           achieved: rock.achieved,
           isCompanyRock: rock.isCompanyRock,
-          milestoneLabel: rock.milestoneLabel,
+          milestoneLabel: rock.milestoneLabel ?? undefined,
+          milestones: rock.milestones,
         });
         const newRock = apiToRock(created);
         setRocks((prev) =>

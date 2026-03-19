@@ -16,7 +16,7 @@ interface MeetingContentProps {
   sectionId: string;
   sectionTitle: string;
   onOpenCreateIssue?: () => void;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message' | 'measurable'; id: string; title: string } }) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message' | 'measurable' | 'rock_milestone'; id: string; title: string } }) => void;
   onFinishMeeting?: () => Promise<void>;
   finishLoading?: boolean;
   meetingId?: string;
@@ -155,7 +155,17 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
           <InstrumentsSegmentView embedded teamName="Leadership Team" meetingId={meetingId} organizationId={organizationId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} isMeetingInFuture={isMeetingInFuture} onOpenCreate={onOpenCreate} onOpenCreateIssue={onOpenCreateIssue} meetingAttendances={meetingAttendances} />
         )}
         {sectionId === 'rocks' && (
-          <RocksSegmentView embedded sectionTitle={sectionTitle} meetingId={meetingId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} onOpenCreate={onOpenCreate} />
+          <RocksSegmentView
+            embedded
+            sectionTitle={sectionTitle}
+            meetingId={meetingId}
+            organizationId={organizationId}
+            teamId={meetingTeamId}
+            teamName={meetingTeamName ?? 'Leadership Team'}
+            isFacilitator={isFacilitator}
+            canRecord={canRecordOrFacilitator}
+            onOpenCreate={onOpenCreate}
+          />
         )}
         {sectionId === 'headlines' && (
           <HeadlinesSegmentView embedded teamName={meetingTeamName ?? 'Leadership Team'} meetingId={meetingId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} onOpenCreate={onOpenCreate} />

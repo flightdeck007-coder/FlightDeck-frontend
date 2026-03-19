@@ -44,8 +44,14 @@ const CREATE_TYPE_OPTIONS: { value: CreateType; label: string }[] = [
   { value: "cascading_message", label: "Cascading message" },
 ];
 
-/** Linked entity type for display (includes measurable for scorecard create-from-measurable). */
-type LinkedEntityType = CreateType | 'measurable';
+/** Linked entity type for display (measurable = scorecard; rock_milestone = waypoint milestone). */
+type LinkedEntityType = CreateType | "measurable" | "rock_milestone";
+
+export type CreatePopupLinkedEntity = {
+  type: LinkedEntityType;
+  id: string;
+  title: string;
+};
 
 function linkedEntityTypeLabel(type: LinkedEntityType): string {
   const map: Record<string, string> = {
@@ -55,6 +61,7 @@ function linkedEntityTypeLabel(type: LinkedEntityType): string {
     headline: "Headline",
     cascading_message: "Cascading message",
     measurable: "Measurable",
+    rock_milestone: "Milestone",
   };
   return map[type] ?? type;
 }
@@ -63,7 +70,7 @@ function linkedEntityTypeLabel(type: LinkedEntityType): string {
 function LinkingToSection({
   linkedEntity,
 }: {
-  linkedEntity: { type: LinkedEntityType; id: string; title: string };
+  linkedEntity: CreatePopupLinkedEntity;
 }) {
   return (
     <div className="border-t border-b border-border py-4 my-4">
@@ -228,8 +235,8 @@ interface CreatePopupProps {
   initialTitle?: string;
   /** Pre-fill description when opening Create To-Do or Create Issue (e.g. "Measurables:\n• Item 1") */
   initialDescription?: string;
-  /** When creating from a row (e.g. "Link issue" from rock, or create from measurable): pre-set link so the new issue/todo shows "Linking to" (measurable is display-only; backend link types: rock, todo, issue, headline, cascading_message) */
-  initialLinkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message' | 'measurable'; id: string; title: string };
+  /** When creating from a row (e.g. "Link issue" from rock, or create from measurable): pre-set link so the new issue/todo shows "Linking to" (measurable is display-only; backend also supports rock_milestone) */
+  initialLinkedEntity?: CreatePopupLinkedEntity;
   /** Meeting attendees for rock owner dropdown (and issue/todo assignees if needed) */
   meetingAttendances?: Array<{ id: string; user: { id: string; name?: string | null; email: string } }>;
   currentUserId?: string | null;
@@ -254,7 +261,7 @@ export function CreatePopup({
   const [createType, setCreateType] = useState<CreateType>("issue");
   const [minimized, setMinimized] = useState(false);
   const [isModal, setIsModal] = useState(false);
-  const [linkedEntity, setLinkedEntity] = useState<{ type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message' | 'measurable'; id: string; title: string } | undefined>(undefined);
+  const [linkedEntity, setLinkedEntity] = useState<CreatePopupLinkedEntity | undefined>(undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);

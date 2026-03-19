@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
 import {
@@ -12,6 +12,8 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Select, Input } from 'antd';
+import { issuesService } from '@/lib/api/issues.service';
+import { todosService } from '@/lib/api/todos.service';
 import {
   ChevronDown,
   ChevronRight,
@@ -49,6 +51,8 @@ import {
   type Rock,
   type RockColumnId,
 } from '@/contexts/RocksContext';
+import { useIssuesOptional } from '@/contexts/IssuesContext';
+import { useTodosOptional } from '@/contexts/TodosContext';
 import { FLIGHT_TERMS } from '@/lib/constants/flightTerminology';
 import { ContentAreaLoader } from '@/components/ui/loaders';
 import { RichTextEditor } from './RichTextEditor';
@@ -180,27 +184,65 @@ const ROCK_ACTIONS_MENU_WIDTH = 248;
 const ROCK_ACTIONS_MENU_GAP = 8;
 
 type CreatePopupType = 'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message';
+type RockMilestone = { id: string; title: string; dueDate: string; description?: string; completed?: boolean };
+type LinkedEntityType = 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message' | 'rock_milestone';
+type LinkedEntityOption = { type: LinkedEntityType; id: string; title: string };
+type LinkedRockItem = { id: string; type: 'To-Do' | 'Issue'; entityType: 'todo' | 'issue'; title: string; subtitle?: string };
+
+function milestoneStorageKey(rockId: string): string {
+  return `rock-milestones-${rockId}`;
+}
+
+function readRockMilestones(rockId: string): RockMilestone[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(milestoneStorageKey(rockId));
+    const parsed = raw ? (JSON.parse(raw) as RockMilestone[]) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRockMilestones(rockId: string, milestones: RockMilestone[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(milestoneStorageKey(rockId), JSON.stringify(milestones));
+}
+
+function formatIsoDateToUs(isoDate: string): string {
+  if (!isoDate) return '';
+  const d = new Date(isoDate);
+  if (Number.isNaN(d.getTime())) return isoDate;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 interface RocksSegmentViewProps {
   sectionTitle?: string;
   embedded?: boolean;
   meetingId?: string;
+  organizationId?: string;
+  teamId?: string | null;
+  teamName?: string;
   isFacilitator?: boolean;
   /** Scribe or facilitator can change filters and create (recording) */
   canRecord?: boolean;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: LinkedEntityOption }) => void;
 }
 
 export function RocksSegmentView({
   sectionTitle = 'Waypoint Review (Rocks)',
   embedded = false,
   meetingId,
+  organizationId,
+  teamId,
+  teamName,
   isFacilitator = true,
   canRecord,
   onOpenCreate,
 }: RocksSegmentViewProps) {
   const canUseFilters = canRecord ?? isFacilitator;
-  const [teamFilter, setTeamFilter] = useState('Leadership Team');
+  const resolvedTeamName = teamName || 'Leadership Team';
+  const [teamFilter, setTeamFilter] = useState(resolvedTeamName);
   const [ownerFilter, setOwnerFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -211,7 +253,11 @@ export function RocksSegmentView({
   const [vtoExpanded, setVtoExpanded] = useState(true);
   const [selectedRockId, setSelectedRockId] = useState<string | null>(null);
   const [datePickerRockId, setDatePickerRockId] = useState<string | null>(null);
+  const [milestonesByRock, setMilestonesByRock] = useState<Record<string, RockMilestone[]>>({});
   const { socket } = useMeetingSocket();
+  useEffect(() => {
+    setTeamFilter(resolvedTeamName);
+  }, [resolvedTeamName]);
 
   // Sync rocks filters/tabs from facilitator to members
   useEffect(() => {
@@ -249,6 +295,21 @@ export function RocksSegmentView({
     columnOrder,
     isLoading,
   } = useRocks();
+
+  useEffect(() => {
+    const next: Record<string, RockMilestone[]> = {};
+    rocks.forEach((r) => {
+      const fromApi = (r.milestones ?? []) as RockMilestone[];
+      if (fromApi.length > 0) {
+        next[r.id] = fromApi;
+        writeRockMilestones(r.id, fromApi);
+        return;
+      }
+      const saved = readRockMilestones(r.id);
+      if (saved.length > 0) next[r.id] = saved;
+    });
+    setMilestonesByRock(next);
+  }, [rocks]);
 
   const activeRocks = getActiveRocks();
   const archivedRocks = getArchivedRocks();
@@ -314,7 +375,7 @@ export function RocksSegmentView({
               if (meetingId && socket) socket.emit('rocks_filter', { meetingId, teamFilter: v });
             }}
             disabled={!canUseFilters}
-            options={[{ label: 'Leadership Team', value: 'Leadership Team' }]}
+            options={[{ label: resolvedTeamName, value: resolvedTeamName }]}
             className="w-[160px]"
           />
         </div>
@@ -449,10 +510,22 @@ export function RocksSegmentView({
           <RocksTabContent
             companyRocks={companyRocks}
             rocksByOwner={rocksByOwner}
+            milestonesByRock={milestonesByRock}
+            onMilestonesChange={(rockId, next) => {
+              setMilestonesByRock((prev) => ({ ...prev, [rockId]: next }));
+              writeRockMilestones(rockId, next);
+              updateRock(rockId, {
+                milestones: next,
+                milestoneLabel: next[next.length - 1]?.title ?? null,
+              });
+            }}
             vtoExpanded={vtoExpanded}
             onVtoToggle={() => setVtoExpanded((e) => !e)}
             onOpenCreate={onOpenCreate}
             meetingId={meetingId}
+            organizationId={organizationId}
+            teamId={teamId}
+            teamName={resolvedTeamName}
             onOpenDetail={(rock) => setSelectedRockId(rock.id)}
             onOpenDatePicker={(rock) => setDatePickerRockId(rock.id)}
             onAddRock={() => {
@@ -484,8 +557,12 @@ export function RocksSegmentView({
         {activeTab === 'archive' && (
           <ArchiveTabContent
             rocks={archivedRocks}
+            milestonesByRock={milestonesByRock}
             onOpenCreate={onOpenCreate}
             meetingId={meetingId}
+            organizationId={organizationId}
+            teamId={teamId}
+            teamName={resolvedTeamName}
             onUnarchive={unarchiveRock}
             onOpenDetail={(rock) => setSelectedRockId(rock.id)}
             onOpenDatePicker={(rock) => setDatePickerRockId(rock.id)}
@@ -498,6 +575,19 @@ export function RocksSegmentView({
         return rock ? (
           <RockDetailPanel
             rock={rock}
+            meetingId={meetingId}
+            organizationId={organizationId}
+            teamId={teamId}
+            teamName={resolvedTeamName}
+            initialMilestones={milestonesByRock[rock.id] ?? []}
+            onMilestonesChange={(next) => {
+              setMilestonesByRock((prev) => ({ ...prev, [rock.id]: next }));
+              writeRockMilestones(rock.id, next);
+              updateRock(rock.id, {
+                milestones: next,
+                milestoneLabel: next[next.length - 1]?.title ?? null,
+              });
+            }}
             onClose={() => setSelectedRockId(null)}
             onOpenCreate={onOpenCreate}
           />
@@ -525,21 +615,31 @@ export function RocksSegmentView({
 function RocksTabContent({
   companyRocks,
   rocksByOwner,
+  milestonesByRock,
+  onMilestonesChange,
   vtoExpanded,
   onVtoToggle,
   onAddRock,
   onOpenCreate,
   meetingId,
+  organizationId,
+  teamId,
+  teamName,
   onOpenDetail,
   onOpenDatePicker,
 }: {
   companyRocks: Rock[];
   rocksByOwner: { ownerName: string; rocks: Rock[] }[];
+  milestonesByRock: Record<string, RockMilestone[]>;
+  onMilestonesChange: (rockId: string, next: RockMilestone[]) => void;
   vtoExpanded: boolean;
   onVtoToggle: () => void;
   onAddRock: () => void;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string }) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: LinkedEntityOption }) => void;
   meetingId?: string;
+  organizationId?: string;
+  teamId?: string | null;
+  teamName: string;
   onOpenDetail?: (rock: Rock) => void;
   onOpenDatePicker?: (rock: Rock) => void;
 }) {
@@ -754,7 +854,22 @@ function RocksTabContent({
                 </tr>
               ) : (
                 companyRocks.map((rock) => (
-                  <RockRow key={rock.id} rock={rock} onOpenCreate={onOpenCreate} meetingId={meetingId} onOpenDetail={onOpenDetail} onOpenDatePicker={onOpenDatePicker} hideAccordion />
+                  <RockRow
+                    key={rock.id}
+                    rock={rock}
+                    milestones={milestonesByRock[rock.id] ?? []}
+                    onUpdateMilestones={onMilestonesChange}
+                    showMilestone
+                    showOwnerColumn
+                    onOpenCreate={onOpenCreate}
+                    meetingId={meetingId}
+                    organizationId={organizationId}
+                    teamId={teamId}
+                    teamName={teamName}
+                    onOpenDetail={onOpenDetail}
+                    onOpenDatePicker={onOpenDatePicker}
+                    hideAccordion
+                  />
                 ))
               )}
             </tbody>
@@ -800,7 +915,21 @@ function RocksTabContent({
                 </thead>
                 <tbody>
                   {rocks.map((rock) => (
-                    <RockRow key={rock.id} rock={rock} showMilestone onOpenCreate={onOpenCreate} meetingId={meetingId} onOpenDetail={onOpenDetail} onOpenDatePicker={onOpenDatePicker} />
+                    <RockRow
+                      key={rock.id}
+                      rock={rock}
+                      milestones={milestonesByRock[rock.id] ?? []}
+                      onUpdateMilestones={onMilestonesChange}
+                      showMilestone
+                      showOwnerColumn={false}
+                      onOpenCreate={onOpenCreate}
+                      meetingId={meetingId}
+                      organizationId={organizationId}
+                      teamId={teamId}
+                      teamName={teamName}
+                      onOpenDetail={onOpenDetail}
+                      onOpenDatePicker={onOpenDatePicker}
+                    />
                   ))}
                   <tr>
                     <td colSpan={7} className="px-4 py-3">
@@ -857,6 +986,9 @@ function RockActionsMenu({
   onDelete,
   onOpenCreate,
   meetingId,
+  organizationId,
+  teamId,
+  teamName,
   isArchiveView,
 }: {
   anchorRect: DOMRect;
@@ -865,8 +997,11 @@ function RockActionsMenu({
   onArchive: (id: string) => void;
   onUnarchive?: (id: string) => void;
   onDelete: (id: string) => void;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: LinkedEntityOption }) => void;
   meetingId?: string;
+  organizationId?: string;
+  teamId?: string | null;
+  teamName?: string;
   isArchiveView?: boolean;
 }) {
   const linkedRock = useMemo(() => ({ type: 'rock' as const, id: rock.id, title: rock.title }), [rock.id, rock.title]);
@@ -1058,29 +1193,114 @@ function RockDatePickerModal({
 
 function RockDetailPanel({
   rock,
+  meetingId,
+  organizationId,
+  teamId,
+  teamName,
+  initialMilestones,
+  onMilestonesChange,
   onClose,
   onOpenCreate,
 }: {
   rock: Rock;
+  meetingId?: string;
+  organizationId?: string;
+  teamId?: string | null;
+  teamName: string;
+  initialMilestones: RockMilestone[];
+  onMilestonesChange: (next: RockMilestone[]) => void;
   onClose: () => void;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string }) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: LinkedEntityOption }) => void;
 }) {
   const [addMilestoneOpen, setAddMilestoneOpen] = useState(false);
+  const [editingMilestone, setEditingMilestone] = useState<RockMilestone | null>(null);
   const [linkExistingOpen, setLinkExistingOpen] = useState(false);
   const [description, setDescription] = useState('');
   const [attachDragOver, setAttachDragOver] = useState(false);
   const [title, setTitle] = useState(rock.title);
   const [dueBy, setDueBy] = useState(rock.dueBy);
+  const [milestones, setMilestones] = useState<RockMilestone[]>(initialMilestones ?? []);
+  const [linkedItems, setLinkedItems] = useState<LinkedRockItem[]>([]);
+  const [linkedEditMode, setLinkedEditMode] = useState(false);
   const { updateRock } = useRocks();
 
   useEffect(() => {
     setTitle(rock.title);
     setDueBy(rock.dueBy);
-  }, [rock.id, rock.title, rock.dueBy]);
+    setMilestones(initialMilestones ?? []);
+  }, [rock.id, rock.title, rock.dueBy, initialMilestones]);
+
+  const loadLinkedItems = useCallback(async () => {
+    if (!organizationId || !teamId) {
+      setLinkedItems([]);
+      return;
+    }
+    try {
+      const [todos, shortIssues, longIssues] = await Promise.all([
+        todosService.findAll(organizationId, teamId, false, meetingId),
+        issuesService.findAll(organizationId, teamId, 'short_term', false, meetingId),
+        issuesService.findAll(organizationId, teamId, 'long_term', false, meetingId),
+      ]);
+      const linkedTodos = todos
+        .filter((t) => t.linkedEntityType === 'rock' && t.linkedEntityId === rock.id)
+        .map((t) => ({ id: t.id, type: 'To-Do' as const, entityType: 'todo' as const, title: t.title, subtitle: t.status }));
+      const linkedIssues = [...shortIssues, ...longIssues]
+        .filter((i) => i.linkedEntityType === 'rock' && i.linkedEntityId === rock.id)
+        .map((i) => ({
+          id: i.id,
+          type: 'Issue' as const,
+          entityType: 'issue' as const,
+          title: i.title,
+          subtitle: i.termType === 'long_term' ? 'Long-Term' : 'Short-Term',
+        }));
+      setLinkedItems([...linkedTodos, ...linkedIssues]);
+    } catch {
+      setLinkedItems([]);
+    }
+  }, [organizationId, teamId, meetingId, rock.id]);
+
+  useEffect(() => {
+    loadLinkedItems();
+  }, [loadLinkedItems]);
 
   const saveTitle = () => {
     const t = title.trim();
     if (t && t !== rock.title) updateRock(rock.id, { title: t });
+  };
+
+  const applyMilestones = (next: RockMilestone[]) => {
+    setMilestones(next);
+    onMilestonesChange(next);
+    const latest = next[next.length - 1];
+    updateRock(rock.id, { milestoneLabel: latest?.title ?? null });
+  };
+
+  const upsertMilestone = (milestone: RockMilestone) => {
+    const exists = milestones.some((m) => m.id === milestone.id);
+    const next = exists
+      ? milestones.map((m) => (m.id === milestone.id ? milestone : m))
+      : [...milestones, milestone];
+    applyMilestones(next);
+  };
+
+  const unlinkItem = async (item: LinkedRockItem) => {
+    if (!organizationId) return;
+    if (item.entityType === 'todo') {
+      await todosService.update(
+        organizationId,
+        item.id,
+        { linkedEntityType: null, linkedEntityId: null, linkedEntityTitle: null },
+        meetingId
+      );
+    } else {
+      await issuesService.update(
+        organizationId,
+        item.id,
+        { linkedEntityType: null, linkedEntityId: null, linkedEntityTitle: null },
+        meetingId
+      );
+    }
+    await loadLinkedItems();
   };
 
   return (
@@ -1155,7 +1375,12 @@ function RockDetailPanel({
               </div>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">Team</label>
-                <Select options={[{ label: 'Leadership Team', value: 'leadership' }]} className="w-full" value="leadership" />
+                <Select
+                  options={[{ label: teamName, value: 'team' }]}
+                  className="w-full"
+                  value="team"
+                  disabled
+                />
               </div>
             </div>
           </section>
@@ -1165,25 +1390,100 @@ function RockDetailPanel({
           {/* Milestones — title + button opens modal (no accordion) */}
           <section className="py-6 border-b border-border">
             <div className="flex items-center justify-between gap-3 mb-2">
-              <h4 className="font-medium text-foreground">Milestones 0</h4>
+              <h4 className="font-medium text-foreground">Milestones {milestones.length}</h4>
               <button type="button" onClick={() => setAddMilestoneOpen(true)} className="px-3 py-1.5 text-sm font-medium text-primary border border-primary rounded-md hover:bg-primary/10 transition-colors">
                 Add Milestone
               </button>
             </div>
             <p className="text-sm text-muted-foreground">Make your Rock timely by breaking it down into achievable Milestones.</p>
+            {milestones.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {milestones.map((m) => (
+                  <div key={m.id} className="rounded-md border border-border p-2 flex items-start justify-between gap-2">
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(m.completed)}
+                        onChange={(e) => {
+                          const next = milestones.map((x) => (x.id === m.id ? { ...x, completed: e.target.checked } : x));
+                          applyMilestones(next);
+                        }}
+                      />
+                      <span className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">{m.title}</p>
+                        <p className="text-xs text-muted-foreground">{m.dueDate}</p>
+                      </span>
+                    </label>
+                    <div className="shrink-0 flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditingMilestone(m)}
+                        className="px-2 py-1 text-xs border border-border rounded hover:bg-muted"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyMilestones(milestones.filter((x) => x.id !== m.id))}
+                        className="px-2 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           {/* Linked Items — title + button opens modal (no accordion) */}
           <section className="py-6 border-b border-border">
             <div className="flex items-center justify-between gap-3 mb-2">
-              <h4 className="font-medium text-foreground flex items-center gap-2"><Link2 className="w-4 h-4" /> Linked Items 0</h4>
-              <button type="button" onClick={() => setLinkExistingOpen(true)} className="px-3 py-1.5 text-sm font-medium text-primary border border-primary rounded-md hover:bg-primary/10 transition-colors">
-                Edit
+              <h4 className="font-medium text-foreground flex items-center gap-2">
+                <Link2 className="w-4 h-4" /> Linked Items <span className="px-1.5 py-0.5 rounded bg-muted text-xs">{linkedItems.length}</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setLinkedEditMode((v) => !v)}
+                className="px-3 py-1.5 text-sm font-medium border border-border rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              >
+                {linkedEditMode ? 'Done' : 'Edit'}
               </button>
             </div>
             <button type="button" onClick={() => setLinkExistingOpen(true)} className="text-primary hover:underline text-sm font-medium">
               + Linked Item
             </button>
+            {linkedItems.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <p className="text-sm font-semibold text-foreground">Linked Items</p>
+                {linkedItems.map((item) => (
+                  <div key={`${item.type}-${item.id}`} className="rounded-xl border border-border px-3 py-2 flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+                        <Check className="w-3.5 h-3.5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm text-foreground truncate">{item.title}</p>
+                        <p className="text-xs text-muted-foreground">{item.type}{item.subtitle ? ` - ${item.subtitle}` : ''}</p>
+                      </div>
+                    </div>
+                    <div className="shrink-0 flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground">{rock.dueBy}</span>
+                      <span className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">{rock.ownerInitials}</span>
+                      {linkedEditMode && (
+                        <button
+                          type="button"
+                          onClick={() => unlinkItem(item)}
+                          className="text-xs uppercase tracking-wide text-red-500 hover:text-red-600"
+                        >
+                          Unlink
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           {/* Attachments — drag and drop */}
@@ -1216,24 +1516,76 @@ function RockDetailPanel({
       </div>
 
       {addMilestoneOpen && (
-        <AddMilestoneModal onClose={() => setAddMilestoneOpen(false)} onAdd={() => setAddMilestoneOpen(false)} />
+        <AddMilestoneModal
+          title="Add Milestone"
+          onClose={() => setAddMilestoneOpen(false)}
+          onAdd={(milestone) => {
+            applyMilestones([...milestones, milestone]);
+            setAddMilestoneOpen(false);
+          }}
+        />
+      )}
+      {editingMilestone && (
+        <MilestoneDetailPanel
+          rock={rock}
+          milestone={editingMilestone}
+          meetingId={meetingId}
+          organizationId={organizationId}
+          teamId={teamId}
+          teamName={teamName}
+          milestones={milestones}
+          onOpenCreate={onOpenCreate}
+          onClose={() => setEditingMilestone(null)}
+          onSave={(milestone) => {
+            upsertMilestone(milestone);
+            setEditingMilestone(null);
+          }}
+        />
       )}
       {linkExistingOpen && (
-        <LinkExistingModal rockTitle={rock.title} onClose={() => setLinkExistingOpen(false)} onLink={() => setLinkExistingOpen(false)} />
+        <LinkExistingModal
+          rock={rock}
+          meetingId={meetingId}
+          organizationId={organizationId}
+          teamId={teamId}
+          teamName={teamName}
+          milestones={milestones}
+          onClose={() => setLinkExistingOpen(false)}
+          onLink={() => {
+            setLinkExistingOpen(false);
+            loadLinkedItems();
+          }}
+        />
       )}
     </>
   );
 }
 
-function AddMilestoneModal({ onClose, onAdd }: { onClose: () => void; onAdd: () => void }) {
-  const [title, setTitle] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [description, setDescription] = useState('');
+function AddMilestoneModal({
+  title: modalTitle,
+  initialMilestone,
+  onClose,
+  onAdd,
+}: {
+  title?: string;
+  initialMilestone?: RockMilestone;
+  onClose: () => void;
+  onAdd: (m: RockMilestone) => void;
+}) {
+  const [title, setTitle] = useState(initialMilestone?.title ?? '');
+  const [date, setDate] = useState(() => {
+    if (initialMilestone?.dueDate) {
+      const d = new Date(initialMilestone.dueDate);
+      if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    }
+    return new Date().toISOString().slice(0, 10);
+  });
+  const [description, setDescription] = useState(initialMilestone?.description ?? '');
   return (
     <>
       <div className="fixed inset-0 bg-black/20 z-[60]" onClick={onClose} aria-hidden />
       <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[61] w-full max-w-md bg-card border border-border rounded-lg shadow-xl p-5">
-        <h3 className="text-lg font-semibold text-foreground mb-4">Add a Milestone</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-4">{modalTitle ?? 'Add a Milestone'}</h3>
         <div className="flex gap-2 mb-4">
           <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-xs text-muted-foreground shrink-0">GS</div>
           <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="flex-1 min-w-0 px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm" />
@@ -1244,43 +1596,503 @@ function AddMilestoneModal({ onClose, onAdd }: { onClose: () => void; onAdd: () 
         </div>
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="px-3 py-2 border border-border rounded-md text-sm font-medium hover:bg-muted">Cancel</button>
-          <button type="button" onClick={onAdd} className="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90">Add</button>
+          <button
+            type="button"
+            onClick={() => {
+              const t = title.trim();
+              if (!t) return;
+              onAdd({
+                id: initialMilestone?.id ?? crypto.randomUUID(),
+                title: t,
+                dueDate: formatIsoDateToUs(date),
+                description: description.trim() || undefined,
+                completed: initialMilestone?.completed ?? false,
+              });
+            }}
+            className="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"
+          >
+            {initialMilestone ? 'Save' : 'Add'}
+          </button>
         </div>
       </div>
     </>
   );
 }
 
-function LinkExistingModal({ rockTitle, onClose, onLink }: { rockTitle: string; onClose: () => void; onLink: () => void }) {
-  const [search, setSearch] = useState('');
-  const [tab, setTab] = useState<'Rock' | 'Milestone' | 'To-Do' | 'Issue'>('Rock');
+function MilestoneDetailPanel({
+  rock,
+  milestone,
+  meetingId,
+  organizationId,
+  teamId,
+  teamName,
+  milestones,
+  onOpenCreate,
+  onClose,
+  onSave,
+}: {
+  rock: Rock;
+  milestone: RockMilestone;
+  meetingId?: string;
+  organizationId?: string;
+  teamId?: string | null;
+  teamName: string;
+  milestones: RockMilestone[];
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: LinkedEntityOption }) => void;
+  onClose: () => void;
+  onSave: (m: RockMilestone) => void;
+}) {
+  const [title, setTitle] = useState(milestone.title);
+  const [description, setDescription] = useState(milestone.description ?? '');
+  const [completed, setCompleted] = useState(Boolean(milestone.completed));
+  const [dueDateIso, setDueDateIso] = useState(() => {
+    const d = new Date(milestone.dueDate);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toISOString().slice(0, 10);
+  });
+  const [linkExistingOpen, setLinkExistingOpen] = useState(false);
+  const [linkedItems, setLinkedItems] = useState<LinkedRockItem[]>([]);
+  const [linkedEditMode, setLinkedEditMode] = useState(false);
+
+  useEffect(() => {
+    setTitle(milestone.title);
+    setDescription(milestone.description ?? '');
+    setCompleted(Boolean(milestone.completed));
+    const d = new Date(milestone.dueDate);
+    setDueDateIso(Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10));
+  }, [milestone]);
+
+  const loadLinkedItems = useCallback(async () => {
+    if (!organizationId || !teamId) {
+      setLinkedItems([]);
+      return;
+    }
+    try {
+      const [todos, shortIssues, longIssues] = await Promise.all([
+        todosService.findAll(organizationId, teamId, false, meetingId),
+        issuesService.findAll(organizationId, teamId, 'short_term', false, meetingId),
+        issuesService.findAll(organizationId, teamId, 'long_term', false, meetingId),
+      ]);
+      const linkedTodos = todos
+        .filter((t) => t.linkedEntityType === 'rock_milestone' && t.linkedEntityId === milestone.id)
+        .map((t) => ({ id: t.id, type: 'To-Do' as const, entityType: 'todo' as const, title: t.title, subtitle: t.status }));
+      const linkedIssues = [...shortIssues, ...longIssues]
+        .filter((i) => i.linkedEntityType === 'rock_milestone' && i.linkedEntityId === milestone.id)
+        .map((i) => ({
+          id: i.id,
+          type: 'Issue' as const,
+          entityType: 'issue' as const,
+          title: i.title,
+          subtitle: i.termType === 'long_term' ? 'Long-Term' : 'Short-Term',
+        }));
+      setLinkedItems([...linkedTodos, ...linkedIssues]);
+    } catch {
+      setLinkedItems([]);
+    }
+  }, [organizationId, teamId, meetingId, milestone.id]);
+
+  useEffect(() => {
+    loadLinkedItems();
+  }, [loadLinkedItems]);
+
+  const unlinkItem = async (item: LinkedRockItem) => {
+    if (!organizationId) return;
+    if (item.entityType === 'todo') {
+      await todosService.update(
+        organizationId,
+        item.id,
+        { linkedEntityType: null, linkedEntityId: null, linkedEntityTitle: null },
+        meetingId
+      );
+    } else {
+      await issuesService.update(
+        organizationId,
+        item.id,
+        { linkedEntityType: null, linkedEntityId: null, linkedEntityTitle: null },
+        meetingId
+      );
+    }
+    await loadLinkedItems();
+  };
+
+  const handleSave = () => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    onSave({
+      ...milestone,
+      title: trimmed,
+      description: description.trim() || undefined,
+      completed,
+      dueDate: dueDateIso ? formatIsoDateToUs(dueDateIso) : milestone.dueDate,
+    });
+    onClose();
+  };
+
   return (
     <>
-      <div className="fixed inset-0 bg-black/20 z-[60]" onClick={onClose} aria-hidden />
-      <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[61] w-full max-w-lg bg-card border border-border rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[80vh]">
+      <div className="fixed inset-0 bg-black/20 z-[70]" onClick={onClose} aria-hidden />
+      <div className="fixed inset-y-0 right-0 w-full max-w-xl bg-card border-l border-border shadow-xl z-[71] flex flex-col h-full">
+        <header className="flex items-center justify-between gap-2 p-4 border-b border-border shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <input type="checkbox" checked={completed} onChange={(e) => setCompleted(e.target.checked)} className="shrink-0" aria-label="Mark milestone complete" />
+            <h2 className="text-2xl font-semibold text-foreground truncate">Edit Milestone</h2>
+            <Mountain className="w-5 h-5 text-muted-foreground shrink-0" />
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button type="button" className="p-2 rounded-md hover:bg-muted text-muted-foreground" aria-label="More"><MoreHorizontal className="w-4 h-4" /></button>
+            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">{rock.ownerInitials}</div>
+            <button type="button" onClick={onClose} className="p-2 rounded-md hover:bg-muted text-muted-foreground" aria-label="Close"><X className="w-5 h-5" /></button>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-5 py-6 space-y-0">
+          <section className="pb-8 border-b border-border">
+            <div className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Title</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Due Date</label>
+                <input
+                  type="date"
+                  value={dueDateIso}
+                  onChange={(e) => setDueDateIso(e.target.value)}
+                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Description (optional)</label>
+                <RichTextEditor value={description} onChange={setDescription} placeholder="Description..." className="min-h-[80px]" />
+              </div>
+            </div>
+          </section>
+
+          <section className="py-6 border-b border-border">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <h4 className="font-medium text-foreground flex items-center gap-2"><Link2 className="w-4 h-4" /> Linked Items <span className="px-1.5 py-0.5 rounded bg-muted text-xs">{linkedItems.length}</span></h4>
+              <button
+                type="button"
+                onClick={() => setLinkedEditMode((v) => !v)}
+                className="px-3 py-1.5 text-sm font-medium border border-border rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              >
+                {linkedEditMode ? 'Done' : 'Edit'}
+              </button>
+            </div>
+            <button type="button" onClick={() => setLinkExistingOpen(true)} className="text-primary hover:underline text-sm font-medium">
+              + Linked Item
+            </button>
+            {linkedItems.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <p className="text-sm font-semibold text-foreground">Linked Items</p>
+                {linkedItems.map((item) => (
+                  <div key={`${item.type}-${item.id}`} className="rounded-xl border border-border px-3 py-2 flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+                        <Check className="w-3.5 h-3.5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm text-foreground truncate">{item.title}</p>
+                        <p className="text-xs text-muted-foreground">{item.type}{item.subtitle ? ` - ${item.subtitle}` : ''}</p>
+                      </div>
+                    </div>
+                    <div className="shrink-0 flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground">{milestone.dueDate}</span>
+                      <span className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">{rock.ownerInitials}</span>
+                      {linkedEditMode && (
+                        <button
+                          type="button"
+                          onClick={() => unlinkItem(item)}
+                          className="text-xs uppercase tracking-wide text-red-500 hover:text-red-600"
+                        >
+                          Unlink
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="py-6 border-b border-border">
+            <h4 className="font-medium text-foreground mb-3">Attachments <span className="px-1.5 py-0.5 rounded bg-muted text-xs">0</span></h4>
+            <div className="border-2 border-dashed rounded-lg p-8 text-center text-sm text-muted-foreground border-border">
+              Drag and drop files to attach, or <button type="button" className="text-primary hover:underline">browse</button>
+            </div>
+          </section>
+
+          <section className="py-6">
+            <h4 className="font-medium text-foreground mb-3">Comments <span className="px-1.5 py-0.5 rounded bg-muted text-xs">0</span></h4>
+            <div className="flex gap-2">
+              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground shrink-0">{rock.ownerInitials}</div>
+              <input type="text" placeholder="Add a comment..." className="flex-1 min-w-0 px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm" />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 text-right">0/10000</p>
+          </section>
+        </div>
+
+        <footer className="p-4 border-t border-border shrink-0 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground flex items-center gap-1"><Check className="w-4 h-4" /> Following</span>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onClose} className="px-3 py-2 border border-border rounded-md text-sm font-medium hover:bg-muted">Cancel</button>
+            <button type="button" onClick={handleSave} className="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90">Save</button>
+          </div>
+        </footer>
+      </div>
+      {linkExistingOpen && (
+        <LinkExistingModal
+          rock={rock}
+          meetingId={meetingId}
+          organizationId={organizationId}
+          teamId={teamId}
+          teamName={teamName}
+          milestones={milestones}
+          linkTarget={{ id: milestone.id, type: 'rock_milestone', title: milestone.title }}
+          onClose={() => setLinkExistingOpen(false)}
+          onLink={() => {
+            setLinkExistingOpen(false);
+            loadLinkedItems();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function LinkExistingModal({
+  rock,
+  meetingId,
+  organizationId,
+  teamId,
+  teamName,
+  milestones,
+  linkTarget,
+  onClose,
+  onLink,
+}: {
+  rock: Rock;
+  meetingId?: string;
+  organizationId?: string;
+  teamId?: string | null;
+  teamName: string;
+  milestones: Array<{ id: string; title: string; dueDate: string; description?: string }>;
+  linkTarget?: LinkedEntityOption;
+  onClose: () => void;
+  onLink: () => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [tab, setTab] = useState<'Rock' | 'Milestone' | 'To-Do' | 'Issue'>('Rock');
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState<Array<{ id: string; title: string; subtitle?: string }>>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const { updateRock, rocks } = useRocks();
+  const issuesApi = useIssuesOptional();
+  const todosApi = useTodosOptional();
+  const target = linkTarget ?? { id: rock.id, type: 'rock' as const, title: rock.title };
+
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      setSelectedIds(new Set());
+      const q = search.trim().toLowerCase();
+      if (tab === 'Rock') {
+        const rows = rocks
+          .filter((r) => r.id !== rock.id)
+          .filter((r) => !q || r.title.toLowerCase().includes(q))
+          .map((r) => ({ id: r.id, title: r.title, subtitle: r.ownerName }));
+        setItems(rows);
+        return;
+      }
+      if (tab === 'Milestone') {
+        const rows = milestones
+          .filter((m) => !q || m.title.toLowerCase().includes(q))
+          .map((m) => ({ id: m.id, title: m.title, subtitle: m.dueDate }));
+        setItems(rows);
+        return;
+      }
+      if (!organizationId || !teamId) {
+        setItems([]);
+        return;
+      }
+      setLoading(true);
+      try {
+        if (tab === 'Issue') {
+          const [short, long] = await Promise.all([
+            issuesService.findAll(organizationId, teamId, 'short_term', false, meetingId),
+            issuesService.findAll(organizationId, teamId, 'long_term', false, meetingId),
+          ]);
+          const rows = [...short, ...long]
+            .filter((i) => !q || i.title.toLowerCase().includes(q))
+            .map((i) => ({ id: i.id, title: i.title, subtitle: i.termType === 'long_term' ? 'Long-Term' : 'Short-Term' }));
+          if (active) setItems(rows);
+        } else {
+          const list = await todosService.findAll(organizationId, teamId, false, meetingId);
+          const rows = list
+            .filter((t) => !q || t.title.toLowerCase().includes(q))
+            .map((t) => ({ id: t.id, title: t.title, subtitle: t.status }));
+          if (active) setItems(rows);
+        }
+      } catch {
+        if (active) setItems([]);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    run();
+    return () => {
+      active = false;
+    };
+  }, [tab, search, rock.id, rocks, milestones, organizationId, teamId, meetingId]);
+
+  const handleLink = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (tab === 'Milestone') {
+      const selected = milestones.find((m) => m.id === ids[0]);
+      if (selected) updateRock(rock.id, { milestoneLabel: selected.title });
+      onLink();
+      return;
+    }
+    if (tab === 'Issue' && issuesApi) {
+      await Promise.all(
+        ids.map(async (id) => {
+          await issuesApi.updateIssue(id, {
+            linkedEntityType: target.type,
+            linkedEntityId: target.id,
+            linkedEntityTitle: target.title,
+          });
+        })
+      );
+      onLink();
+      return;
+    }
+    if (tab === 'Issue' && organizationId) {
+      await Promise.all(
+        ids.map(async (id) => {
+          await issuesService.update(
+            organizationId,
+            id,
+            {
+              linkedEntityType: target.type,
+              linkedEntityId: target.id,
+              linkedEntityTitle: target.title,
+            },
+            meetingId
+          );
+        })
+      );
+      onLink();
+      return;
+    }
+    if (tab === 'To-Do' && todosApi) {
+      await Promise.all(
+        ids.map(async (id) => {
+          await todosApi.updateTodo(id, {
+            linkedEntityType: target.type,
+            linkedEntityId: target.id,
+            linkedEntityTitle: target.title,
+          });
+        })
+      );
+      onLink();
+      return;
+    }
+    if (tab === 'To-Do' && organizationId) {
+      await Promise.all(
+        ids.map(async (id) => {
+          await todosService.update(
+            organizationId,
+            id,
+            {
+              linkedEntityType: target.type,
+              linkedEntityId: target.id,
+              linkedEntityTitle: target.title,
+            },
+            meetingId
+          );
+        })
+      );
+      onLink();
+      return;
+    }
+    if (tab === 'Rock') {
+      onLink();
+      return;
+    }
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/20 z-[90]" onClick={onClose} aria-hidden />
+      <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[91] w-full max-w-lg bg-card border border-border rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[80vh]">
         <div className="h-1 bg-primary shrink-0" />
         <header className="p-4 border-b border-border shrink-0 flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-foreground">Link to Existing Items</h3>
-            <p className="text-sm text-muted-foreground">Link to Waypoints (Rocks): {rockTitle}</p>
+            <p className="text-sm text-muted-foreground">Link to Waypoints (Rocks): {rock.title}</p>
           </div>
           <button type="button" onClick={onClose} className="p-2 rounded hover:bg-muted" aria-label="Close"><X className="w-5 h-5" /></button>
         </header>
         <div className="p-4 border-b border-border shrink-0">
-          <Input.Search placeholder="Search for Waypoints (Rocks) on your team" value={search} onChange={(e) => setSearch(e.target.value)} allowClear className="w-full" />
-          <p className="text-sm font-medium text-foreground mt-2">Waypoints (Rocks) in Leadership Team</p>
+          <Input.Search placeholder="Search items on your team" value={search} onChange={(e) => setSearch(e.target.value)} allowClear className="w-full" />
+          <p className="text-sm font-medium text-foreground mt-2">Items in {teamName}</p>
         </div>
         <div className="flex border-b border-border shrink-0">
           {(['Rock', 'Milestone', 'To-Do', 'Issue'] as const).map((t) => (
             <button key={t} type="button" onClick={() => setTab(t)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}`}>{t}</button>
           ))}
         </div>
-        <div className="flex-1 overflow-auto p-4 flex items-center justify-center text-muted-foreground text-sm">
-          There are no {tab === 'Rock' ? 'Waypoints (Rocks)' : tab === 'Milestone' ? 'Milestones' : tab === 'To-Do' ? 'Clearances (To-Dos)' : 'Turbulence (Issues)'} found with your team Leadership Team.
+        <div className="flex-1 overflow-auto p-4">
+          {loading ? (
+            <div className="flex items-center justify-center text-muted-foreground text-sm py-8">Loading…</div>
+          ) : items.length === 0 ? (
+            <div className="flex items-center justify-center text-muted-foreground text-sm py-8">
+              There are no {tab === 'Rock' ? 'Waypoints (Rocks)' : tab === 'Milestone' ? 'Milestones' : tab === 'To-Do' ? 'Clearances (To-Dos)' : 'Turbulence (Issues)'} found with your team {teamName}.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {items.map((item) => {
+                const checked = selectedIds.has(item.id);
+                return (
+                  <label key={item.id} className="flex items-start gap-2 rounded-md border border-border p-2 cursor-pointer hover:bg-muted/40">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(item.id)) next.delete(item.id);
+                          else next.add(item.id);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm text-foreground truncate">{item.title}</span>
+                      {item.subtitle && <span className="block text-xs text-muted-foreground">{item.subtitle}</span>}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
         <footer className="p-4 border-t border-border shrink-0 flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">0 item</span>
-          <button type="button" onClick={onLink} disabled className="px-3 py-2 bg-muted text-muted-foreground rounded-md text-sm font-medium cursor-not-allowed">Link items to Waypoints (Rocks)</button>
+          <span className="text-sm text-muted-foreground">{selectedIds.size} item</span>
+          <button
+            type="button"
+            onClick={handleLink}
+            disabled={selectedIds.size === 0}
+            className={`px-3 py-2 rounded-md text-sm font-medium ${selectedIds.size === 0 ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}
+          >
+            Link items to Waypoints (Rocks)
+          </button>
         </footer>
       </div>
     </>
@@ -1289,9 +2101,15 @@ function LinkExistingModal({ rockTitle, onClose, onLink }: { rockTitle: string; 
 
 function RockRow({
   rock,
+  milestones = [],
+  onUpdateMilestones,
   showMilestone,
+  showOwnerColumn = !showMilestone,
   onOpenCreate,
   meetingId,
+  organizationId,
+  teamId,
+  teamName,
   isArchiveView,
   onUnarchive,
   onOpenDetail,
@@ -1299,9 +2117,15 @@ function RockRow({
   hideAccordion,
 }: {
   rock: Rock;
+  milestones?: RockMilestone[];
+  onUpdateMilestones?: (rockId: string, next: RockMilestone[]) => void;
   showMilestone?: boolean;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string }) => void;
+  showOwnerColumn?: boolean;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: LinkedEntityOption }) => void;
   meetingId?: string;
+  organizationId?: string;
+  teamId?: string | null;
+  teamName?: string;
   isArchiveView?: boolean;
   onUnarchive?: (id: string) => void;
   onOpenDetail?: (rock: Rock) => void;
@@ -1317,6 +2141,14 @@ function RockRow({
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const { archiveRock, deleteRock, updateRock } = useRocks();
+  const [milestoneMenuAnchor, setMilestoneMenuAnchor] = useState<{ milestone: RockMilestone; rect: DOMRect } | null>(null);
+  const [editingMilestoneTitleId, setEditingMilestoneTitleId] = useState<string | null>(null);
+  const [milestoneTitleDraft, setMilestoneTitleDraft] = useState('');
+  const milestoneTitleInputRef = useRef<HTMLInputElement>(null);
+
+  const [editingMilestoneDateId, setEditingMilestoneDateId] = useState<string | null>(null);
+  const [milestoneDateDraft, setMilestoneDateDraft] = useState('');
+  const [editingMilestoneModal, setEditingMilestoneModal] = useState<RockMilestone | null>(null);
 
   useEffect(() => {
     setTitleInput(rock.title);
@@ -1325,6 +2157,10 @@ function RockRow({
   useEffect(() => {
     if (editingTitle && titleInputRef.current) titleInputRef.current.focus();
   }, [editingTitle]);
+
+  useEffect(() => {
+    if (editingMilestoneTitleId && milestoneTitleInputRef.current) milestoneTitleInputRef.current.focus();
+  }, [editingMilestoneTitleId]);
 
   const openMenu = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1346,10 +2182,50 @@ function RockRow({
     setEditingTitle(false);
   };
 
+  const upsertMilestone = (milestoneId: string, patch: Partial<RockMilestone>) => {
+    const next = milestones.map((m) => (m.id === milestoneId ? { ...m, ...patch } : m));
+    onUpdateMilestones?.(rock.id, next);
+  };
+
+  const saveMilestoneTitle = (milestoneId: string) => {
+    const t = milestoneTitleDraft.trim();
+    if (!t) {
+      setEditingMilestoneTitleId(null);
+      setMilestoneTitleDraft('');
+      return;
+    }
+    upsertMilestone(milestoneId, { title: t });
+    setEditingMilestoneTitleId(null);
+    setMilestoneTitleDraft('');
+  };
+
+  const dueDateToInputValue = (dueDate: string) => {
+    const d = new Date(dueDate);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toISOString().slice(0, 10);
+  };
+
+  const inputValueToDueDate = (originalDueDate: string, inputIso: string) => {
+    // Keep existing format if it looks like an ISO date.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(originalDueDate)) return inputIso;
+    return formatIsoDateToUs(inputIso);
+  };
+
+  const saveMilestoneDueDate = (milestoneId: string, originalDueDate: string) => {
+    if (!milestoneDateDraft) return;
+    const nextDueDate = inputValueToDueDate(originalDueDate, milestoneDateDraft);
+    upsertMilestone(milestoneId, { dueDate: nextDueDate });
+    setEditingMilestoneDateId(null);
+    setMilestoneDateDraft('');
+  };
+
   const handleRowClick = () => {
     if (editingTitle) return;
     onOpenDetail?.(rock);
   };
+  const completedMilestones = milestones.filter((m) => m.completed).length;
+  const milestoneTotal = milestones.length;
+  const milestonePercent = milestoneTotal > 0 ? Math.round((completedMilestones / milestoneTotal) * 100) : 0;
 
   return (
     <>
@@ -1406,15 +2282,29 @@ function RockRow({
           )}
         </td>
         <td className="px-4 py-3 align-middle">
-          {showMilestone && rock.milestoneLabel ? (
-            <span className="inline-flex px-2.5 py-1 rounded-md text-xs font-medium bg-muted text-muted-foreground">
-              {rock.milestoneLabel}
-            </span>
+          {showMilestone && milestoneTotal > 0 ? (
+            <div className="flex items-center gap-3 min-w-[200px]">
+              {/* Track uses theme tokens that exist in globals.css (accent/border). bg-muted is not defined there, so the bar looked like empty whitespace. */}
+              <div
+                className="h-2.5 min-w-[80px] flex-1 rounded-full border border-border bg-accent overflow-hidden"
+                role="progressbar"
+                aria-valuenow={milestonePercent}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Milestones completed: ${completedMilestones} of ${milestoneTotal}`}
+              >
+                <div
+                  className="h-full min-w-0 rounded-full bg-primary transition-[width] duration-300 ease-out"
+                  style={{ width: `${milestonePercent}%` }}
+                />
+              </div>
+              <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">{completedMilestones}/{milestoneTotal}</span>
+            </div>
           ) : (
             <span className="text-muted-foreground">—</span>
           )}
         </td>
-        {!showMilestone && (
+        {showOwnerColumn && (
           <td className="px-4 py-3 align-middle">
             <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
               {rock.ownerInitials}
@@ -1463,17 +2353,265 @@ function RockRow({
         </td>
       </tr>
       {!hideAccordion && expanded && (
-        <tr className="border-b border-border bg-muted/5">
-          <td colSpan={showMilestone ? 7 : 8} className="px-4 py-2 pl-12">
-            <button
-              type="button"
-              className="text-primary hover:underline text-sm font-medium flex items-center gap-1.5 py-1 transition-colors"
-              onClick={(e) => { e.stopPropagation(); onOpenDetail?.(rock); }}
-            >
-              + Add Milestone
-            </button>
-          </td>
-        </tr>
+        <>
+          {milestones.map((m) => {
+            const isTitleEditing = editingMilestoneTitleId === m.id;
+            const isDateEditing = editingMilestoneDateId === m.id;
+            const openMilestoneEdit = () => {
+              setEditingMilestoneModal(m);
+            };
+            return (
+              <tr
+                key={m.id}
+                className="border-b border-border hover:bg-muted/5 cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isTitleEditing && !isDateEditing) openMilestoneEdit();
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  openMilestoneEdit();
+                }}
+              >
+                {/* Drag handle spacer (milestones aren't draggable) */}
+                <td className="px-2 py-3 w-10 align-middle opacity-60" />
+                {/* Accordion spacer */}
+                <td className="px-4 py-3 w-10 align-middle" />
+
+                {/* "Status" column becomes milestone name + completion toggle */}
+                <td className="px-4 py-3 align-middle" onClick={(e) => e.stopPropagation()}>
+                  {isTitleEditing ? (
+                    <div className="flex items-center gap-1 min-w-0">
+                      <input
+                        ref={milestoneTitleInputRef}
+                        type="text"
+                        value={milestoneTitleDraft}
+                        onChange={(e) => setMilestoneTitleDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveMilestoneTitle(m.id);
+                          if (e.key === 'Escape') {
+                            setEditingMilestoneTitleId(null);
+                            setMilestoneTitleDraft('');
+                          }
+                        }}
+                        className="flex-1 min-w-0 px-2 py-1 text-sm border border-border rounded bg-background text-foreground"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingMilestoneTitleId(null);
+                          setMilestoneTitleDraft('');
+                        }}
+                        className="p-1 rounded hover:bg-muted text-muted-foreground"
+                        aria-label="Cancel milestone title edit"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => saveMilestoneTitle(m.id)}
+                        className="p-1 rounded hover:bg-muted text-primary"
+                        aria-label="Save milestone title"
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(m.completed)}
+                        onChange={(e) => upsertMilestone(m.id, { completed: e.target.checked })}
+                        aria-label="Mark milestone complete"
+                      />
+                      <span
+                        className={`block min-w-0 truncate cursor-text ${m.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}
+                        title={m.title}
+                        onClick={() => {
+                          setEditingMilestoneTitleId(m.id);
+                          setMilestoneTitleDraft(m.title);
+                        }}
+                      >
+                        {m.title}
+                      </span>
+                    </div>
+                  )}
+                </td>
+
+                {/* Title column (kept empty so columns align) */}
+                <td className="px-4 py-3 align-middle" />
+
+                {/* Milestone progress column */}
+                <td className="px-4 py-3 align-middle" />
+
+                {showOwnerColumn && (
+                  <td className="px-4 py-3 align-middle" onClick={(e) => e.stopPropagation()}>
+                    <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
+                      {rock.ownerInitials}
+                    </div>
+                  </td>
+                )}
+
+                {/* Due by column */}
+                <td className="px-4 py-3 text-muted-foreground align-middle" onClick={(e) => e.stopPropagation()}>
+                  {isDateEditing ? (
+                    <div className="flex items-center gap-2 min-w-0">
+                      <input
+                        type="date"
+                        value={milestoneDateDraft}
+                        onChange={(e) => setMilestoneDateDraft(e.target.value)}
+                        className="px-2 py-1 border border-border rounded bg-background text-foreground text-sm w-[160px]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingMilestoneDateId(null);
+                          setMilestoneDateDraft('');
+                        }}
+                        className="p-1 rounded hover:bg-muted text-muted-foreground"
+                        aria-label="Cancel milestone due date edit"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => saveMilestoneDueDate(m.id, m.dueDate)}
+                        className="p-1 rounded hover:bg-muted text-primary"
+                        aria-label="Save milestone due date"
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="whitespace-nowrap">{m.dueDate}</span>
+                      <button
+                        type="button"
+                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                        aria-label="Edit milestone due date"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingMilestoneDateId(m.id);
+                          setMilestoneDateDraft(dueDateToInputValue(m.dueDate));
+                        }}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    </span>
+                  )}
+                </td>
+
+                {/* Actions column */}
+                <td className="px-4 py-3 w-12 align-middle text-right" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="p-2 rounded-md hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="Milestone actions"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const el = e.currentTarget as HTMLButtonElement;
+                      setMilestoneMenuAnchor({ milestone: m, rect: el.getBoundingClientRect() });
+                    }}
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+          <tr className="border-b border-border bg-muted/5">
+            <td colSpan={showOwnerColumn ? 8 : 7} className="px-4 py-2 pl-12">
+              <button
+                type="button"
+                className="text-primary hover:underline text-sm font-medium flex items-center gap-1.5 py-1 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenDetail?.(rock);
+                }}
+              >
+                + Add Milestone
+              </button>
+            </td>
+          </tr>
+        </>
+      )}
+      {milestoneMenuAnchor && typeof document !== 'undefined' &&
+        createPortal(
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMilestoneMenuAnchor(null)} aria-hidden />
+            {(() => {
+              const menuWidth = 220;
+              const menuHeight = 170;
+              const viewportWidth = window.innerWidth;
+              const viewportHeight = window.innerHeight;
+              const left = Math.min(
+                Math.max(8, milestoneMenuAnchor.rect.right - menuWidth),
+                Math.max(8, viewportWidth - menuWidth - 8),
+              );
+              const top = milestoneMenuAnchor.rect.bottom + menuHeight + 8 > viewportHeight
+                ? Math.max(8, milestoneMenuAnchor.rect.top - menuHeight - 6)
+                : milestoneMenuAnchor.rect.bottom + 6;
+              return (
+                <div
+                  className="fixed z-50 py-2 bg-card border border-border rounded-lg shadow-xl min-w-[220px]"
+                  style={{ top, left }}
+                >
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                    onClick={() => {
+                      setEditingMilestoneModal(milestoneMenuAnchor.milestone);
+                      setMilestoneMenuAnchor(null);
+                    }}
+                  >
+                    Edit milestone
+                  </button>
+                  <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent" onClick={() => { onOpenCreate?.('rock', { title: milestoneMenuAnchor.milestone.title, description: `Linked to milestone: ${milestoneMenuAnchor.milestone.title}` }); setMilestoneMenuAnchor(null); }}>
+                    Create linked Rock
+                  </button>
+                  <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent" onClick={() => { onOpenCreate?.('todo', { title: `To-Do: ${milestoneMenuAnchor.milestone.title}`, description: `Linked to milestone: ${milestoneMenuAnchor.milestone.title}`, linkedEntity: { type: 'rock_milestone', id: milestoneMenuAnchor.milestone.id, title: milestoneMenuAnchor.milestone.title } }); setMilestoneMenuAnchor(null); }}>
+                    Create linked To-Do
+                  </button>
+                  <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent" onClick={() => { onOpenCreate?.('issue', { title: `Issue: ${milestoneMenuAnchor.milestone.title}`, description: `Linked to milestone: ${milestoneMenuAnchor.milestone.title}`, linkedEntity: { type: 'rock_milestone', id: milestoneMenuAnchor.milestone.id, title: milestoneMenuAnchor.milestone.title } }); setMilestoneMenuAnchor(null); }}>
+                    Create linked Issue
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                    onClick={() => {
+                      onUpdateMilestones?.(rock.id, milestones.filter((x) => x.id !== milestoneMenuAnchor.milestone.id));
+                      setMilestoneMenuAnchor(null);
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              );
+            })()}
+          </>,
+          document.body
+        )}
+      {editingMilestoneModal && (
+        <MilestoneDetailPanel
+          rock={rock}
+          milestone={editingMilestoneModal}
+          meetingId={meetingId}
+          organizationId={organizationId}
+          teamId={teamId}
+          teamName={teamName ?? rock.ownerName}
+          milestones={milestones}
+          onOpenCreate={onOpenCreate}
+          onClose={() => setEditingMilestoneModal(null)}
+          onSave={(milestone) => {
+            upsertMilestone(milestone.id, {
+              title: milestone.title,
+              dueDate: milestone.dueDate,
+              description: milestone.description,
+              completed: milestone.completed,
+            });
+            setEditingMilestoneModal(null);
+          }}
+        />
       )}
     </>
   );
@@ -1619,15 +2757,23 @@ function DraggableRockCard({ rock }: { rock: Rock }) {
 
 function ArchiveTabContent({
   rocks,
+  milestonesByRock,
   onOpenCreate,
   meetingId,
+  organizationId,
+  teamId,
+  teamName,
   onUnarchive,
   onOpenDetail,
   onOpenDatePicker,
 }: {
   rocks: Rock[];
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string }) => void;
+  milestonesByRock: Record<string, RockMilestone[]>;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: LinkedEntityOption }) => void;
   meetingId?: string;
+  organizationId?: string;
+  teamId?: string | null;
+  teamName: string;
   onUnarchive: (id: string) => void;
   onOpenDetail?: (rock: Rock) => void;
   onOpenDatePicker?: (rock: Rock) => void;
@@ -1680,8 +2826,15 @@ function ArchiveTabContent({
                   <RockRow
                     key={rock.id}
                     rock={rock}
+                    milestones={milestonesByRock[rock.id] ?? []}
+                    onUpdateMilestones={() => {}}
+                    showMilestone
+                    showOwnerColumn
                     onOpenCreate={onOpenCreate}
                     meetingId={meetingId}
+                    organizationId={organizationId}
+                    teamId={teamId}
+                    teamName={teamName}
                     isArchiveView
                     onUnarchive={onUnarchive}
                     onOpenDetail={onOpenDetail}
