@@ -109,8 +109,8 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
             <h2 className="text-xl font-semibold text-foreground">{sectionTitle}</h2>
             <div className="flex items-center gap-2">
               <Select
-                value="Leadership Team"
-                options={[{ label: 'Leadership Team', value: 'Leadership Team' }]}
+                value={meetingTeamName ?? 'No team found'}
+                options={[{ label: meetingTeamName ?? 'No team found', value: meetingTeamName ?? 'No team found' }]}
                 className="min-w-[140px]"
               />
               <label className="flex items-center gap-2 text-sm text-foreground/70">
@@ -152,7 +152,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
           </>
         )}
         {sectionId === 'scorecard' && (
-          <InstrumentsSegmentView embedded teamName="Leadership Team" meetingId={meetingId} organizationId={organizationId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} isMeetingInFuture={isMeetingInFuture} onOpenCreate={onOpenCreate} onOpenCreateIssue={onOpenCreateIssue} meetingAttendances={meetingAttendances} />
+          <InstrumentsSegmentView embedded teamName={meetingTeamName ?? 'No team found'} meetingId={meetingId} organizationId={organizationId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} isMeetingInFuture={isMeetingInFuture} onOpenCreate={onOpenCreate} onOpenCreateIssue={onOpenCreateIssue} meetingAttendances={meetingAttendances} />
         )}
         {sectionId === 'rocks' && (
           <RocksSegmentView
@@ -161,19 +161,19 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
             meetingId={meetingId}
             organizationId={organizationId}
             teamId={meetingTeamId}
-            teamName={meetingTeamName ?? 'Leadership Team'}
+            teamName={meetingTeamName ?? 'No team found'}
             isFacilitator={isFacilitator}
             canRecord={canRecordOrFacilitator}
             onOpenCreate={onOpenCreate}
           />
         )}
         {sectionId === 'headlines' && (
-          <HeadlinesSegmentView embedded teamName={meetingTeamName ?? 'Leadership Team'} meetingId={meetingId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} onOpenCreate={onOpenCreate} />
+          <HeadlinesSegmentView embedded teamName={meetingTeamName ?? 'No team found'} meetingId={meetingId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} onOpenCreate={onOpenCreate} />
         )}
         {sectionId === 'todos' && (
           <TodosSegmentView
             embedded
-            teamName={meetingTeamName ?? 'Leadership Team'}
+            teamName={meetingTeamName ?? 'No team found'}
             teamId={meetingTeamId}
             teams={meetingTeams}
             organizationId={organizationId}
@@ -186,7 +186,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
         {sectionId === 'issues' && (
           <IssuesSegmentView
             embedded
-            teamName={meetingTeamName ?? 'Leadership Team'}
+            teamName={meetingTeamName ?? 'No team found'}
             meetingId={meetingId}
             isFacilitator={isFacilitator}
             canRecord={canRecordOrFacilitator}
@@ -197,7 +197,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
         {sectionId === 'conclude' && (
           <ConcludeSegmentView
             embedded
-            teamName={meetingTeamName ?? 'Leadership Team'}
+            teamName={meetingTeamName ?? 'No team found'}
             teamId={meetingTeamId}
             teams={meetingTeams}
             organizationId={organizationId}

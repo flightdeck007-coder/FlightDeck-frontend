@@ -184,7 +184,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
     return true;
   });
 
-  const teamName = meeting?.team?.name || 'Leadership Team';
+  const teamName = meeting?.team?.name ?? 'No team found';
   const selectedList = Array.from(selectedIds);
 
   const handleAchieve = useCallback(() => {

@@ -241,7 +241,7 @@ export function RocksSegmentView({
   onOpenCreate,
 }: RocksSegmentViewProps) {
   const canUseFilters = canRecord ?? isFacilitator;
-  const resolvedTeamName = teamName || 'Leadership Team';
+  const resolvedTeamName = teamName ?? 'No team found';
   const [teamFilter, setTeamFilter] = useState(resolvedTeamName);
   const [ownerFilter, setOwnerFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -250,7 +250,7 @@ export function RocksSegmentView({
   const [activeTab, setActiveTab] = useState<'rocks' | 'planning' | 'archive'>(
     'rocks'
   );
-  const [vtoExpanded, setVtoExpanded] = useState(true);
+  const [vtoExpanded, setVtoExpanded] = useState(false);
   const [selectedRockId, setSelectedRockId] = useState<string | null>(null);
   const [datePickerRockId, setDatePickerRockId] = useState<string | null>(null);
   const [milestonesByRock, setMilestonesByRock] = useState<Record<string, RockMilestone[]>>({});

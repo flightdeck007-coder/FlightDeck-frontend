@@ -55,7 +55,7 @@ interface HeadlinesSegmentViewProps {
 }
 
 export function HeadlinesSegmentView({
-  teamName = 'Leadership Team',
+  teamName = 'No team found',
   embedded = false,
   meetingId,
   isFacilitator = true,
@@ -176,15 +176,16 @@ export function HeadlinesSegmentView({
         <div className={`flex items-center gap-1 ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''}`}>
           <span className="text-muted-foreground text-sm">Team:</span>
           <Select
-            value={teamFilter}
+            value={teamFilter || undefined}
             onChange={(v) => {
               if (!canUseFilters) return;
-              setTeamFilter(v);
-              if (meetingId && socket) socket.emit('headlines_filter', { meetingId, teamFilter: v });
+              setTeamFilter(v ?? teamName);
+              if (meetingId && socket) socket.emit('headlines_filter', { meetingId, teamFilter: v ?? teamName });
             }}
-            disabled={!canUseFilters}
-            options={[{ label: 'Leadership Team', value: 'Leadership Team' }]}
+            disabled={!canUseFilters || !teamName}
+            options={teamName ? [{ label: teamName, value: teamName }] : []}
             className="w-[160px]"
+            placeholder="Team"
           />
         </div>
         <label className={`flex items-center gap-2 group ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>

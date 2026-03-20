@@ -117,7 +117,7 @@ function getInitials(name?: string | null, email?: string): string {
 }
 
 export function TodosSegmentView({
-  teamName = 'Leadership Team',
+  teamName = 'No team found',
   teamId: currentTeamId,
   teams = [],
   organizationId,
@@ -968,7 +968,7 @@ export function EditTodoPanel({
   todo: TodoItem;
   onClose: () => void;
   onUpdate: (patch: Partial<TodoItem>) => void;
-  /** List of teams for the Team dropdown; when empty, a single "Leadership Team" option is shown */
+  /** List of teams for the Team dropdown */
   teams?: Array<{ id: string; name: string }>;
   /** Current team id (e.g. selected team or meeting team); used as initial value when todo has no teamId */
   currentTeamId?: string | null;
@@ -982,16 +982,14 @@ export function EditTodoPanel({
   );
   const [repeat, setRepeat] = useState(todo.repeat || "Don't repeat");
   const [privateTodo, setPrivateTodo] = useState(todo.private ?? false);
-  const teamOptions = teams.length > 0
-    ? teams.map((t) => ({ label: t.name, value: t.id }))
-    : [{ label: 'Leadership Team', value: 'Leadership Team' }];
+  const teamOptions = teams.map((t) => ({ label: t.name, value: t.id }));
   const initialTeamId = todo.teamId ?? currentTeamId ?? teams[0]?.id ?? teamOptions[0]?.value ?? '';
   const [teamId, setTeamId] = useState(initialTeamId);
   const [assigneeId, setAssigneeId] = useState<string>(todo.assigneeId ?? '');
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
   useEffect(() => {
-    setTeamId(todo.teamId ?? currentTeamId ?? teams[0]?.id ?? (teams.length === 0 ? 'Leadership Team' : ''));
+    setTeamId(todo.teamId ?? currentTeamId ?? teams[0]?.id ?? '');
     setAssigneeId(todo.assigneeId ?? '');
   }, [todo.id, todo.teamId, todo.assigneeId, currentTeamId, teams]);
 

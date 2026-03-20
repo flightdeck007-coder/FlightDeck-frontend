@@ -245,7 +245,7 @@ interface CreatePopupProps {
 export function CreatePopup({
   open,
   onClose,
-  teamName = "Leadership Team",
+  teamName = "No team found",
   teamId: defaultTeamId = "",
   teams = [],
   organizationId,
@@ -606,7 +606,7 @@ export function CreatePopup({
     const now = new Date().toISOString();
     headlinesApi?.addCascadingMessage({
       title: data.title,
-      from: teamName || "Leadership Team",
+      from: teamName || "Team",
       createdAt: now,
       createdAgo: "Just now",
       ownerInitials: "U",

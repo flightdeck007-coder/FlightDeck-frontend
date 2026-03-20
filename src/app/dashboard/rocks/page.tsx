@@ -29,7 +29,7 @@ export default function RocksPage() {
   const [createDescription, setCreateDescription] = useState<string | undefined>(undefined);
   const [createLinkedEntity, setCreateLinkedEntity] = useState<CreatePopupLinkedEntity | undefined>(undefined);
 
-  const teamName = selectedTeam?.name ?? 'Leadership Team';
+  const teamName = selectedTeam?.name ?? 'No team found';
   const meetingAttendances = (selectedTeam?.members ?? []).map((m) => ({
     id: m.user.id,
     user: { id: m.user.id, name: m.user.name ?? null, email: m.user.email },

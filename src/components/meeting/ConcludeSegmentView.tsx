@@ -64,7 +64,7 @@ function formatDueDate(iso: string | null): string {
 }
 
 export function ConcludeSegmentView({
-  teamName = 'Leadership Team',
+  teamName = 'No team found',
   teamId: currentTeamId,
   teams = [],
   organizationId,

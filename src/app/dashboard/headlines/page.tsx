@@ -26,7 +26,7 @@ export default function HeadlinesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createType, setCreateType] = useState<'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | undefined>(undefined);
 
-  const teamName = selectedTeam?.name ?? 'Leadership Team';
+  const teamName = selectedTeam?.name ?? 'No team found';
 
   useEffect(() => {
     if (!organizationId || !selectedMeetingId) {

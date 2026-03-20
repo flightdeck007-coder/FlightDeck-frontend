@@ -87,7 +87,7 @@ function FilterIconButton({
 }
 
 export function IssuesSegmentView({
-  teamName = 'Leadership Team',
+  teamName = 'No team found',
   embedded = false,
   meetingId,
   isFacilitator = true,

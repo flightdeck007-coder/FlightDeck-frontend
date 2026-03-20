@@ -577,7 +577,7 @@ interface InstrumentsSegmentViewProps {
 }
 
 export function InstrumentsSegmentView({
-  teamName = 'Leadership Team',
+  teamName = 'No team found',
   embedded = false,
   meetingId,
   organizationId,
@@ -1205,8 +1205,8 @@ export function InstrumentsSegmentView({
   return (
     <div className={`flex flex-col min-h-0 h-full min-w-0 overflow-x-hidden ${wrap} ${isMeetingInFuture ? 'bg-muted/40 cursor-not-allowed' : ''}`}>
       {/* Section-style tabs: Weekly / Monthly / Quarterly / Annual (like Upcoming / Past / Agenda) */}
-      <div className="-mx-6 border-b border-border shrink-0 bg-background mt-0">
-        <div className="flex gap-0">
+      <div className="w-full border-b border-border shrink-0 bg-background mt-0 overflow-x-auto">
+        <div className="flex gap-0 px-2 min-w-max">
           {(['weekly', 'monthly', 'quarterly', 'annual'] as const).map((tab) => (
             <button
               key={tab}
@@ -1229,14 +1229,15 @@ export function InstrumentsSegmentView({
         </div>
       </div>
       {/* Filters row: dropdowns + LTR/RTL | space | undo/redo/search/actions */}
-      <div className={`-mx-6 px-4 border-b border-border shrink-0 py-2.5 w-full min-w-0 overflow-x-hidden ${isMeetingInFuture ? 'bg-muted/50' : 'bg-muted/30'}`}>
+      <div className={`w-full px-4 border-b border-border shrink-0 py-2.5 min-w-0 overflow-x-visible ${isMeetingInFuture ? 'bg-muted/50' : 'bg-muted/30'}`}>
         <div className="flex flex-wrap items-center justify-between gap-3 min-w-0 w-full">
           <div className="flex flex-wrap items-center gap-3 min-w-0 flex-1">
             <Select
-              value={teamName}
-              options={[{ label: 'Leadership Team', value: teamName }]}
-              className="w-[140px] shrink-0"
-              disabled={!canUseFilters}
+              value={teamName || undefined}
+              options={teamName ? [{ label: teamName, value: teamName }] : []}
+              className="w-[160px] shrink-0"
+              disabled={!canUseFilters || !teamName}
+              placeholder="Team"
             />
             <span className="text-muted-foreground text-xs shrink-0">View by:</span>
             <Select<ViewBy>

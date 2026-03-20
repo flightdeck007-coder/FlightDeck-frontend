@@ -81,7 +81,7 @@ export default function MeetingPage() {
   const [segmentProgressPercent, setSegmentProgressPercent] = useState(0);
   const [segmentElapsedSeconds, setSegmentElapsedSeconds] = useState(0);
   const [totalElapsedSeconds, setTotalElapsedSeconds] = useState(0);
-  const [headerTitle, setHeaderTitle] = useState('Meeting - Leadership Team');
+  const [headerTitle, setHeaderTitle] = useState('Meeting');
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [loadedSections, setLoadedSections] = useState(meetingSections);
   const [organizationId, setOrganizationId] = useState<string>('');
@@ -784,7 +784,7 @@ export default function MeetingPage() {
             setCreatePopupInitialDescription(undefined);
             setCreatePopupInitialLinkedEntity(undefined);
           }}
-          teamName={headerTitle.replace(/^.*-\s*/, '').trim() || 'Leadership Team'}
+          teamName={headerTitle.replace(/^.*-\s*/, '').trim()}
           teamId={teamId || undefined}
           teams={teams}
           organizationId={organizationId || undefined}
