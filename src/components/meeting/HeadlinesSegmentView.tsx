@@ -266,7 +266,7 @@ export function HeadlinesSegmentView({
                     ? () => onOpenCreate('headline')
                     : () => setIsAddingHeadline(true)
                 }
-                sectionTitle="Crew Headlines (Customer/Employee)"
+                sectionTitle="Crew Headlines"
                 sectionSubtitle="Customer/Employee Headlines"
                 createLabel="Create Headline"
                 isAdding={isAddingHeadline}

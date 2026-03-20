@@ -18,7 +18,7 @@ import {
   Trash2,
   Loader2,
   RotateCw,
-  ArrowRight,
+  Flag,
   Users,
 } from 'lucide-react';
 import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
@@ -263,11 +263,11 @@ export function ConcludeSegmentView({
           </span>
         </div>
 
-        {/* Recap To-Dos */}
+        {/* Recap Clearances */}
         <div className="bg-card border border-border rounded-lg overflow-hidden mb-6">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/20">
             <h3 className="font-semibold text-foreground">
-              Recap To-Dos{' '}
+              Recap Clearances{' '}
               <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
                 {recapTodos.length}
               </span>
@@ -477,7 +477,7 @@ export function ConcludeSegmentView({
                 className="rounded border-border text-primary"
               />
               <span className="text-sm text-foreground">
-                Archive All Completed Crew Headlines, Clearances (To-Dos) and Turbulence (Issues) for the {teamName}
+                Archive all completed Crew Headlines, Clearances and Turbulence for {teamName}
               </span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
@@ -496,7 +496,7 @@ export function ConcludeSegmentView({
                 onChange={(e) => setShowIssueOnRecaps(e.target.checked)}
                 className="rounded border-border"
               />
-              <span className="text-sm text-foreground">Show Turbulence (Issue) description on Level 10 Flight Review Recaps</span>
+              <span className="text-sm text-foreground">Show Turbulence description on Flight Review recaps</span>
             </label>
             <button
               type="button"
@@ -509,8 +509,8 @@ export function ConcludeSegmentView({
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <>
-                  Finish
-                  <ArrowRight className="w-4 h-4" />
+                  <Flag className="w-4 h-4" />
+                  End Flight Review
                 </>
               )}
             </button>
@@ -748,13 +748,13 @@ function RecapTodoRowMenu({
         <div className="border-t border-border my-1" />
         <div className="px-2 py-1">
           <button type="button" className={btn} onClick={onClose} role="menuitem">
-            <Mountain className={icon} /> Create linked Waypoint (Rock)
+            <Mountain className={icon} /> Create linked Waypoint
           </button>
           <button type="button" className={btn} onClick={onClose} role="menuitem">
-            <CheckSquare className={icon} /> Create linked To-Do
+            <CheckSquare className={icon} /> Create linked Clearance
           </button>
           <button type="button" className={btn} onClick={onClose} role="menuitem">
-            <AlertCircle className={icon} /> Create linked Issue
+            <AlertCircle className={icon} /> Create linked Turbulence
           </button>
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <Megaphone className={icon} /> Create linked Headline

@@ -37,6 +37,8 @@ import { meetingsService } from '@/lib/api/meetings.service';
 
 type RockLite = { achieved: boolean };
 type Granularity = 'daily' | 'weekly' | 'monthly' | 'yearly';
+type SourceLoading = { todos: boolean; issues: boolean; rocks: boolean };
+type SourceError = { todos: boolean; issues: boolean; rocks: boolean };
 type BucketRow = {
   key: string;
   label: string;
@@ -145,6 +147,21 @@ function useAnimatedNumber(value: number, durationMs = 900): number {
   return display;
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms = 15000): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 function KpiCard({
   label,
   value,
@@ -225,7 +242,8 @@ export function DashboardAnalyticsContent() {
   const [todos, setTodos] = useState<TodoApiItem[]>([]);
   const [issues, setIssues] = useState<IssueApiItem[]>([]);
   const [rocks, setRocks] = useState<RockLite[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<SourceLoading>({ todos: false, issues: false, rocks: false });
+  const [errors, setErrors] = useState<SourceError>({ todos: false, issues: false, rocks: false });
   const [granularity, setGranularity] = useState<Granularity>('monthly');
 
   useEffect(() => {
@@ -233,38 +251,71 @@ export function DashboardAnalyticsContent() {
       setTodos([]);
       setIssues([]);
       setRocks([]);
+      setLoading({ todos: false, issues: false, rocks: false });
+      setErrors({ todos: false, issues: false, rocks: false });
       return;
     }
     let active = true;
-    setLoading(true);
-    Promise.all([
-      todosService.findAll(organizationId, selectedTeamId, false),
-      Promise.all([
-        issuesService.findAll(organizationId, selectedTeamId, 'short_term', false),
-        issuesService.findAll(organizationId, selectedTeamId, 'long_term', false),
-      ]).then(([s, l]) => [...s, ...l]),
-      Promise.all(
-        meetings.map(async (m) => {
-          const list = await meetingsService.getRocks(organizationId, m.id);
-          return list.map((r) => ({ achieved: r.achieved }));
-        }),
-      ).then((rows) => rows.flat()),
-    ])
-      .then(([todoList, issueList, rockList]) => {
+    setLoading({ todos: true, issues: true, rocks: true });
+    setErrors({ todos: false, issues: false, rocks: false });
+
+    withTimeout(todosService.findAll(organizationId, selectedTeamId, false))
+      .then((todoList) => {
         if (!active) return;
         setTodos(todoList);
-        setIssues(issueList);
-        setRocks(rockList);
       })
       .catch(() => {
         if (!active) return;
         setTodos([]);
-        setIssues([]);
-        setRocks([]);
+        setErrors((prev) => ({ ...prev, todos: true }));
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) setLoading((prev) => ({ ...prev, todos: false }));
       });
+
+    withTimeout(
+      Promise.all([
+        issuesService.findAll(organizationId, selectedTeamId, 'short_term', false),
+        issuesService.findAll(organizationId, selectedTeamId, 'long_term', false),
+      ]).then(([s, l]) => [...s, ...l]),
+    )
+      .then((issueList) => {
+        if (!active) return;
+        setIssues(issueList);
+      })
+      .catch(() => {
+        if (!active) return;
+        setIssues([]);
+        setErrors((prev) => ({ ...prev, issues: true }));
+      })
+      .finally(() => {
+        if (active) setLoading((prev) => ({ ...prev, issues: false }));
+      });
+
+    withTimeout(
+      Promise.allSettled(
+        meetings.map((m) => withTimeout(meetingsService.getRocks(organizationId, m.id), 10000)),
+      ),
+      20000,
+    )
+      .then((settled) => {
+        if (!active) return;
+        const anyFailed = settled.some((s) => s.status === 'rejected');
+        const rockList = settled
+          .filter((s): s is PromiseFulfilledResult<Array<{ achieved: boolean }>> => s.status === 'fulfilled')
+          .flatMap((s) => s.value.map((r) => ({ achieved: r.achieved })));
+        setRocks(rockList);
+        if (anyFailed) setErrors((prev) => ({ ...prev, rocks: true }));
+      })
+      .catch(() => {
+        if (!active) return;
+        setRocks([]);
+        setErrors((prev) => ({ ...prev, rocks: true }));
+      })
+      .finally(() => {
+        if (active) setLoading((prev) => ({ ...prev, rocks: false }));
+      });
+
     return () => {
       active = false;
     };
@@ -372,7 +423,8 @@ export function DashboardAnalyticsContent() {
     [totals, todos.length, issues.length],
   );
 
-  const isBusy = baseLoading || loading;
+  const isBusy = baseLoading || loading.todos || loading.issues || loading.rocks;
+  const hasSourceErrors = errors.todos || errors.issues || errors.rocks;
 
   return (
     <div className="p-8">
@@ -411,6 +463,11 @@ export function DashboardAnalyticsContent() {
           </button>
         </div>
       </div>
+      {hasSourceErrors && (
+        <div className="mb-4 rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-sm text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/30 dark:text-amber-200">
+          Some analytics sources failed to load. Available charts are shown with partial data.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <KpiCard label="Completed Clearances" value={totals.todosDone} icon={<CheckCircle2 className="w-6 h-6 text-emerald-600" />} accentClass="bg-emerald-500" />

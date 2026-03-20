@@ -16,6 +16,11 @@ import {
   Trash2,
   CheckCircle2,
   Circle,
+  ListChecks,
+  AlertTriangle,
+  BarChart3,
+  Star,
+  Clock3,
 } from 'lucide-react';
 import { ContentAreaLoader } from '@/components/ui/loaders';
 import type { Meeting } from '@/lib/api/meetings.service';
@@ -282,7 +287,7 @@ export function PastMeetingRecapPanel({
       <div className="fixed inset-y-0 right-0 w-full max-w-md bg-card border-l border-border shadow-xl z-50 flex flex-col">
         <header className="flex items-center justify-between p-4 border-b border-border shrink-0">
           <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            {isCancelled ? 'Cancelled meeting' : 'Past Level 10 Meeting™'}
+            {isCancelled ? 'Cancelled Flight Review' : 'Past Flight Review'}
           </h2>
           <div className="flex items-center gap-1">
             {isAdmin && !isCancelled && (
@@ -341,19 +346,22 @@ export function PastMeetingRecapPanel({
               </div>
             </div>
           ) : (
-          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          <div className="flex-1 overflow-y-auto divide-y divide-border">
           <>
-          {/* To-Dos Created (with checked/unchecked) */}
-          <section>
-            <h3 className="text-sm font-semibold text-foreground mb-2">To-Dos Created</h3>
+          {/* Clearances Created (with checked/unchecked) */}
+          <section className="w-full px-5 py-4">
+            <h3 className="text-lg font-bold text-foreground mb-3 flex items-center gap-2">
+              <ListChecks className="w-4 h-4 text-primary" />
+              Clearances Created
+            </h3>
             {todosCreated.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No to-dos created in this meeting.</p>
+              <p className="text-sm font-medium text-foreground/70">No clearances created in this flight review.</p>
             ) : (
               <ul className="space-y-2">
                 {todosCreated.map((todo) => (
                   <li
                     key={todo.id}
-                    className="flex items-center gap-2 py-1.5 border-b border-border/50 last:border-0"
+                    className="flex items-center gap-2 py-2.5 border-b border-border/50 last:border-0"
                   >
                     <span className="shrink-0 text-muted-foreground" aria-hidden>
                       {todo.completed ? (
@@ -369,8 +377,8 @@ export function PastMeetingRecapPanel({
                       <Link
                         href={todosPageUrl}
                         className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                        title="Open on main To-Do page"
-                        aria-label="Open to-do on main page"
+                        title="Open on main Clearances page"
+                        aria-label="Open clearance on main page"
                       >
                         <ExternalLink className="w-4 h-4" />
                       </Link>
@@ -389,12 +397,15 @@ export function PastMeetingRecapPanel({
             )}
           </section>
 
-          {/* Issues Solved */}
-          <section>
-            <h3 className="text-sm font-semibold text-foreground mb-2">Issues Solved</h3>
+          {/* Turbulence Solved */}
+          <section className="w-full px-5 py-4">
+            <h3 className="text-lg font-bold text-foreground mb-3 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-primary" />
+              Turbulence Solved
+            </h3>
             {issuesSolved.length === 0 ? (
-              <div className="rounded-lg bg-amber-100 dark:bg-amber-950/60 border-2 border-amber-400 dark:border-amber-600 text-amber-900 dark:text-amber-100 px-4 py-3 text-center text-sm font-medium">
-                No Issues were solved during this Meeting
+              <div className="rounded-lg bg-muted/30 border border-border text-foreground/80 px-4 py-3 text-center text-sm font-medium">
+                No turbulence was solved during this flight review.
               </div>
             ) : (
               <ul className="space-y-1.5">
@@ -410,37 +421,40 @@ export function PastMeetingRecapPanel({
             )}
           </section>
 
-          {/* Short-Term Issues stats */}
-          <section>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Short-Term Issues</h3>
+          {/* Short-Term Turbulence stats */}
+          <section className="w-full px-5 py-4">
+            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-primary" />
+              Short-Term Turbulence
+            </h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-muted/40 rounded-lg p-3 border border-border">
-                <p className="text-xs text-muted-foreground mb-0.5">Total Tracked Issues</p>
+                <p className="text-xs font-semibold text-foreground/60 mb-0.5">Total Tracked Turbulence</p>
                 <p className="text-xl font-bold text-foreground">{stats.totalTracked}</p>
               </div>
               <div className="bg-muted/40 rounded-lg p-3 border border-border">
-                <p className="text-xs text-muted-foreground mb-0.5">Issues Solved Last Meeting</p>
+                <p className="text-xs font-semibold text-foreground/60 mb-0.5">Turbulence Solved Last Flight Review</p>
                 <p className="text-xl font-bold text-foreground">{stats.solvedLastMeeting}</p>
               </div>
               <div className="bg-muted/40 rounded-lg p-3 border border-border">
-                <p className="text-xs text-muted-foreground mb-0.5">Issues Solved Today</p>
+                <p className="text-xs font-semibold text-foreground/60 mb-0.5">Turbulence Solved Today</p>
                 <p className="text-xl font-bold text-foreground">{stats.solvedToday}</p>
               </div>
               <div className="bg-muted/40 rounded-lg p-3 border border-border">
-                <p className="text-xs text-muted-foreground mb-0.5">Solve Rate</p>
+                <p className="text-xs font-semibold text-foreground/60 mb-0.5">Solve Rate</p>
                 <p className="text-xl font-bold text-foreground">{stats.solveRatePercent}%</p>
               </div>
             </div>
           </section>
 
           {/* Meeting Notes by participant — each segment as bold heading + content; scroll if >3 members */}
-          <section>
-            <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-              <FileText className="w-4 h-4" />
+          <section className="w-full px-5 py-4">
+            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-primary" />
               Notes
             </h3>
             {notesByParticipant.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No notes from participants in this meeting.</p>
+              <p className="text-sm font-medium text-foreground/70">No notes from participants in this flight review.</p>
             ) : (
               <div
                 className={`space-y-4 ${notesByParticipant.length > 3 ? 'max-h-[320px] overflow-y-auto pr-1' : ''}`}
@@ -471,9 +485,9 @@ export function PastMeetingRecapPanel({
           </section>
 
           {/* Attachments (downloadable) */}
-          <section>
-            <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-              <Paperclip className="w-4 h-4" />
+          <section className="w-full px-5 py-4">
+            <h3 className="text-lg font-bold text-foreground mb-3 flex items-center gap-2">
+              <Paperclip className="w-4 h-4 text-primary" />
               Attachments
             </h3>
             <div className="flex items-center justify-between gap-2 mb-2">
@@ -523,8 +537,11 @@ export function PastMeetingRecapPanel({
           </section>
 
           {/* Ratings */}
-          <section>
-            <h3 className="text-sm font-semibold text-foreground mb-2">Ratings</h3>
+          <section className="w-full px-5 py-4">
+            <h3 className="text-lg font-bold text-foreground mb-3 flex items-center gap-2">
+              <Star className="w-4 h-4 text-primary" />
+              Ratings
+            </h3>
             {ratingsSaveError && (
               <p className="text-sm text-red-600 dark:text-red-400 mb-2" role="alert">
                 {ratingsSaveError}
@@ -566,51 +583,64 @@ export function PastMeetingRecapPanel({
                 ))}
               </ul>
             ) : (
-              <ul className="space-y-1.5">
-                {ratings.map((r, i) => (
-                  <li key={i} className="flex items-center justify-between text-sm">
-                    <span className="text-foreground">{r.userName}</span>
-                    <span className="text-muted-foreground">
-                      {r.absent ? 'Absent' : (r.rating != null ? r.rating : 'N/A')}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <div className="rounded-lg border border-border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/40">
+                    <tr>
+                      <th className="px-3 py-2.5 text-left font-semibold text-foreground">Crew Member</th>
+                      <th className="px-3 py-2.5 text-right font-semibold text-foreground">Rating</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ratings.map((r, i) => (
+                      <tr key={i} className="odd:bg-background even:bg-muted/20">
+                        <td className="px-3 py-2.5 text-foreground">{r.userName}</td>
+                        <td className="px-3 py-2.5 text-right text-foreground/75">
+                          {r.absent ? 'Absent' : (r.rating != null ? r.rating : 'N/A')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
 
           {/* Section Durations */}
-          <section>
-            <h3 className="text-sm font-semibold text-foreground mb-2">Section Durations</h3>
+          <section className="w-full px-5 py-4">
+            <h3 className="text-lg font-bold text-foreground mb-3 flex items-center gap-2">
+              <Clock3 className="w-4 h-4 text-primary" />
+              Section Durations
+            </h3>
             <ul className="space-y-0 divide-y divide-border border border-border rounded-lg overflow-hidden">
               {sectionDurations.map((s, i) => (
                 <li
                   key={i}
-                  className="flex items-center justify-between px-3 py-2 text-sm bg-card hover:bg-muted/30"
+                  className="flex items-center justify-between px-4 py-3.5 text-base bg-card hover:bg-muted/30"
                 >
-                  <span className="text-foreground font-medium">{s.sectionTitle}</span>
-                  <span className="text-muted-foreground tabular-nums">{formatSegmentDuration(s.durationMMSS)}</span>
+                  <span className="text-foreground font-semibold">{s.sectionTitle}</span>
+                  <span className="text-foreground/75 font-medium tabular-nums">{formatSegmentDuration(s.durationMMSS)}</span>
                 </li>
               ))}
             </ul>
           </section>
           </>
-          {/* Delete this meeting (admin only) */}
-          {isAdmin && onDeleted && (
-            <section className="pt-4 border-t border-border">
-              <button
-                type="button"
-                onClick={() => { setDeleteError(null); setDeleteConfirmOpen(true); }}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-md border border-red-500/50 text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors text-sm font-medium"
-              >
-                <Trash2 className="w-4 h-4" />
-                Delete this meeting
-              </button>
-            </section>
-          )}
           </div>
           )}
         </div>
+        {/* Delete this meeting (admin only) */}
+        {isAdmin && onDeleted && (
+          <div className="shrink-0 sticky bottom-0 border-t border-border bg-card/95 backdrop-blur px-5 py-4">
+            <button
+              type="button"
+              onClick={() => { setDeleteError(null); setDeleteConfirmOpen(true); }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-md border border-red-500/50 text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors text-sm font-medium"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete this meeting
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Delete confirmation */}

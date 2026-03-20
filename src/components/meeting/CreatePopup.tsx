@@ -37,9 +37,9 @@ export type CreateType =
   | "cascading_message";
 
 const CREATE_TYPE_OPTIONS: { value: CreateType; label: string }[] = [
-  { value: "issue", label: "Turbulence (Issue)" },
-  { value: "rock", label: "Waypoint (Rock)" },
-  { value: "todo", label: "Clearance (To-Do)" },
+  { value: "issue", label: "Turbulence" },
+  { value: "rock", label: "Waypoint" },
+  { value: "todo", label: "Clearance" },
   { value: "headline", label: "Headline" },
   { value: "cascading_message", label: "Cascading message" },
 ];
@@ -55,9 +55,9 @@ export type CreatePopupLinkedEntity = {
 
 function linkedEntityTypeLabel(type: LinkedEntityType): string {
   const map: Record<string, string> = {
-    issue: "Turbulence (Issue)",
-    rock: "Waypoint (Rock)",
-    todo: "Clearance (To-Do)",
+    issue: "Turbulence",
+    rock: "Waypoint",
+    todo: "Clearance",
     headline: "Headline",
     cascading_message: "Cascading message",
     measurable: "Measurable",
@@ -73,11 +73,11 @@ function LinkingToSection({
   linkedEntity: CreatePopupLinkedEntity;
 }) {
   return (
-    <div className="border-t border-b border-border py-4 my-4">
+    <div className="border-t border-b border-border py-5 my-5">
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
         Linking to
       </p>
-      <div className="rounded-lg border border-border bg-muted/30 p-4 shadow-sm">
+      <div className="rounded-lg border border-border border-t-2 border-t-primary bg-white p-4 shadow-sm">
         <div className="flex items-start gap-3">
           <Link2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1">
@@ -90,7 +90,7 @@ function LinkingToSection({
           </div>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground mt-2">
+      <p className="mt-2.5 ml-1 text-[12px] font-medium text-foreground/65">
         The form below creates the new item linked to the one above.
       </p>
     </div>
@@ -229,11 +229,11 @@ interface CreatePopupProps {
   teamId?: string;
   teams?: Team[];
   organizationId?: string;
-  /** When 'measurable', popup opens on To-Do tab with linked measurable (no measurable tab in popup). */
+  /** When 'measurable', popup opens on Clearance tab with linked measurable (no measurable tab in popup). */
   initialType?: CreateType | 'measurable';
-  /** Pre-fill title when opening Create To-Do or Create Issue (e.g. "Review 3 Measurables") */
+  /** Pre-fill title when opening Create Clearance or Create Turbulence (e.g. "Review 3 Measurables") */
   initialTitle?: string;
-  /** Pre-fill description when opening Create To-Do or Create Issue (e.g. "Measurables:\n• Item 1") */
+  /** Pre-fill description when opening Create Clearance or Create Turbulence (e.g. "Measurables:\n• Item 1") */
   initialDescription?: string;
   /** When creating from a row (e.g. "Link issue" from rock, or create from measurable): pre-set link so the new issue/todo shows "Linking to" (measurable is display-only; backend also supports rock_milestone) */
   initialLinkedEntity?: CreatePopupLinkedEntity;
@@ -646,10 +646,10 @@ export function CreatePopup({
               <span className="text-xl font-semibold text-foreground shrink-0">
                 Create
               </span>
-              <span className="text-xl font-semibold text-primary shrink-0">
+              <span className="text-xl font-semibold text-primary shrink-0 ml-2">
                 {CREATE_TYPE_OPTIONS.find((o) => o.value === createType)?.label ?? createType}
               </span>
-              <ChevronDown className="w-5 h-5 text-primary shrink-0" />
+              <ChevronDown className="w-5 h-5 text-primary shrink-0 mt-[5px]" />
             </button>
           </Dropdown>
         </div>
@@ -695,7 +695,7 @@ export function CreatePopup({
                 onSubmit={handleSubmit(onIssueSubmit)}
                 className="space-y-4"
               >
-                <div>
+                <div className="mt-5 pt-5 border-t border-border">
                   <label
                     htmlFor="create-title"
                     className="block text-sm font-medium text-foreground mb-1"
@@ -705,7 +705,7 @@ export function CreatePopup({
                   <input
                     id="create-title"
                     {...register("title")}
-                    placeholder="Add a title for the Turbulence (Issue)..."
+                    placeholder="Add a title for the Turbulence..."
                     className={`w-full px-3 py-2 border rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ${
                       errors.title ? "border-red-500" : "border-border"
                     }`}
@@ -740,7 +740,7 @@ export function CreatePopup({
 
                 {/* Priority | Who | Team | Interval — 2 columns */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  <div className="mt-5 pt-5 border-t border-border">
                     <label
                       htmlFor="create-priority"
                       className="block text-sm font-medium text-foreground mb-1"
@@ -776,7 +776,7 @@ export function CreatePopup({
                       render={({ field }) => (
                         <Select
                           id="create-who"
-                          placeholder="Select who the Issue is with..."
+                          placeholder="Select who the Turbulence is with..."
                           value={field.value || undefined}
                           onChange={(v) => field.onChange(v ?? "")}
                           options={issueTeamMembers.map((m) => ({
@@ -814,8 +814,8 @@ export function CreatePopup({
                         />
                       )}
                     />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Changing the team will affect which users the Issue can be
+                    <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">
+                      Changing the team will affect which users the Turbulence can be
                       assigned to.
                     </p>
                   </div>
@@ -847,7 +847,7 @@ export function CreatePopup({
 
                 {linkedEntity && <LinkingToSection linkedEntity={linkedEntity} />}
 
-                <div>
+                <div className="mt-5 pt-5 border-t border-border">
                   <label className="block text-sm font-medium text-foreground mb-1">
                     Attachments
                   </label>
@@ -862,14 +862,11 @@ export function CreatePopup({
                   <button
                     type="button"
                     onClick={handleAttachmentClick}
-                    className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-md text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors text-sm"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-white text-foreground hover:bg-accent transition-colors text-sm font-medium"
                   >
                     <Paperclip className="w-4 h-4" />
                     Add attachment
                   </button>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Allowed: PDF, DOC, DOCX, XLS, XLSX
-                  </p>
                   {attachmentError && (
                     <p className="mt-1 text-xs text-red-600">{attachmentError}</p>
                   )}
@@ -914,7 +911,7 @@ export function CreatePopup({
                       className={`w-full px-3 py-2 border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary ${
                         rockForm.formState.errors.title ? "border-red-500" : "border-border"
                       }`}
-                      placeholder="Add a title for the Rock..."
+                      placeholder="Add a title for the Waypoint..."
                     />
                     {rockForm.formState.errors.title && (
                       <p className="text-sm text-red-600 mt-1">
@@ -938,13 +935,13 @@ export function CreatePopup({
                       )}
                     />
                   </div>
-                  <label className="flex items-center gap-2 cursor-pointer">
+                  <label className="w-1/2 flex items-center gap-3 rounded-lg border border-border border-t-2 border-t-primary bg-white px-3 py-3.5 cursor-pointer">
                     <input
                       type="checkbox"
                       {...rockForm.register("isCompanyRock")}
                       className="rounded border-border"
                     />
-                    <span className="text-sm text-foreground">Company Rock</span>
+                    <span className="text-sm font-medium text-foreground">Company Rock</span>
                   </label>
                   {rockOwnerOptions.length > 0 && (
                     <div>
@@ -1063,8 +1060,7 @@ export function CreatePopup({
 
                   {linkedEntity && <LinkingToSection linkedEntity={linkedEntity} />}
 
-                  <div className="pt-4">
-                    <hr className="border-border mb-4" />
+                  <div>
                     <label className="block text-sm font-medium text-foreground mb-1">
                       Attachments
                     </label>
@@ -1079,14 +1075,11 @@ export function CreatePopup({
                     <button
                       type="button"
                       onClick={handleRockAttachmentClick}
-                      className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-md text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors text-sm"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-white text-foreground hover:bg-accent transition-colors text-sm font-medium"
                     >
                       <Paperclip className="w-4 h-4" />
                       Add attachment
                     </button>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Allowed: PDF, DOC, DOCX, XLS, XLSX
-                    </p>
                     {rockAttachmentError && (
                       <p className="mt-1 text-xs text-red-600">{rockAttachmentError}</p>
                     )}
@@ -1125,7 +1118,7 @@ export function CreatePopup({
                       className={`w-full px-3 py-2 border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary ${
                         todoForm.formState.errors.title ? "border-red-500" : "border-border"
                       }`}
-                      placeholder="Add a title for the To-Do..."
+                      placeholder="Add a title for the Clearance..."
                     />
                     {todoForm.formState.errors.title && (
                       <p className="text-sm text-red-600 mt-1">{todoForm.formState.errors.title.message}</p>
@@ -1205,7 +1198,7 @@ export function CreatePopup({
                         />
                       )}
                     />
-                    <p className="mt-1 text-xs text-muted-foreground">To-Do must be assigned to a team.</p>
+                    <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Clearance must be assigned to a crew.</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1">Team member (optional)</label>
@@ -1226,16 +1219,15 @@ export function CreatePopup({
                         />
                       )}
                     />
-                    <p className="mt-1 text-xs text-muted-foreground">Optionally assign to a member of the selected team.</p>
+                    <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Optionally assign to a member of the selected team.</p>
                   </div>
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="w-1/2 flex items-center gap-3 rounded-lg border border-border border-t-2 border-t-primary bg-white px-3 py-3.5 cursor-pointer">
                   <input type="checkbox" {...todoForm.register("private")} className="rounded border-border" />
-                  <span className="text-sm text-foreground">Make this To-Do private.</span>
+                  <span className="text-sm font-medium text-foreground">Make this Clearance private.</span>
                 </label>
                 {linkedEntity && <LinkingToSection linkedEntity={linkedEntity} />}
-                <div className="pt-4">
-                  <hr className="border-border mb-4" />
+                <div className="mt-5 pt-5 border-t border-border">
                   <label className="block text-sm font-medium text-foreground mb-1">Attachments</label>
                   <input
                     ref={todoFileInputRef}
@@ -1248,12 +1240,11 @@ export function CreatePopup({
                   <button
                     type="button"
                     onClick={handleTodoAttachmentClick}
-                    className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-md text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors text-sm"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-white text-foreground hover:bg-accent transition-colors text-sm font-medium"
                   >
                     <Paperclip className="w-4 h-4" />
                     Add attachment
                   </button>
-                  <p className="mt-1 text-xs text-muted-foreground">Allowed: PDF, DOC, DOCX, XLS, XLSX</p>
                   {todoAttachmentError && <p className="mt-1 text-xs text-red-600">{todoAttachmentError}</p>}
                   {todoAttachmentFiles.length > 0 && (
                     <ul className="mt-2 space-y-1">
@@ -1274,7 +1265,7 @@ export function CreatePopup({
             )}
             {createType === "headline" && (
               <form id="create-headline-form" onSubmit={headlineForm.handleSubmit(onHeadlineSubmit)} className="space-y-4">
-                <div>
+                <div className="mt-5 pt-5 border-t border-border">
                   <label className="block text-sm font-medium text-foreground mb-1">Title <span className="text-red-500">*</span></label>
                   <input
                     {...headlineForm.register("title")}
@@ -1315,11 +1306,10 @@ export function CreatePopup({
                       />
                     )}
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">Changing the team will affect which users the Headline can be assigned to.</p>
+                  <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Changing the team will affect which users the Headline can be assigned to.</p>
                 </div>
                 {linkedEntity && <LinkingToSection linkedEntity={linkedEntity} />}
-                <div className="pt-4">
-                  <hr className="border-border mb-4" />
+                <div>
                   <label className="block text-sm font-medium text-foreground mb-1">Attachments</label>
                   <input
                     ref={headlineFileInputRef}
@@ -1332,12 +1322,11 @@ export function CreatePopup({
                   <button
                     type="button"
                     onClick={handleHeadlineAttachmentClick}
-                    className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-md text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors text-sm"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-white text-foreground hover:bg-accent transition-colors text-sm font-medium"
                   >
                     <Paperclip className="w-4 h-4" />
                     Add attachment
                   </button>
-                  <p className="mt-1 text-xs text-muted-foreground">Allowed: PDF, DOC, DOCX, XLS, XLSX</p>
                   {headlineAttachmentError && <p className="mt-1 text-xs text-red-600">{headlineAttachmentError}</p>}
                   {headlineAttachmentFiles.length > 0 && (
                     <ul className="mt-2 space-y-1">
@@ -1398,11 +1387,10 @@ export function CreatePopup({
                       />
                     )}
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">Changing the team will affect which users can own the Cascading Message.</p>
+                  <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Changing the team will affect which users can own the Cascading Message.</p>
                 </div>
                 {linkedEntity && <LinkingToSection linkedEntity={linkedEntity} />}
-                <div className="pt-4">
-                  <hr className="border-border mb-4" />
+                <div>
                   <label className="block text-sm font-medium text-foreground mb-1">Attachments</label>
                   <input
                     ref={cascadingFileInputRef}
@@ -1415,12 +1403,11 @@ export function CreatePopup({
                   <button
                     type="button"
                     onClick={handleCascadingAttachmentClick}
-                    className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-md text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors text-sm"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-white text-foreground hover:bg-accent transition-colors text-sm font-medium"
                   >
                     <Paperclip className="w-4 h-4" />
                     Add attachment
                   </button>
-                  <p className="mt-1 text-xs text-muted-foreground">Allowed: PDF, DOC, DOCX, XLS, XLSX</p>
                   {cascadingAttachmentError && <p className="mt-1 text-xs text-red-600">{cascadingAttachmentError}</p>}
                   {cascadingAttachmentFiles.length > 0 && (
                     <ul className="mt-2 space-y-1">
@@ -1449,7 +1436,7 @@ export function CreatePopup({
                 disabled={isSubmitting}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 text-sm font-medium"
               >
-                Create Turbulence (Issue)
+                Create Turbulence
               </button>
               <button
                 type="button"
@@ -1468,7 +1455,7 @@ export function CreatePopup({
                 disabled={rockForm.formState.isSubmitting}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 text-sm font-medium"
               >
-                Create Rock
+                Create Waypoint
               </button>
               <button type="button" onClick={onClose} className="px-4 py-2 border border-border rounded-md hover:bg-accent text-foreground text-sm font-medium">
                 Cancel
@@ -1483,7 +1470,7 @@ export function CreatePopup({
                 disabled={todoForm.formState.isSubmitting}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 text-sm font-medium"
               >
-                Create To-Do
+                Create Clearance
               </button>
               <button type="button" onClick={onClose} className="px-4 py-2 border border-border rounded-md hover:bg-accent text-foreground text-sm font-medium">
                 Cancel

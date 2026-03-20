@@ -341,16 +341,16 @@ function ScorecardTableCard({
                         )}
                       </div>
                       <div className="border-t border-border my-2" role="separator" />
-                      {/* Create To-Do / Create Issue (with linking to measurable) */}
+                      {/* Create Clearance / Create Turbulence (with linking to measurable) */}
                       <div className="px-2 py-1 space-y-0.5">
                         {onCreateTodo && selectedMeasurables.length > 0 && (
                           <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-md" onClick={() => { setSelectActionOpen(false); onCreateTodo(selectedMeasurables); setSelectedIds(new Set()); }}>
-                            <CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create To-Do
+                            <CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Clearance
                           </button>
                         )}
                         {onCreateIssue && selectedMeasurables.length > 0 && (
                           <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-md" onClick={() => { setSelectActionOpen(false); onCreateIssue(selectedMeasurables); setSelectedIds(new Set()); }}>
-                            <AlertTriangle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Issue
+                            <AlertTriangle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Turbulence
                           </button>
                         )}
                       </div>
@@ -712,6 +712,7 @@ export function InstrumentsSegmentView({
   const [createMeasurableGoalValue, setCreateMeasurableGoalValue] = useState(0);
   const [createMeasurableRollup, setCreateMeasurableRollup] = useState('Total (default)');
   const [createMeasurableFormulaBuilder, setCreateMeasurableFormulaBuilder] = useState(false);
+  const [savingMeasurable, setSavingMeasurable] = useState(false);
   const [editGroupId, setEditGroupId] = useState<string | null>(null);
   const [editGroupInitial, setEditGroupInitial] = useState<{ name: string; description: string } | null>(null);
   const [createGroupSaving, setCreateGroupSaving] = useState(false);
@@ -724,6 +725,7 @@ export function InstrumentsSegmentView({
   const [scorecardRedo, setScorecardRedo] = useState<MeasurableRow[][]>([]);
   const measurablesRef = useRef<MeasurableRow[]>(measurables);
   measurablesRef.current = measurables;
+  const measurableUpsertGuardRef = useRef<{ payloadKey: string; ts: number } | null>(null);
 
   const periodColumns = useMemo(() => {
     if (timeframe === 'weekly') return getWeekRangeLabels(13);
@@ -1082,16 +1084,22 @@ export function InstrumentsSegmentView({
   );
   const handleCreateTodoFromMeasurable = useCallback((measurables: MeasurableRow[]) => {
     const n = measurables.length;
-    const title = `Review ${n} Measurable${n === 1 ? '' : 's'}`;
-    const description = 'Measurables:\n' + measurables.map((m) => '• ' + m.title).join('\n');
     const first = measurables[0];
+    const title =
+      n === 1 && first
+        ? `Clearance: ${first.title}`
+        : `Clearance: ${n} Measurable${n === 1 ? '' : 's'}`;
+    const description = 'Measurables:\n' + measurables.map((m) => '• ' + m.title).join('\n');
     onOpenCreate?.('todo', { title, description, linkedEntity: first ? { type: 'measurable', id: first.id, title: first.title } : undefined });
   }, [onOpenCreate]);
   const handleCreateIssueFromMeasurable = useCallback((measurables: MeasurableRow[]) => {
     const n = measurables.length;
-    const title = `Review ${n} Measurable${n === 1 ? '' : 's'}`;
-    const description = 'Measurables:\n' + measurables.map((m) => '• ' + m.title).join('\n');
     const first = measurables[0];
+    const title =
+      n === 1 && first
+        ? `Turbulence: ${first.title}`
+        : `Turbulence: ${n} Measurable${n === 1 ? '' : 's'}`;
+    const description = 'Measurables:\n' + measurables.map((m) => '• ' + m.title).join('\n');
     onOpenCreate?.('issue', { title, description, linkedEntity: first ? { type: 'measurable', id: first.id, title: first.title } : undefined });
   }, [onOpenCreate]);
   const handleMoveToGroup = useCallback(
@@ -1770,47 +1778,49 @@ export function InstrumentsSegmentView({
               <button
                 type="button"
                 onClick={async () => {
+                  if (savingMeasurable) return;
                   if (!createMeasurableTitle.trim()) return;
                   const goalOp = createMeasurableOrientation.includes('Greater') ? '>=' : createMeasurableOrientation.includes('Less') ? '<=' : '=';
                   const goalStr = `${goalOp} ${createMeasurableGoalValue}`;
+                  setSavingMeasurable(true);
+                  const persistMeasurables = async (rows: MeasurableRow[]) => {
+                    if (!organizationId || !meetingId) return;
+                    const payload = rows.map((mm, i) => ({
+                      id: mm.id,
+                      scorecardGroupId: mm.groupId === undefined || mm.groupId === 'main' ? null : mm.groupId,
+                      title: mm.title,
+                      goal: mm.goal,
+                      average: mm.average,
+                      total: mm.total,
+                      trend: mm.trend,
+                      periodValues: mm.periodValues,
+                      order: i,
+                    }));
+                    const payloadKey = JSON.stringify(payload);
+                    const guard = measurableUpsertGuardRef.current;
+                    const now = Date.now();
+                    if (guard && guard.payloadKey === payloadKey && now - guard.ts < 1000) return;
+                    measurableUpsertGuardRef.current = { payloadKey, ts: now };
+                    await scorecardMeasurablesService.upsert(organizationId, meetingId, payload);
+                  };
                   if (editingMeasurable) {
                     pushScorecardHistory();
-                    setMeasurables((prev) => {
-                      const next = prev.map((m) =>
-                        m.id === editingMeasurable.id
-                          ? {
-                              ...m,
-                              title: createMeasurableTitle.trim(),
-                              goal: createMeasurableShowGoal ? goalStr : '',
-                              average: createMeasurableShowAverage ? m.average : '',
-                              total: createMeasurableShowTotal ? m.total : '',
-                              showGoal: createMeasurableShowGoal,
-                              showAverage: createMeasurableShowAverage,
-                              showTotal: createMeasurableShowTotal,
-                            }
-                          : m
-                      );
-                      if (organizationId && meetingId) {
-                        scorecardMeasurablesService
-                          .upsert(
-                            organizationId,
-                            meetingId,
-                            next.map((mm, i) => ({
-                              id: mm.id,
-                              scorecardGroupId: mm.groupId === undefined || mm.groupId === 'main' ? null : mm.groupId,
-                              title: mm.title,
-                              goal: mm.goal,
-                              average: mm.average,
-                              total: mm.total,
-                              trend: mm.trend,
-                              periodValues: mm.periodValues,
-                              order: i,
-                            }))
-                          )
-                          .catch((e) => console.error('Failed to save measurable', e));
-                      }
-                      return next;
-                    });
+                    const next = measurablesRef.current.map((m) =>
+                      m.id === editingMeasurable.id
+                        ? {
+                            ...m,
+                            title: createMeasurableTitle.trim(),
+                            goal: createMeasurableShowGoal ? goalStr : '',
+                            average: createMeasurableShowAverage ? m.average : '',
+                            total: createMeasurableShowTotal ? m.total : '',
+                            showGoal: createMeasurableShowGoal,
+                            showAverage: createMeasurableShowAverage,
+                            showTotal: createMeasurableShowTotal,
+                          }
+                        : m
+                    );
+                    setMeasurables(next);
+                    await persistMeasurables(next).catch((e) => console.error('Failed to save measurable', e));
                     setEditingMeasurable(null);
                     setCreateMeasurableOpen(false);
                     setCreateMeasurableTitle('');
@@ -1819,9 +1829,13 @@ export function InstrumentsSegmentView({
                     setCreateMeasurableShowTotal(true);
                     setCreateMeasurableShowAverage(true);
                     setCreateMeasurableShowGoal(true);
+                    setSavingMeasurable(false);
                     return;
                   }
-                  if (createMeasurableForGroupId == null) return;
+                  if (createMeasurableForGroupId == null) {
+                    setSavingMeasurable(false);
+                    return;
+                  }
                   const newId = `m-${Date.now()}`;
                   const displayGroupId = createMeasurableForGroupId === 'main' ? undefined : createMeasurableForGroupId;
                   const newRow: MeasurableRow = {
@@ -1838,29 +1852,9 @@ export function InstrumentsSegmentView({
                     showTotal: createMeasurableShowTotal,
                   };
                   pushScorecardHistory();
-                  setMeasurables((prev) => {
-                    const next = [...prev, newRow];
-                    if (organizationId && meetingId) {
-                      scorecardMeasurablesService
-                        .upsert(
-                          organizationId,
-                          meetingId,
-                          next.map((m, i) => ({
-                            id: m.id,
-                            scorecardGroupId: m.groupId === undefined || m.groupId === 'main' ? null : m.groupId,
-                            title: m.title,
-                            goal: m.goal,
-                            average: m.average,
-                            total: m.total,
-                            trend: m.trend,
-                            periodValues: m.periodValues,
-                            order: i,
-                          }))
-                        )
-                        .catch((e) => console.error('Failed to save new measurable', e));
-                    }
-                    return next;
-                  });
+                  const next = [...measurablesRef.current, newRow];
+                  setMeasurables(next);
+                  await persistMeasurables(next).catch((e) => console.error('Failed to save new measurable', e));
                   setCreateMeasurableOpen(false);
                   setCreateMeasurableTitle('');
                   setCreateMeasurableDescription('');
@@ -1869,10 +1863,12 @@ export function InstrumentsSegmentView({
                   setCreateMeasurableShowAverage(true);
                   setCreateMeasurableShowGoal(true);
                   setCreateMeasurableForGroupId(null);
+                  setSavingMeasurable(false);
                 }}
-                className="px-4 py-2.5 bg-primary text-primary-foreground border border-primary rounded-lg hover:bg-primary/90 text-sm font-medium cursor-pointer shadow-sm transition-colors"
+                disabled={savingMeasurable}
+                className="px-4 py-2.5 bg-primary text-primary-foreground border border-primary rounded-lg hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed text-sm font-medium cursor-pointer shadow-sm transition-colors"
               >
-                Save
+                {savingMeasurable ? 'Saving...' : 'Save'}
               </button>
               <button type="button" onClick={() => setCreateMeasurableCloseConfirmOpen(true)} className="px-4 py-2.5 border border-border bg-background text-foreground rounded-lg hover:bg-muted text-sm font-medium cursor-pointer transition-colors">Cancel</button>
             </footer>

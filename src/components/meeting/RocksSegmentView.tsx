@@ -62,7 +62,7 @@ const COLUMN_LABELS: Record<RockColumnId, string> = {
   next: 'Next',
   later: 'Later',
   future: 'Future',
-  long_term: 'Long-Term Turbulence (Issues)',
+  long_term: 'Long-Term Turbulence',
 };
 
 const STATUS_LABEL: Record<Rock['status'], string> = {
@@ -230,7 +230,7 @@ interface RocksSegmentViewProps {
 }
 
 export function RocksSegmentView({
-  sectionTitle = 'Waypoint Review (Rocks)',
+  sectionTitle = 'Waypoint Review',
   embedded = false,
   meetingId,
   organizationId,
@@ -2035,7 +2035,7 @@ function LinkExistingModal({
         <header className="p-4 border-b border-border shrink-0 flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-foreground">Link to Existing Items</h3>
-            <p className="text-sm text-muted-foreground">Link to Waypoints (Rocks): {rock.title}</p>
+            <p className="text-sm text-muted-foreground">Link to Waypoints: {rock.title}</p>
           </div>
           <button type="button" onClick={onClose} className="p-2 rounded hover:bg-muted" aria-label="Close"><X className="w-5 h-5" /></button>
         </header>
@@ -2053,7 +2053,7 @@ function LinkExistingModal({
             <div className="flex items-center justify-center text-muted-foreground text-sm py-8">Loading…</div>
           ) : items.length === 0 ? (
             <div className="flex items-center justify-center text-muted-foreground text-sm py-8">
-              There are no {tab === 'Rock' ? 'Waypoints (Rocks)' : tab === 'Milestone' ? 'Milestones' : tab === 'To-Do' ? 'Clearances (To-Dos)' : 'Turbulence (Issues)'} found with your team {teamName}.
+              There are no {tab === 'Rock' ? 'Waypoints' : tab === 'Milestone' ? 'Milestones' : tab === 'To-Do' ? 'Clearances' : 'Turbulence'} found with your team {teamName}.
             </div>
           ) : (
             <div className="space-y-2">
@@ -2091,7 +2091,7 @@ function LinkExistingModal({
             disabled={selectedIds.size === 0}
             className={`px-3 py-2 rounded-md text-sm font-medium ${selectedIds.size === 0 ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}
           >
-            Link items to Waypoints (Rocks)
+            Link items to Waypoints
           </button>
         </footer>
       </div>

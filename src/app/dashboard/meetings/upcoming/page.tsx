@@ -27,6 +27,7 @@ import { MeetingScheduledModal } from '@/components/meeting/MeetingScheduledModa
 import { QuickStartMeetingModal } from '@/components/meeting/QuickStartMeetingModal';
 import { SimpleTable } from '@/components/ui/SimpleTable';
 import { formatDate, formatTime } from '@/lib/formatDate';
+import { toast } from 'sonner';
 
 const RESUME_MEETING_KEY = 'meeting-app-resumeMeetingId';
 
@@ -67,7 +68,6 @@ export default function MeetingsUpcomingPage() {
     durationMinutes?: number;
   } | null>(null);
   const [orgRole, setOrgRole] = useState<string | null>(null);
-  const [startScheduleHint, setStartScheduleHint] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = typeof window !== 'undefined' ? localStorage.getItem('organizationRole') : null;
@@ -126,11 +126,6 @@ export default function MeetingsUpcomingPage() {
     if (!organizationId || !selectedTeamId) return;
     meetingSeriesService.list(organizationId, selectedTeamId).then(setAgendas).catch(() => setAgendas([]));
   }, [organizationId, selectedTeamId]);
-
-  useEffect(() => {
-    if (!selectedTeamId) return;
-    setStartScheduleHint(null);
-  }, [selectedTeamId]);
 
   // Refetch when user returns to this tab so all team members see in-progress/scheduled updates
   useEffect(() => {
@@ -242,26 +237,19 @@ export default function MeetingsUpcomingPage() {
           <div>
             <h2 className="text-xl font-semibold text-foreground">Upcoming</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              {isAdminOrManager ? 'Start or schedule meetings for your team.' : 'Upcoming meetings for your team.'}
+              {isAdminOrManager ? 'Initiate or schedule flight reviews for your crew.' : 'Upcoming flight reviews for your crew.'}
             </p>
           </div>
           <Select
             value={selectedTeamId || undefined}
             onChange={(v) => {
               setSelectedTeamId(v ?? '');
-              setStartScheduleHint(null);
             }}
             options={teams.map((t) => ({ label: t.name, value: t.id }))}
             className="min-w-[180px]"
             placeholder="Select team"
           />
         </div>
-
-        {startScheduleHint && (
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-foreground">
-            {startScheduleHint}
-          </div>
-        )}
 
         {/* Hero: background image with text and Start / Schedule buttons (admin/manager only, when no meeting in progress) */}
         {isAdminOrManager && !inProgressMeeting && (
@@ -276,10 +264,10 @@ export default function MeetingsUpcomingPage() {
             <div className="relative z-10 p-6 md:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 w-full text-center sm:text-left">
               <div>
                 <h3 className="text-lg md:text-xl font-semibold text-white">
-                  Run effective meetings with your team
+                  Run efficient flight reviews with your crew
                 </h3>
                 <p className="text-sm text-white/90 mt-1">
-                  Start a quick meeting now or schedule one for later.
+                  Initiate Flight Review now or schedule Flight Review for later.
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-3 shrink-0">
@@ -287,33 +275,31 @@ export default function MeetingsUpcomingPage() {
                   type="button"
                   onClick={() => {
                     if (!organizationId || !selectedTeamId) {
-                      setStartScheduleHint('Select a team first to start a quick meeting.');
+                      toast.info('Join a team first to initiate flight review.');
                       return;
                     }
                     setQuickStartModalOpen(true);
                   }}
-                  disabled={schedulingMeeting || !organizationId || !selectedTeamId}
+                  disabled={schedulingMeeting}
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-70 disabled:cursor-not-allowed"
-                  title={!selectedTeamId ? 'Select a team first' : undefined}
                 >
                   <Calendar className="w-4 h-4" />
-                  Start a quick meeting
+                  Initiate Flight Review
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     if (!organizationId || !selectedTeamId) {
-                      setStartScheduleHint('Select a team first to schedule a meeting.');
+                      toast.info('Join a team first to schedule flight review.');
                       return;
                     }
                     setScheduleModalOpen(true);
                   }}
-                  disabled={!organizationId || !selectedTeamId}
+                  disabled={!organizationId}
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-white/80 text-white bg-white/10 hover:bg-white/20 text-sm font-medium"
-                  title={!selectedTeamId ? 'Select a team first' : undefined}
                 >
                   <Clock className="w-4 h-4" />
-                  Schedule a meeting
+                  Schedule Flight Review
                 </button>
               </div>
             </div>
@@ -385,17 +371,17 @@ export default function MeetingsUpcomingPage() {
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="px-4 py-4 border-b border-border">
             <h3 className="text-lg font-semibold text-foreground">
-              Upcoming <span className="text-muted-foreground font-normal">{upcomingMeetings.length}</span>
+              Upcoming Flights <span className="text-muted-foreground font-normal">{upcomingMeetings.length}</span>
             </h3>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Meetings stay here until cancelled or ended. Includes scheduled, in progress, and not yet started.
+              Flight reviews remain here until completed or canceled. Includes scheduled, in progress, and not yet started.
             </p>
           </div>
           {isLoading ? (
             <div className="p-8 text-center text-muted-foreground text-sm">Loading…</div>
           ) : upcomingMeetings.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground text-sm">
-              {isAdminOrManager ? 'No upcoming meetings. Start or schedule one above.' : 'No upcoming meetings.'}
+              {isAdminOrManager ? 'No upcoming flight reviews. Initiate or schedule one above.' : 'No upcoming flight reviews.'}
             </div>
           ) : (
             <div className="overflow-x-auto">

@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { SettingsModal } from "@/components/SettingsModal";
 import { AntdProvider } from "@/components/AntdProvider";
+import { Toaster } from "sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,7 +25,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   title: "FlightDeck",
-  description: "FlightDeck OS — Weekly Flight Reviews, Waypoints (Rocks), Clearances (To-Dos), Turbulence (Issues), Instrument Panel.",
+  description: "FlightDeck OS — Weekly Flight Reviews, Waypoints, Clearances, Turbulence, Instrument Panel.",
 };
 
 export default function RootLayout({
@@ -60,6 +61,7 @@ export default function RootLayout({
             <AuthProvider>
               <SettingsProvider>
                 {children}
+                <Toaster position="top-right" richColors />
                 <SettingsModal />
               </SettingsProvider>
             </AuthProvider>

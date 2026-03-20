@@ -97,9 +97,9 @@ function formatDueDate(iso: string | null): string {
 function linkedEntityTypeLabel(type: string | null | undefined): string {
   if (!type) return 'Item';
   const map: Record<string, string> = {
-    issue: 'Turbulence (Issue)',
-    rock: 'Waypoint (Rock)',
-    todo: 'Clearance (To-Do)',
+    issue: 'Turbulence',
+    rock: 'Waypoint',
+    todo: 'Clearance',
     headline: 'Headline',
     cascading_message: 'Cascading message',
   };
@@ -446,7 +446,7 @@ export function TodosSegmentView({
       <div className="bg-card border border-border rounded-lg flex flex-col flex-1 min-h-0">
         <div className="p-4 border-b border-border flex items-center justify-between">
           <h3 className="font-semibold text-foreground">
-            Team Clearances (To-Dos) {filteredTodos.length}
+            Team Clearances {filteredTodos.length}
           </h3>
           <button
             type="button"
@@ -559,7 +559,7 @@ export function TodosSegmentView({
               onClick={handleAddTodo}
               className="text-primary hover:underline text-sm font-medium hover:text-primary/90 transition-colors cursor-pointer"
             >
-              + Add To-Do
+              + Add Clearance
             </button>
           )}
           {isAddingTodo && (
@@ -632,7 +632,7 @@ export function TodosSegmentView({
       </div>
       )}
 
-      {/* Edit To-Do right panel */}
+      {/* Edit Clearance right panel */}
       {editTodoId && (
         <EditTodoPanel
           todo={todos.find((t) => t.id === editTodoId)!}
@@ -902,15 +902,15 @@ function TodoRowMenu({
         <div className="px-2 py-1">
           <button type="button" className={btn} onClick={() => { onOpenCreate?.('rock', { linkedEntity: linkedTodo }); onClose(); }} role="menuitem">
             <Mountain className={icon} />
-            Link Waypoint (Rock)
+            Link Waypoint
           </button>
-          <button type="button" className={btn} onClick={() => { onOpenCreate?.('todo', { title: `To-Do: ${item.title}`, linkedEntity: linkedTodo }); onClose(); }} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('todo', { title: `Clearance: ${item.title}`, linkedEntity: linkedTodo }); onClose(); }} role="menuitem">
             <CheckSquare className={icon} />
-            Link To-Do
+            Link Clearance
           </button>
-          <button type="button" className={btn} onClick={() => { onOpenCreate?.('issue', { title: `Issue: ${item.title}`, linkedEntity: linkedTodo }); onClose(); }} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('issue', { title: `Turbulence: ${item.title}`, linkedEntity: linkedTodo }); onClose(); }} role="menuitem">
             <AlertCircle className={icon} />
-            Link Issue
+            Link Turbulence
           </button>
           <button type="button" className={btn} onClick={() => { onOpenCreate?.('headline', { title: item.title, linkedEntity: linkedTodo }); onClose(); }} role="menuitem">
             <Megaphone className={icon} />
@@ -1043,7 +1043,7 @@ export function EditTodoPanel({
               <Circle className="w-5 h-5" />
             )}
           </button>
-          <h2 className="font-semibold text-foreground">Edit To-Do</h2>
+          <h2 className="font-semibold text-foreground">Edit Clearance</h2>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -1139,7 +1139,7 @@ export function EditTodoPanel({
         </div>
         <div>
           <label className="block text-sm font-medium text-foreground mb-1">
-            Private To-Do:
+            Private Clearance:
           </label>
           <div className="flex items-center gap-2">
             <button
@@ -1158,7 +1158,7 @@ export function EditTodoPanel({
               />
             </button>
             <span className="text-sm text-muted-foreground">
-              This To-Do is visible to the entire team.
+              This clearance is visible to the entire crew.
             </span>
           </div>
         </div>
@@ -1179,7 +1179,7 @@ export function EditTodoPanel({
               className="w-full"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              To-Do must be assigned to a team.
+              Clearance must be assigned to a crew.
             </p>
           </div>
           <div>

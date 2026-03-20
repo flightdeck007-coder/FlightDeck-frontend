@@ -59,7 +59,7 @@ const demoData: Record<string, any> = {
   },
   headlines: {
     type: 'prompt',
-    content: 'Crew Headlines (Customer/Employee)',
+    content: 'Crew Headlines',
     empty: true,
   },
   rocks: {
@@ -307,7 +307,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
             {/* Add Button */}
             <button className="mt-4 flex items-center gap-2 px-4 py-2 border border-dashed border-border rounded-lg text-foreground/70 hover:text-foreground hover:border-primary/50 transition-colors">
               <Plus className="w-4 h-4" />
-              {sectionId === 'issues' ? 'Add Turbulence (Issue)' : sectionId === 'todos' ? 'Add Clearance (To-Do)' : 'Add Waypoint (Rock)'}
+              {sectionId === 'issues' ? 'Add Turbulence' : sectionId === 'todos' ? 'Add Clearance' : 'Add Waypoint'}
             </button>
 
             {/* Pagination */}

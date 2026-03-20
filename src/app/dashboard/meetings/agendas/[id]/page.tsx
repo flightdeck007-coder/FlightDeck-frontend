@@ -297,7 +297,7 @@ export default function AgendaEditPage() {
             className="inline-flex items-center gap-1 text-sm text-primary hover:underline mb-4"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back to {series.team?.name ?? 'Team'} Agendas
+            Back to {series.team?.name ?? 'Team'} Flight Plan
           </Link>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>

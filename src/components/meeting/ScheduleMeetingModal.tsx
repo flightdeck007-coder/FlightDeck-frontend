@@ -58,7 +58,7 @@ interface ScheduleMeetingModalProps {
   teamName: string;
   members: TeamMember[];
   currentUserId: string;
-  /** Agendas (meeting series) for the team; dropdown shows these. If empty, falls back to free-text name. */
+  /** Flight plans (meeting series) for the team; dropdown shows these. If empty, falls back to free-text name. */
   agendas?: MeetingSeries[];
   onClose: () => void;
   onScheduled: (payload: ScheduledMeetingPayload) => void;
@@ -97,7 +97,7 @@ export function ScheduleMeetingModal({
       return;
     }
     const selectedAgenda = agendas.find((a) => a.id === selectedAgendaId);
-    const agendaName = selectedAgenda?.name ?? (otherAgendaName.trim() || 'Meeting');
+    const agendaName = selectedAgenda?.name ?? (otherAgendaName.trim() || 'Flight Review');
     try {
       setSaving(true);
       onCreatingChange?.(true);

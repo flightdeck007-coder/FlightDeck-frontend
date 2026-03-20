@@ -20,7 +20,7 @@ export function LoginForm() {
 
     try {
       await login(email, password);
-      router.push(ROUTES.DASHBOARD);
+      router.push(ROUTES.OVERVIEW);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Login failed. Please try again.');
     } finally {

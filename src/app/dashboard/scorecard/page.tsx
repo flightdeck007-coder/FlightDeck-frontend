@@ -60,7 +60,7 @@ export default function ScorecardPage() {
       <div className="p-6 flex flex-col min-h-0 h-full">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4 shrink-0">
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Flight Desk (Scorecard)</h1>
+            <h1 className="text-2xl font-semibold text-foreground">Flight Desk</h1>
             <p className="text-sm text-muted-foreground mt-1">
               Key metrics and measurables. Select a meeting to view or edit its scorecard.
             </p>

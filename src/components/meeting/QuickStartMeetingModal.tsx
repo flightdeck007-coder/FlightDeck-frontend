@@ -52,7 +52,7 @@ export function QuickStartMeetingModal({
       >
         <div className="flex items-center justify-between mb-4">
           <h2 id="quick-start-meeting-title" className="text-lg font-semibold text-foreground">
-            Start a quick meeting
+            Initiate Flight Review
           </h2>
           <button
             type="button"
@@ -64,18 +64,18 @@ export function QuickStartMeetingModal({
           </button>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Choose an agenda to start the meeting now.
+          Choose a flight plan to initiate flight review now.
         </p>
         {agendas.length === 0 ? (
           <p className="text-sm text-amber-600 dark:text-amber-400 mb-4">
-            No agendas for this team. Create one in Agendas first.
+            No flight plans for this team. Create one in Flight Plan first.
           </p>
         ) : (
           <>
             <div className="mb-4">
-              <label className="block text-sm font-medium text-foreground mb-1">Agenda</label>
+              <label className="block text-sm font-medium text-foreground mb-1">Flight Plan</label>
               <Select
-                placeholder="Select agenda"
+                placeholder="Select flight plan"
                 value={selectedAgendaId || undefined}
                 onChange={(v) => setSelectedAgendaId(v ?? '')}
                 options={agendas.map((a) => ({ label: a.name, value: a.id }))}
@@ -103,7 +103,7 @@ export function QuickStartMeetingModal({
             className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium disabled:opacity-70 disabled:cursor-not-allowed"
           >
             <Play className="w-4 h-4" />
-            {isStarting ? 'Starting…' : 'Start meeting'}
+            {isStarting ? 'Initiating…' : 'Initiate Flight Review'}
           </button>
         </div>
       </div>

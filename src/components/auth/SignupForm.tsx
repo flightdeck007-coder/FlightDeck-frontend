@@ -89,7 +89,7 @@ export function SignupForm() {
         orgChoice === 'join' ? inviteCode : undefined,
         orgChoice === 'create' ? orgName : undefined,
       );
-      router.push(ROUTES.DASHBOARD);
+      router.push(ROUTES.OVERVIEW);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Registration failed. Please try again.');
     } finally {

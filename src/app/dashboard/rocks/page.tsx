@@ -67,7 +67,7 @@ export default function RocksPage() {
       <div className="p-6 flex flex-col min-h-0 h-full">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4 shrink-0">
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Waypoints (Rocks)</h1>
+            <h1 className="text-2xl font-semibold text-foreground">Waypoints</h1>
             <p className="text-sm text-muted-foreground mt-1">
               Rocks are per meeting. Select a meeting to view or edit its waypoints.
             </p>
@@ -102,7 +102,7 @@ export default function RocksPage() {
             <RocksProvider meetingId={selectedMeetingId} organizationId={organizationId}>
               <div className="flex-1 min-h-0 flex flex-col">
                 <RocksSegmentView
-                  sectionTitle="Waypoint Review (Rocks)"
+                  sectionTitle="Waypoint Review"
                   meetingId={selectedMeetingId}
                   organizationId={organizationId}
                   teamId={selectedTeamId || undefined}

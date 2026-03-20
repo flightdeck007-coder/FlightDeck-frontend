@@ -17,7 +17,7 @@ export function About() {
     {
       icon: Users,
       title: 'Weekly Flight Reviews',
-      description: 'Structured L10 meetings with agendas and accountability tracking',
+      description: 'Structured flight reviews with flight plans and accountability tracking',
     },
     {
       icon: CheckCircle2,
@@ -59,8 +59,8 @@ export function About() {
           </h3>
           <p className="text-foreground/80 leading-relaxed mb-4">
             Weekly Flight Reviews are structured sessions designed to help crews operate at peak
-            performance. Based on the Entrepreneurial Operating System (EOS) and Level 10 Meeting™
-            format, these reviews follow a consistent agenda that keeps everyone aligned, accountable,
+            performance. Based on the Entrepreneurial Operating System (EOS), these reviews follow
+            a consistent flight plan that keeps everyone aligned, accountable,
             and focused on waypoints (goals), clearances (to-dos), and resolving turbulence (issues).
           </p>
           <p className="text-foreground/80 leading-relaxed">

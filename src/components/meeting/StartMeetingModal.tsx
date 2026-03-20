@@ -26,7 +26,7 @@ export function StartMeetingModal({
       >
         <div className="flex items-center justify-between mb-4">
           <h2 id="start-meeting-title" className="text-lg font-semibold text-foreground">
-            Start or schedule a meeting
+            Initiate or schedule flight reviews for your crew
           </h2>
           <button
             type="button"
@@ -38,7 +38,7 @@ export function StartMeetingModal({
           </button>
         </div>
         <p className="text-sm text-foreground/70 mb-6">
-          Start a quick meeting now or schedule one for later (date, time, and facilitator).
+          Initiate Flight Review now or schedule Flight Review for later (date, time, and facilitator).
         </p>
         <div className="flex flex-col gap-3">
           <button
@@ -48,7 +48,7 @@ export function StartMeetingModal({
             className="flex items-center gap-3 px-4 py-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-left font-medium disabled:opacity-70 disabled:cursor-not-allowed"
           >
             <Calendar className="w-5 h-5 shrink-0" />
-            <span>Start a quick meeting</span>
+            <span>Initiate Flight Review</span>
           </button>
           <button
             type="button"
@@ -56,7 +56,7 @@ export function StartMeetingModal({
             className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border text-foreground hover:bg-foreground/10 transition-colors text-left font-medium"
           >
             <Clock className="w-5 h-5 shrink-0" />
-            <span>Schedule a meeting</span>
+            <span>Schedule Flight Review</span>
           </button>
         </div>
         <div className="mt-4 flex justify-end">

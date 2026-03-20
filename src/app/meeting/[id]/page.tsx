@@ -27,13 +27,13 @@ import { SECTION_DISPLAY_TITLES } from '@/lib/constants/flightTerminology';
 
 // L10 Meeting Format Sections: flight-first display; IDs stay canonical for content lookup.
 const meetingSections = [
-  { id: 'segue', title: SECTION_DISPLAY_TITLES.segue ?? 'Pre-Flight (Segue)', duration: 5, order: 1 },
-  { id: 'scorecard', title: SECTION_DISPLAY_TITLES.scorecard ?? 'Flight Desk (Scorecard)', duration: 5, order: 2 },
-  { id: 'rocks', title: SECTION_DISPLAY_TITLES.rocks ?? 'Waypoint Review (Rocks)', duration: 5, order: 3 },
-  { id: 'headlines', title: SECTION_DISPLAY_TITLES.headlines ?? 'Crew Headlines (Customer/Employee)', duration: 5, order: 4 },
-  { id: 'todos', title: SECTION_DISPLAY_TITLES.todos ?? 'Clearances (To-Dos)', duration: 5, order: 5 },
-  { id: 'issues', title: SECTION_DISPLAY_TITLES.issues ?? 'Turbulence (Issues)', duration: 60, order: 6 },
-  { id: 'conclude', title: SECTION_DISPLAY_TITLES.conclude ?? 'Debrief (Conclude)', duration: 5, order: 7 },
+  { id: 'segue', title: SECTION_DISPLAY_TITLES.segue ?? 'Pre-Flight', duration: 5, order: 1 },
+  { id: 'scorecard', title: SECTION_DISPLAY_TITLES.scorecard ?? 'Flight Desk', duration: 5, order: 2 },
+  { id: 'rocks', title: SECTION_DISPLAY_TITLES.rocks ?? 'Waypoint Review', duration: 5, order: 3 },
+  { id: 'headlines', title: SECTION_DISPLAY_TITLES.headlines ?? 'Crew Headlines', duration: 5, order: 4 },
+  { id: 'todos', title: SECTION_DISPLAY_TITLES.todos ?? 'Clearances', duration: 5, order: 5 },
+  { id: 'issues', title: SECTION_DISPLAY_TITLES.issues ?? 'Turbulence', duration: 60, order: 6 },
+  { id: 'conclude', title: SECTION_DISPLAY_TITLES.conclude ?? 'Debrief', duration: 5, order: 7 },
 ];
 
 // Map API section titles (flight (real) or legacy) to canonical section id for content
@@ -53,8 +53,8 @@ const sectionTitleToId: Record<string, string> = {
   'TURBULENCE': 'issues', 'IDS™': 'issues', 'ISSUES': 'issues',
   'DEBRIEF': 'conclude', 'CONCLUDE': 'conclude',
   // Flight-first display titles (for reference / if API returns them)
-  'Pre-Flight (Segue)': 'segue', 'Flight Desk (Scorecard)': 'scorecard', 'Waypoint Review (Rocks)': 'rocks',
-  'Crew Headlines (Customer/Employee)': 'headlines', 'Clearances (To-Dos)': 'todos', 'Turbulence (Issues)': 'issues', 'Debrief (Conclude)': 'conclude',
+  'Pre-Flight': 'segue', 'Flight Desk': 'scorecard', 'Waypoint Review': 'rocks',
+  'Crew Headlines': 'headlines', 'Clearances': 'todos', 'Turbulence': 'issues', 'Debrief': 'conclude',
 };
 
 const VALID_SEGMENT_IDS = ['segue', 'scorecard', 'rocks', 'headlines', 'todos', 'issues', 'conclude'];
@@ -749,7 +749,7 @@ export default function MeetingPage() {
             {showManager ? (
               <>
                 <Link href={`${pathname}?segment=scorecard`} className="text-sm font-medium text-primary hover:underline flex items-center gap-1 shrink-0">
-                  <ArrowLeft className="w-4 h-4" /> Back to Flight Desk (Scorecard)
+                  <ArrowLeft className="w-4 h-4" /> Back to Flight Desk
                 </Link>
                 <h1 className="text-lg font-semibold text-foreground truncate">Measurable Manager</h1>
               </>

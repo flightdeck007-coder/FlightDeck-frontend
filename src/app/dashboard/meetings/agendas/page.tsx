@@ -87,10 +87,10 @@ export default function MeetingsAgendasPage() {
     <>
       <div className="max-w-4xl mx-auto">
         <h2 className="text-xl font-semibold text-foreground">
-          Agendas <span className="text-muted-foreground font-normal">{agendas.length}</span>
+          Flight Plan <span className="text-muted-foreground font-normal">{agendas.length}</span>
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Manage meeting agendas for your team.
+          Manage flight plans for your crew.
         </p>
 
         <div className="mt-6 bg-card rounded-xl overflow-hidden">
@@ -110,7 +110,7 @@ export default function MeetingsAgendasPage() {
             ) : agendas.length === 0 ? (
               <tr>
                 <td colSpan={2} className="px-4 py-10 text-center text-muted-foreground text-sm">
-                  No agendas yet. Create one below.
+                  No flight plans yet. Create one below.
                 </td>
               </tr>
             ) : (
@@ -140,7 +140,7 @@ export default function MeetingsAgendasPage() {
                 className="text-primary hover:text-primary/80 font-medium text-sm flex items-center gap-1"
               >
                 <Plus className="w-4 h-4" />
-                Create Agenda
+                Create Flight Plan
               </button>
             </div>
           )}
@@ -152,13 +152,13 @@ export default function MeetingsAgendasPage() {
           <div className="fixed inset-0 bg-black/20 z-40" onClick={() => { setCreateModalOpen(false); setNewAgendaName(''); }} aria-hidden />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="bg-card border border-border rounded-lg shadow-xl max-w-sm w-full p-6">
-              <h3 className="text-lg font-semibold text-foreground mb-2">Create Agenda</h3>
-              <p className="text-sm text-muted-foreground mb-4">Add a new meeting agenda for this team.</p>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Create Flight Plan</h3>
+              <p className="text-sm text-muted-foreground mb-4">Add a new flight plan for this team.</p>
               <input
                 type="text"
                 value={newAgendaName}
                 onChange={(e) => setNewAgendaName(e.target.value)}
-                placeholder="e.g. Level 10 Meeting™"
+                placeholder="e.g. Weekly Flight Review"
                 className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-primary"
                 onKeyDown={(e) => e.key === 'Enter' && handleCreateAgenda()}
               />

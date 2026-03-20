@@ -87,7 +87,7 @@ export function LandingNavbar() {
                       <p className="text-xs text-foreground/60 truncate">{user.email}</p>
                     </div>
                     <Link
-                      href={ROUTES.DASHBOARD}
+                      href={ROUTES.OVERVIEW}
                       onClick={() => setMenuOpen(false)}
                       className="flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-foreground/10 transition-colors"
                     >

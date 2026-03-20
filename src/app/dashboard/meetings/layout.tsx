@@ -8,9 +8,9 @@ import { FLIGHT_TERMS } from '@/lib/constants/flightTerminology';
 import { ROUTES } from '@/lib/constants/routes';
 
 const ALL_NAV_LINKS: Array<{ href: string; label: string; adminOrManagerOnly?: boolean }> = [
-  { href: ROUTES.MEETINGS_UPCOMING, label: 'Upcoming' },
-  { href: ROUTES.MEETINGS_PAST, label: 'Past Meetings' },
-  { href: ROUTES.MEETINGS_AGENDAS, label: 'Agendas', adminOrManagerOnly: true },
+  { href: ROUTES.MEETINGS_UPCOMING, label: 'Upcoming Flights' },
+  { href: ROUTES.MEETINGS_PAST, label: 'Flight Logs' },
+  { href: ROUTES.MEETINGS_AGENDAS, label: 'Flight Plan', adminOrManagerOnly: true },
 ];
 
 /** True when we're on an agenda edit page (e.g. /dashboard/meetings/agendas/abc-123). */

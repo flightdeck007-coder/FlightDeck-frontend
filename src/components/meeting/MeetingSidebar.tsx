@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Pause, Play, Square, LogOut, FileText, AlertTriangle, Eye, EyeOff, Loader2, Users, User, RefreshCw, X, UserCog, Pencil, Settings } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pause, Play, Flag, LogOut, FileText, AlertTriangle, Eye, EyeOff, Loader2, Users, User, RefreshCw, X, UserCog, Pencil, Settings } from 'lucide-react';
 import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { meetingsService, type Meeting } from '@/lib/api/meetings.service';
@@ -352,7 +352,7 @@ export function MeetingSidebar({
                   <AlertTriangle className="w-14 h-14 text-foreground stroke-[1.5]" />
                 </div>
                 <p className="text-sm text-foreground mb-1">It&apos;s time to get back on topic.</p>
-                <p className="text-sm text-muted-foreground mb-6">Create an Issue if the tangent is worth revisiting.</p>
+                <p className="text-sm text-muted-foreground mb-6">Create Turbulence if the tangent is worth revisiting.</p>
                 <button
                   type="button"
                   onClick={() => setTangentModalOpen(false)}
@@ -558,9 +558,9 @@ export function MeetingSidebar({
             {finishLoading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <Square className="w-4 h-4" />
+              <Flag className="w-4 h-4" />
             )}
-            Finish
+            End Flight Review
           </button>
         ) : (
           <>

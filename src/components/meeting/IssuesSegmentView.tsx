@@ -42,9 +42,9 @@ const PAGE_SIZES = [10, 25, 50];
 function linkedEntityTypeLabel(type: string | null | undefined): string {
   if (!type) return 'Item';
   const map: Record<string, string> = {
-    issue: 'Turbulence (Issue)',
-    rock: 'Waypoint (Rock)',
-    todo: 'Clearance (To-Do)',
+    issue: 'Turbulence',
+    rock: 'Waypoint',
+    todo: 'Clearance',
     headline: 'Headline',
     cascading_message: 'Cascading message',
   };
@@ -285,7 +285,7 @@ export function IssuesSegmentView({
         </button>
         <div className={`min-w-[200px] ${!canUseFilters ? 'dark:[&_.ant-input]:bg-zinc-600/60 dark:[&_.ant-input]:text-zinc-300' : ''}`}>
           <Input.Search
-            placeholder="Search Turbulence (IDS™) | Level 10 Meeting™..."
+            placeholder="Search Turbulence | Flight Review..."
             value={searchQuery}
             onChange={(e) => {
               const v = e.target.value;
@@ -368,17 +368,17 @@ export function IssuesSegmentView({
       {activeTab === 'short_term' && statsVisible && (
         <div className="grid grid-cols-4 gap-4 pt-6 shrink-0">
           <div className="border border-border rounded-lg p-4 bg-card">
-            <p className="text-sm text-muted-foreground">Total Tracked Turbulence (Issues)</p>
+            <p className="text-sm text-muted-foreground">Total Tracked Turbulence</p>
             <p className="text-2xl font-bold text-foreground mt-1">{totalTrackedShort}</p>
           </div>
           <div className="border border-border rounded-lg p-4 bg-card">
             <p className="text-sm text-muted-foreground">
-              {meetingId ? 'Solved in this Flight Review' : 'Turbulence (Issues) Solved Last Flight Review'}
+              {meetingId ? 'Solved in this Flight Review' : 'Turbulence Solved Last Flight Review'}
             </p>
             <p className="text-2xl font-bold text-foreground mt-1">{solvedLastMeeting}</p>
           </div>
           <div className="border border-border rounded-lg p-4 bg-card">
-            <p className="text-sm text-muted-foreground">Turbulence (Issues) Solved Today</p>
+            <p className="text-sm text-muted-foreground">Turbulence Solved Today</p>
             <p className="text-2xl font-bold text-foreground mt-1">{solvedToday}</p>
           </div>
           <div className="border border-border rounded-lg p-4 bg-card">
@@ -533,7 +533,7 @@ export function IssuesSegmentView({
             onClick={onOpenCreate ? () => onOpenCreate('issue') : onOpenCreateIssue}
             className="text-primary hover:underline text-sm font-medium hover:text-primary/90 transition-colors cursor-pointer"
           >
-            + Add Turbulence (Issue)
+            + Add Turbulence
           </button>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-2">
@@ -872,7 +872,7 @@ function IssueDetailPanel({
       <div className="fixed inset-y-0 right-0 w-[42%] min-w-[380px] max-w-[620px] bg-card border-l border-border shadow-xl z-50 flex flex-col">
         <header className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
-            <h2 className="font-semibold text-foreground">Edit Turbulence (Issue)</h2>
+            <h2 className="font-semibold text-foreground">Edit Turbulence</h2>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
@@ -1026,15 +1026,15 @@ function IssueRowMenu({
         <div className="px-2 py-1">
           <button type="button" className={btn} onClick={() => { onOpenCreate?.('rock', { linkedEntity: linkedIssue }); onClose(); }} role="menuitem">
             <Mountain className={icon} />
-            Link Waypoint (Rock)
+            Link Waypoint
           </button>
-          <button type="button" className={btn} onClick={() => { onOpenCreate?.('todo', { title: `To-Do: ${item.title}`, linkedEntity: linkedIssue }); onClose(); }} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('todo', { title: `Clearance: ${item.title}`, linkedEntity: linkedIssue }); onClose(); }} role="menuitem">
             <CheckSquare className={icon} />
-            Link To-Do
+            Link Clearance
           </button>
-          <button type="button" className={btn} onClick={() => { onOpenCreate?.('issue', { title: `Issue: ${item.title}`, linkedEntity: linkedIssue }); onClose(); }} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('issue', { title: `Turbulence: ${item.title}`, linkedEntity: linkedIssue }); onClose(); }} role="menuitem">
             <AlertCircle className={icon} />
-            Link Issue
+            Link Turbulence
           </button>
           <button type="button" className={btn} onClick={() => { onOpenCreate?.('headline', { title: item.title, linkedEntity: linkedIssue }); onClose(); }} role="menuitem">
             <Megaphone className={icon} />
