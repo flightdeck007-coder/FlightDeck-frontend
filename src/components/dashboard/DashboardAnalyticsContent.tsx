@@ -301,9 +301,12 @@ export function DashboardAnalyticsContent() {
       .then((settled) => {
         if (!active) return;
         const anyFailed = settled.some((s) => s.status === 'rejected');
-        const rockList = settled
-          .filter((s): s is PromiseFulfilledResult<Array<{ achieved: boolean }>> => s.status === 'fulfilled')
-          .flatMap((s) => s.value.map((r) => ({ achieved: r.achieved })));
+        const rockList = settled.reduce<RockLite[]>((acc, s) => {
+          if (s.status === 'fulfilled') {
+            acc.push(...s.value.map((r) => ({ achieved: r.achieved })));
+          }
+          return acc;
+        }, []);
         setRocks(rockList);
         if (anyFailed) setErrors((prev) => ({ ...prev, rocks: true }));
       })
