@@ -417,11 +417,11 @@ export function DashboardAnalyticsContent() {
   const statusDistribution = useMemo(
     () =>
       [
-        { name: 'Todos Completed', value: totals.todosDone, color: CHART_COLORS[2] },
-        { name: 'Open Todos', value: Math.max(todos.length - totals.todosDone, 0), color: CHART_COLORS[0] },
-        { name: 'Issues Resolved', value: totals.issuesResolved, color: CHART_COLORS[1] },
-        { name: 'Open Issues', value: Math.max(issues.length - totals.issuesResolved, 0), color: CHART_COLORS[4] },
-        { name: 'Active Rocks', value: totals.activeRocks, color: CHART_COLORS[3] },
+        { name: 'Clearances Completed', value: totals.todosDone, color: CHART_COLORS[2] },
+        { name: 'Open Clearances', value: Math.max(todos.length - totals.todosDone, 0), color: CHART_COLORS[0] },
+        { name: 'Turbulence Resolved', value: totals.issuesResolved, color: CHART_COLORS[1] },
+        { name: 'Open Turbulence', value: Math.max(issues.length - totals.issuesResolved, 0), color: CHART_COLORS[4] },
+        { name: 'Active Waypoints', value: totals.activeRocks, color: CHART_COLORS[3] },
       ].filter((x) => x.value > 0),
     [totals, todos.length, issues.length],
   );
