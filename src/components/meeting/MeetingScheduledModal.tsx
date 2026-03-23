@@ -114,7 +114,7 @@ export function MeetingScheduledModal({
               <p className="text-sm font-medium text-foreground">{agendaName}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Team</p>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Flight Crew</p>
               <p className="text-sm font-medium text-foreground">{teamName}</p>
             </div>
             <div>

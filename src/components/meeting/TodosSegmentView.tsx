@@ -286,7 +286,7 @@ export function TodosSegmentView({
       {/* Filter bar — full width, no padding on this div */}
       <div className="flex flex-wrap items-center gap-3 py-3 -mx-6 px-4 border-t border-b border-border bg-muted/30 shrink-0">
         <div className="flex items-center gap-1">
-          <span className="text-muted-foreground text-sm">Team:</span>
+          <span className="text-muted-foreground text-sm">Flight Crew:</span>
           <Select
             value={teamFilter}
             onChange={(v) => {
@@ -299,7 +299,7 @@ export function TodosSegmentView({
           />
         </div>
         <div className="flex items-center gap-1 relative" ref={ownerDropdownRef}>
-          <span className="text-muted-foreground text-sm">Owner:</span>
+          <span className="text-muted-foreground text-sm">Assigner:</span>
           <button
             type="button"
             disabled={!canUseFilters}
@@ -470,7 +470,7 @@ export function TodosSegmentView({
                     Due By
                   </th>
                   <th className="text-left font-medium text-foreground px-4 py-2 w-20">
-                    Owner
+                    Assigner
                   </th>
                   <th className="text-right font-medium text-foreground px-4 py-2 w-14" />
                 </tr>
@@ -1184,7 +1184,7 @@ export function EditTodoPanel({
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
-              Team member (optional)
+              Crew member (optional)
             </label>
             <Select
               value={assigneeId || undefined}
@@ -1198,7 +1198,7 @@ export function EditTodoPanel({
               className="w-full"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Optionally assign to a member of the selected team.
+              Optionally assign to a member of the selected flight crew.
             </p>
           </div>
         </div>

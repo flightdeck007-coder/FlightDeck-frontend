@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
 /**
- * Measurable Manager is shown as the scorecard segment view on the meeting page.
+ * Metrics Console is shown as the flight metrics segment view on the meeting page.
  * This route redirects so the meeting never unmounts (timer and sidebar continue).
  */
 export default function KpiManagerPage() {

@@ -447,7 +447,7 @@ export function PastMeetingRecapPanel({
             </div>
           </section>
 
-          {/* Meeting Notes by participant — each segment as bold heading + content; scroll if >3 members */}
+          {/* Flight Notes by participant — each segment as bold heading + content; scroll if >3 members */}
           <section className="w-full px-5 py-4">
             <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
               <FileText className="w-4 h-4 text-primary" />
@@ -459,7 +459,7 @@ export function PastMeetingRecapPanel({
               <div
                 className={`space-y-4 ${notesByParticipant.length > 3 ? 'max-h-[320px] overflow-y-auto pr-1' : ''}`}
                 role="region"
-                aria-label="Meeting notes by participant"
+                aria-label="Flight notes by participant"
               >
                 {notesByParticipant.map((item, i) => (
                   <div
@@ -689,8 +689,8 @@ export function PastMeetingRecapPanel({
                         : null;
                       setDeleteError(
                         status === 404
-                          ? 'Meeting not found. It may have been deleted already.'
-                          : msg || 'Failed to delete meeting. Try again.'
+                          ? 'Flight review not found. It may have been deleted already.'
+                          : msg || 'Failed to delete flight review. Try again.'
                       );
                     } finally {
                       setDeleting(false);

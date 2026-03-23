@@ -60,7 +60,7 @@ export default function HeadlinesPage() {
       <div className="p-6 flex flex-col min-h-0 h-full">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4 shrink-0">
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Crew Headlines</h1>
+            <h1 className="text-2xl font-semibold text-foreground">Flight Announcements</h1>
             <p className="text-sm text-muted-foreground mt-1">
               Headlines and cascading messages are per meeting. Select a meeting to view or edit.
             </p>

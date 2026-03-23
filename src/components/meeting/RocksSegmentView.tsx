@@ -187,7 +187,7 @@ type CreatePopupType = 'issue' | 'rock' | 'todo' | 'headline' | 'cascading_messa
 type RockMilestone = { id: string; title: string; dueDate: string; description?: string; completed?: boolean };
 type LinkedEntityType = 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message' | 'rock_milestone';
 type LinkedEntityOption = { type: LinkedEntityType; id: string; title: string };
-type LinkedRockItem = { id: string; type: 'To-Do' | 'Issue'; entityType: 'todo' | 'issue'; title: string; subtitle?: string };
+type LinkedRockItem = { id: string; type: 'Clearance' | 'Turbulence'; entityType: 'todo' | 'issue'; title: string; subtitle?: string };
 
 function milestoneStorageKey(rockId: string): string {
   return `rock-milestones-${rockId}`;
@@ -366,7 +366,7 @@ export function RocksSegmentView({
       {/* Filters row — full width like main header */}
       <div className="flex flex-wrap items-center gap-3 py-3 -mx-6 px-4 border-t border-b border-border bg-muted/30 shrink-0">
         <div className={`flex items-center gap-1 ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''}`}>
-          <span className="text-muted-foreground text-sm">Team:</span>
+          <span className="text-muted-foreground text-sm">Flight Crew:</span>
           <Select
             value={teamFilter}
             onChange={(v) => {
@@ -380,7 +380,7 @@ export function RocksSegmentView({
           />
         </div>
         <div className={`flex items-center gap-1 ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''}`}>
-          <span className="text-muted-foreground text-sm">Owner:</span>
+          <span className="text-muted-foreground text-sm">Assigner:</span>
           <Select
             value={ownerFilter}
             onChange={(v) => {
@@ -832,7 +832,7 @@ function RocksTabContent({
                   Milestone progress
                 </th>
                 <th className="text-left font-medium text-foreground px-4 py-2">
-                  Owner
+                  Assigner
                 </th>
                 <th className="text-left font-medium text-foreground px-4 py-2">
                   Due by
@@ -938,7 +938,7 @@ function RocksTabContent({
                         onClick={onAddRock}
                         className="text-primary hover:underline text-sm font-medium flex items-center gap-1"
                       >
-                        + Add Rock
+                        + Add Waypoint
                       </button>
                     </td>
                   </tr>
@@ -959,7 +959,7 @@ function RocksTabContent({
               onClick={onAddRock}
               className="text-primary hover:underline text-sm font-medium flex items-center gap-1"
             >
-              + Add Rock
+              + Add Waypoint
             </button>
           </div>
         </div>
@@ -974,7 +974,7 @@ function linkedDescription(rock: Rock): string {
 }
 
 /**
- * Dropdown menu for a single rock's actions (Create linked Waypoint (Rock)/To-Do/Issue/Headline, Archive, Print, Copy Link, Delete).
+ * Dropdown menu for a single waypoint's actions (Create linked Waypoint/Clearance/Turbulence/Headline, Archive, Print, Copy Link, Delete).
  * Rendered via portal so it appears above the page and is not clipped by table overflow.
  */
 function RockActionsMenu({
@@ -1074,25 +1074,25 @@ function RockActionsMenu({
             role="menuitem"
           >
             <Mountain className={iconClass} />
-            Create linked Waypoint (Rock)
+            Create linked Waypoint
           </button>
           <button
             type="button"
             className={buttonClass}
-            onClick={() => { onOpenCreate?.('todo', { title: `To-Do: ${rock.title}`, description: linkedDescription(rock), linkedEntity: linkedRock }); onClose(); }}
+            onClick={() => { onOpenCreate?.('todo', { title: `Clearance: ${rock.title}`, description: linkedDescription(rock), linkedEntity: linkedRock }); onClose(); }}
             role="menuitem"
           >
             <CheckSquare className={iconClass} />
-            Create linked To-Do
+            Create linked Clearance
           </button>
           <button
             type="button"
             className={buttonClass}
-            onClick={() => { onOpenCreate?.('issue', { title: `Issue: ${rock.title}`, description: linkedDescription(rock), linkedEntity: linkedRock }); onClose(); }}
+            onClick={() => { onOpenCreate?.('issue', { title: `Turbulence: ${rock.title}`, description: linkedDescription(rock), linkedEntity: linkedRock }); onClose(); }}
             role="menuitem"
           >
             <AlertCircle className={iconClass} />
-            Create linked Issue
+            Create linked Turbulence
           </button>
           <button
             type="button"
@@ -1243,12 +1243,12 @@ function RockDetailPanel({
       ]);
       const linkedTodos = todos
         .filter((t) => t.linkedEntityType === 'rock' && t.linkedEntityId === rock.id)
-        .map((t) => ({ id: t.id, type: 'To-Do' as const, entityType: 'todo' as const, title: t.title, subtitle: t.status }));
+        .map((t) => ({ id: t.id, type: 'Clearance' as const, entityType: 'todo' as const, title: t.title, subtitle: t.status }));
       const linkedIssues = [...shortIssues, ...longIssues]
         .filter((i) => i.linkedEntityType === 'rock' && i.linkedEntityId === rock.id)
         .map((i) => ({
           id: i.id,
-          type: 'Issue' as const,
+          type: 'Turbulence' as const,
           entityType: 'issue' as const,
           title: i.title,
           subtitle: i.termType === 'long_term' ? 'Long-Term' : 'Short-Term',
@@ -1310,7 +1310,7 @@ function RockDetailPanel({
         <header className="flex items-center justify-between gap-2 p-4 border-b border-border shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <ThumbsUp className="w-5 h-5 text-primary shrink-0" />
-            <h2 className="text-lg font-semibold text-foreground truncate">Edit Waypoint (Rock)</h2>
+            <h2 className="text-lg font-semibold text-foreground truncate">Edit Waypoint</h2>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button type="button" className="p-2 rounded-md hover:bg-muted text-muted-foreground" aria-label="More"><MoreHorizontal className="w-4 h-4" /></button>
@@ -1374,7 +1374,7 @@ function RockDetailPanel({
                 <RichTextEditor value={description} onChange={setDescription} placeholder="Description..." className="min-h-[80px]" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Team</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Flight Crew</label>
                 <Select
                   options={[{ label: teamName, value: 'team' }]}
                   className="w-full"
@@ -1675,12 +1675,12 @@ function MilestoneDetailPanel({
       ]);
       const linkedTodos = todos
         .filter((t) => t.linkedEntityType === 'rock_milestone' && t.linkedEntityId === milestone.id)
-        .map((t) => ({ id: t.id, type: 'To-Do' as const, entityType: 'todo' as const, title: t.title, subtitle: t.status }));
+        .map((t) => ({ id: t.id, type: 'Clearance' as const, entityType: 'todo' as const, title: t.title, subtitle: t.status }));
       const linkedIssues = [...shortIssues, ...longIssues]
         .filter((i) => i.linkedEntityType === 'rock_milestone' && i.linkedEntityId === milestone.id)
         .map((i) => ({
           id: i.id,
-          type: 'Issue' as const,
+          type: 'Turbulence' as const,
           entityType: 'issue' as const,
           title: i.title,
           subtitle: i.termType === 'long_term' ? 'Long-Term' : 'Short-Term',
@@ -1887,7 +1887,7 @@ function LinkExistingModal({
   onLink: () => void;
 }) {
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState<'Rock' | 'Milestone' | 'To-Do' | 'Issue'>('Rock');
+  const [tab, setTab] = useState<'Waypoint' | 'Milestone' | 'Clearance' | 'Turbulence'>('Waypoint');
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<Array<{ id: string; title: string; subtitle?: string }>>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1901,7 +1901,7 @@ function LinkExistingModal({
     const run = async () => {
       setSelectedIds(new Set());
       const q = search.trim().toLowerCase();
-      if (tab === 'Rock') {
+      if (tab === 'Waypoint') {
         const rows = rocks
           .filter((r) => r.id !== rock.id)
           .filter((r) => !q || r.title.toLowerCase().includes(q))
@@ -1922,7 +1922,7 @@ function LinkExistingModal({
       }
       setLoading(true);
       try {
-        if (tab === 'Issue') {
+        if (tab === 'Turbulence') {
           const [short, long] = await Promise.all([
             issuesService.findAll(organizationId, teamId, 'short_term', false, meetingId),
             issuesService.findAll(organizationId, teamId, 'long_term', false, meetingId),
@@ -1959,7 +1959,7 @@ function LinkExistingModal({
       onLink();
       return;
     }
-    if (tab === 'Issue' && issuesApi) {
+    if (tab === 'Turbulence' && issuesApi) {
       await Promise.all(
         ids.map(async (id) => {
           await issuesApi.updateIssue(id, {
@@ -1972,7 +1972,7 @@ function LinkExistingModal({
       onLink();
       return;
     }
-    if (tab === 'Issue' && organizationId) {
+    if (tab === 'Turbulence' && organizationId) {
       await Promise.all(
         ids.map(async (id) => {
           await issuesService.update(
@@ -1990,7 +1990,7 @@ function LinkExistingModal({
       onLink();
       return;
     }
-    if (tab === 'To-Do' && todosApi) {
+    if (tab === 'Clearance' && todosApi) {
       await Promise.all(
         ids.map(async (id) => {
           await todosApi.updateTodo(id, {
@@ -2003,7 +2003,7 @@ function LinkExistingModal({
       onLink();
       return;
     }
-    if (tab === 'To-Do' && organizationId) {
+    if (tab === 'Clearance' && organizationId) {
       await Promise.all(
         ids.map(async (id) => {
           await todosService.update(
@@ -2021,7 +2021,7 @@ function LinkExistingModal({
       onLink();
       return;
     }
-    if (tab === 'Rock') {
+    if (tab === 'Waypoint') {
       onLink();
       return;
     }
@@ -2044,7 +2044,7 @@ function LinkExistingModal({
           <p className="text-sm font-medium text-foreground mt-2">Items in {teamName}</p>
         </div>
         <div className="flex border-b border-border shrink-0">
-          {(['Rock', 'Milestone', 'To-Do', 'Issue'] as const).map((t) => (
+          {(['Waypoint', 'Milestone', 'Clearance', 'Turbulence'] as const).map((t) => (
             <button key={t} type="button" onClick={() => setTab(t)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}`}>{t}</button>
           ))}
         </div>
@@ -2053,7 +2053,7 @@ function LinkExistingModal({
             <div className="flex items-center justify-center text-muted-foreground text-sm py-8">Loading…</div>
           ) : items.length === 0 ? (
             <div className="flex items-center justify-center text-muted-foreground text-sm py-8">
-              There are no {tab === 'Rock' ? 'Waypoints' : tab === 'Milestone' ? 'Milestones' : tab === 'To-Do' ? 'Clearances' : 'Turbulence'} found with your team {teamName}.
+              There are no {tab === 'Waypoint' ? 'Waypoints' : tab === 'Milestone' ? 'Milestones' : tab === 'Clearance' ? 'Clearances' : 'Turbulence'} found with your flight crew {teamName}.
             </div>
           ) : (
             <div className="space-y-2">
@@ -2567,13 +2567,13 @@ function RockRow({
                     Edit milestone
                   </button>
                   <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent" onClick={() => { onOpenCreate?.('rock', { title: milestoneMenuAnchor.milestone.title, description: `Linked to milestone: ${milestoneMenuAnchor.milestone.title}` }); setMilestoneMenuAnchor(null); }}>
-                    Create linked Rock
+                    Create linked Waypoint
                   </button>
-                  <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent" onClick={() => { onOpenCreate?.('todo', { title: `To-Do: ${milestoneMenuAnchor.milestone.title}`, description: `Linked to milestone: ${milestoneMenuAnchor.milestone.title}`, linkedEntity: { type: 'rock_milestone', id: milestoneMenuAnchor.milestone.id, title: milestoneMenuAnchor.milestone.title } }); setMilestoneMenuAnchor(null); }}>
-                    Create linked To-Do
+                  <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent" onClick={() => { onOpenCreate?.('todo', { title: `Clearance: ${milestoneMenuAnchor.milestone.title}`, description: `Linked to milestone: ${milestoneMenuAnchor.milestone.title}`, linkedEntity: { type: 'rock_milestone', id: milestoneMenuAnchor.milestone.id, title: milestoneMenuAnchor.milestone.title } }); setMilestoneMenuAnchor(null); }}>
+                    Create linked Clearance
                   </button>
-                  <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent" onClick={() => { onOpenCreate?.('issue', { title: `Issue: ${milestoneMenuAnchor.milestone.title}`, description: `Linked to milestone: ${milestoneMenuAnchor.milestone.title}`, linkedEntity: { type: 'rock_milestone', id: milestoneMenuAnchor.milestone.id, title: milestoneMenuAnchor.milestone.title } }); setMilestoneMenuAnchor(null); }}>
-                    Create linked Issue
+                  <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent" onClick={() => { onOpenCreate?.('issue', { title: `Turbulence: ${milestoneMenuAnchor.milestone.title}`, description: `Linked to milestone: ${milestoneMenuAnchor.milestone.title}`, linkedEntity: { type: 'rock_milestone', id: milestoneMenuAnchor.milestone.id, title: milestoneMenuAnchor.milestone.title } }); setMilestoneMenuAnchor(null); }}>
+                    Create linked Turbulence
                   </button>
                   <button
                     type="button"
@@ -2801,7 +2801,7 @@ function ArchiveTabContent({
                   Milestone progress
                 </th>
                 <th className="text-left font-medium text-foreground px-4 py-2">
-                  Owner
+                  Assigner
                 </th>
                 <th className="text-left font-medium text-foreground px-4 py-2">
                   Due by

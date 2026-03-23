@@ -98,7 +98,7 @@ export function MeetingNotesSection({
           {collapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
         </span>
         <Calendar className="w-4 h-4 text-muted-foreground" />
-        <span className="font-semibold text-foreground">Meeting Notes</span>
+        <span className="font-semibold text-foreground">Flight Notes</span>
       </button>
       {!collapsed && (
         <div className="p-4">
@@ -116,12 +116,12 @@ export function MeetingNotesSection({
             </div>
           )}
           {!canEdit && (
-            <p className="text-xs text-muted-foreground mb-2">Only the facilitator or scribe can add or edit meeting notes.</p>
+            <p className="text-xs text-muted-foreground mb-2">Only the Pilot In Charge or Safety Officer can add or edit flight notes.</p>
           )}
           <RichTextEditor
             value={content}
             onChange={canEdit ? setContent : () => {}}
-            placeholder="Meeting Notes..."
+            placeholder="Flight Notes..."
             className={`min-h-[200px] border border-border rounded-md ${!canEdit ? 'opacity-80 pointer-events-none bg-muted/30' : ''}`}
           />
           <div className="mt-4">

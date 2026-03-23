@@ -11,7 +11,7 @@ export const FLIGHT_TERMS = {
   ISSUES: 'Turbulence',
   SCORECARD: 'Flight Desk',
   SEGUE: 'Pre-Flight',
-  HEADLINES: 'Crew Headlines',
+  HEADLINES: 'Flight Announcements',
   CONCLUDE: 'Debrief',
   START_MEETING: 'Start Flight Review',
   FINISH_MEETING: 'Finish Flight Review',

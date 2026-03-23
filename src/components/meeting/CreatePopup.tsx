@@ -60,7 +60,7 @@ function linkedEntityTypeLabel(type: LinkedEntityType): string {
     todo: "Clearance",
     headline: "Headline",
     cascading_message: "Cascading message",
-    measurable: "Measurable",
+    measurable: "Flight Metric",
     rock_milestone: "Milestone",
   };
   return map[type] ?? type;
@@ -124,7 +124,7 @@ const todoSchema = z.object({
   description: z.string().optional(),
   dueDate: z.string().optional(),
   repeat: z.string().optional(),
-  teamId: z.string().min(1, "Team is required"),
+  teamId: z.string().min(1, "Flight crew is required"),
   assigneeId: z.string().optional(),
   private: z.boolean().optional(),
 });
@@ -200,7 +200,7 @@ function RockOtherTeamSelect({
 
   return (
     <Select
-      placeholder="Select team..."
+      placeholder="Select flight crew..."
       value={value || undefined}
       onChange={(v) => onChange(v ?? "")}
       onOpenChange={setOpen}
@@ -606,7 +606,7 @@ export function CreatePopup({
     const now = new Date().toISOString();
     headlinesApi?.addCascadingMessage({
       title: data.title,
-      from: teamName || "Team",
+      from: teamName || "Flight Crew",
       createdAt: now,
       createdAgo: "Just now",
       ownerInitials: "U",
@@ -738,7 +738,7 @@ export function CreatePopup({
                   />
                 </div>
 
-                {/* Priority | Who | Team | Interval — 2 columns */}
+                {/* Priority | Who | Flight crew | Interval — 2 columns */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="mt-5 pt-5 border-t border-border">
                     <label
@@ -795,7 +795,7 @@ export function CreatePopup({
                       htmlFor="create-team"
                       className="block text-sm font-medium text-foreground mb-1"
                     >
-                      Team
+                      Flight Crew
                     </label>
                     <Controller
                       name="teamId"
@@ -941,11 +941,11 @@ export function CreatePopup({
                       {...rockForm.register("isCompanyRock")}
                       className="rounded border-border"
                     />
-                    <span className="text-sm font-medium text-foreground">Company Rock</span>
+                    <span className="text-sm font-medium text-foreground">Company Waypoint</span>
                   </label>
                   {rockOwnerOptions.length > 0 && (
                     <div>
-                      <label className="block text-sm font-medium text-foreground mb-1">Owner</label>
+                      <label className="block text-sm font-medium text-foreground mb-1">Assigner</label>
                       <Controller
                         name="ownerId"
                         control={rockForm.control}
@@ -955,7 +955,7 @@ export function CreatePopup({
                             onChange={(v) => field.onChange(v ?? "")}
                             options={rockOwnerOptions.map((o) => ({ label: o.label, value: o.value }))}
                             className="w-full"
-                            placeholder="Select person in meeting"
+                            placeholder="Select crew member"
                           />
                         )}
                       />
@@ -1007,7 +1007,7 @@ export function CreatePopup({
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-foreground mb-1">Team</label>
+                      <label className="block text-sm font-medium text-foreground mb-1">Flight Crew</label>
                       <Controller
                         name="teamId"
                         control={rockForm.control}
@@ -1178,7 +1178,7 @@ export function CreatePopup({
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">Team <span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-medium text-foreground mb-1">Flight Crew <span className="text-red-500">*</span></label>
                     <Controller
                       name="teamId"
                       control={todoForm.control}
@@ -1201,7 +1201,7 @@ export function CreatePopup({
                     <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Clearance must be assigned to a crew.</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">Team member (optional)</label>
+                    <label className="block text-sm font-medium text-foreground mb-1">Crew member (optional)</label>
                     <Controller
                       name="assigneeId"
                       control={todoForm.control}
@@ -1219,7 +1219,7 @@ export function CreatePopup({
                         />
                       )}
                     />
-                    <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Optionally assign to a member of the selected team.</p>
+                    <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Optionally assign to a member of the selected flight crew.</p>
                   </div>
                 </div>
                 <label className="w-1/2 flex items-center gap-3 rounded-lg border border-border border-t-2 border-t-primary bg-white px-3 py-3.5 cursor-pointer">
@@ -1289,7 +1289,7 @@ export function CreatePopup({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Team</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">Flight Crew</label>
                   <Controller
                     name="teamId"
                     control={headlineForm.control}
@@ -1370,7 +1370,7 @@ export function CreatePopup({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Team</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">Flight Crew</label>
                   <Controller
                     name="teamId"
                     control={cascadingForm.control}

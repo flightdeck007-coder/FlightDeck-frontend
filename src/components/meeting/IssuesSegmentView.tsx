@@ -214,7 +214,7 @@ export function IssuesSegmentView({
       {/* Filter bar — full width */}
       <div className="flex flex-wrap items-center gap-3 py-3 -mx-6 px-4 border-t border-b border-border bg-muted/30 shrink-0">
         <div className={`flex items-center gap-1 ${!canUseFilters ? 'dark:[&_.ant-select-selector]:bg-zinc-600/60 dark:[&_.ant-select-selector]:text-zinc-300' : ''}`}>
-          <span className="text-muted-foreground text-sm">Team:</span>
+          <span className="text-muted-foreground text-sm">Flight Crew:</span>
           <Select
             value={teamFilter}
             onChange={(v) => {
@@ -504,7 +504,7 @@ export function IssuesSegmentView({
                   <th className="text-left font-medium text-foreground px-4 py-2">Title</th>
                   <th className="text-left font-medium text-foreground px-4 py-2 w-16">#</th>
                   <th className="text-left font-medium text-foreground px-4 py-2 w-24">Created</th>
-                  <th className="text-left font-medium text-foreground px-4 py-2 w-20">Owner</th>
+                  <th className="text-left font-medium text-foreground px-4 py-2 w-20">Assigner</th>
                   <th className="text-right font-medium text-foreground px-4 py-2 w-14" />
                 </tr>
               </thead>
@@ -1044,7 +1044,7 @@ function IssueRowMenu({
         <div className="border-t border-border my-1" />
         <div className="px-2 py-1">
           <button type="button" className={btn} onClick={onClose} role="menuitem">
-            Merge into Another Issue
+            Merge into Another Turbulence
           </button>
           {onMakeLongTerm && (
             <button
@@ -1056,7 +1056,7 @@ function IssueRowMenu({
               }}
               role="menuitem"
             >
-              Make Long-Term Issue
+              Make Long-Term Turbulence
             </button>
           )}
         </div>

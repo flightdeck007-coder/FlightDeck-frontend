@@ -187,10 +187,10 @@ function PastMeetingsContent() {
               <SimpleTable
                 columns={[
                   { key: 'date', label: 'Date' },
-                  { key: 'agenda', label: 'Agenda' },
+                  { key: 'agenda', label: 'Flight Plan' },
                   { key: 'duration', label: 'Duration' },
-                  { key: 'facilitator', label: 'Facilitator' },
-                  { key: 'scribe', label: 'Scribe' },
+                  { key: 'facilitator', label: 'Pilot In Charge' },
+                  { key: 'scribe', label: 'Safety Officer' },
                   { key: 'rating', label: 'Rating' },
                 ]}
               >

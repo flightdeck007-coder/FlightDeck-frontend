@@ -435,7 +435,7 @@ export function DashboardAnalyticsContent() {
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Flight Deck Analytics</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Major activity metrics for todos, issues, rocks, and meeting throughput.
+            Major activity metrics for clearances, turbulence, waypoints, and flight review throughput.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -444,7 +444,7 @@ export function DashboardAnalyticsContent() {
             onChange={(v) => setSelectedTeamId(v ?? '')}
             options={teams.map((t) => ({ label: t.name, value: t.id }))}
             className="min-w-[220px]"
-            placeholder="Select team"
+            placeholder="Select flight crew"
           />
           <Select
             value={granularity}
@@ -476,7 +476,7 @@ export function DashboardAnalyticsContent() {
         <KpiCard label="Completed Clearances" value={totals.todosDone} icon={<CheckCircle2 className="w-6 h-6 text-emerald-600" />} accentClass="bg-emerald-500" />
         <KpiCard label="Open Turbulence" value={Math.max(issues.length - totals.issuesResolved, 0)} icon={<AlertCircle className="w-6 h-6 text-red-600" />} accentClass="bg-red-500" />
         <KpiCard label="Active Waypoints" value={totals.activeRocks} icon={<TrendingUp className="w-6 h-6 text-indigo-600" />} accentClass="bg-indigo-500" />
-        <KpiCard label="Meetings Conducted" value={totals.meetingsConducted} icon={<CalendarDays className="w-6 h-6 text-cyan-600" />} accentClass="bg-cyan-500" />
+        <KpiCard label="Flight Reviews Conducted" value={totals.meetingsConducted} icon={<CalendarDays className="w-6 h-6 text-cyan-600" />} accentClass="bg-cyan-500" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 mb-6">
@@ -537,9 +537,9 @@ export function DashboardAnalyticsContent() {
               <YAxis />
               <Tooltip />
               <Legend />
-              <Bar dataKey="todos" fill={CHART_COLORS[0]} name="Todos Created" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="issues" fill={CHART_COLORS[3]} name="Issues Created" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="meetings" fill={CHART_COLORS[1]} name="Meetings" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="todos" fill={CHART_COLORS[0]} name="Clearances Created" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="issues" fill={CHART_COLORS[3]} name="Turbulence Created" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="meetings" fill={CHART_COLORS[1]} name="Flight Reviews" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -575,12 +575,12 @@ export function DashboardAnalyticsContent() {
           </h2>
           <div className="space-y-2">
             {[
-              ['Team', selectedTeam?.name ?? '-'],
-              ['Todos', `${todos.length}`],
-              ['Issues', `${issues.length}`],
-              ['Rocks', `${rocks.length}`],
-              ['Achieved Rocks', `${totals.achievedRocks}`],
-              ['Meetings', `${meetings.length}`],
+              ['Flight Crew', selectedTeam?.name ?? '-'],
+              ['Clearances', `${todos.length}`],
+              ['Turbulence', `${issues.length}`],
+              ['Waypoints', `${rocks.length}`],
+              ['Achieved Waypoints', `${totals.achievedRocks}`],
+              ['Flight Reviews', `${meetings.length}`],
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5 bg-muted/20">
                 <span className="text-muted-foreground text-sm">{k}</span>
@@ -603,10 +603,10 @@ export function DashboardAnalyticsContent() {
             <thead>
               <tr className="bg-muted/25">
                 <th className="px-3 py-2 text-left font-semibold text-foreground border border-border">Period</th>
-                <th className="px-3 py-2 text-left font-semibold text-foreground border border-border">Todos C/D</th>
-                <th className="px-3 py-2 text-left font-semibold text-foreground border border-border">Issues C/R</th>
-                <th className="px-3 py-2 text-left font-semibold text-foreground border border-border">Rocks</th>
-                <th className="px-3 py-2 text-left font-semibold text-foreground border border-border">Meetings</th>
+                <th className="px-3 py-2 text-left font-semibold text-foreground border border-border">Clearances C/D</th>
+                <th className="px-3 py-2 text-left font-semibold text-foreground border border-border">Turbulence C/R</th>
+                <th className="px-3 py-2 text-left font-semibold text-foreground border border-border">Waypoints</th>
+                <th className="px-3 py-2 text-left font-semibold text-foreground border border-border">Flight Reviews</th>
                 <th className="px-3 py-2 text-left font-semibold text-foreground border border-border">Created</th>
                 <th className="px-3 py-2 text-left font-semibold text-foreground border border-border">Solved</th>
                 <th className="px-3 py-2 text-left font-semibold text-foreground border border-border">Net</th>

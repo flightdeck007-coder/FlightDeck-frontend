@@ -146,7 +146,7 @@ export function EditScheduleModal({
                 <label className="block text-sm font-medium text-foreground mb-1">
                   <span className="flex items-center gap-2">
                     <User className="w-4 h-4" />
-                    Facilitator
+                    Pilot In Charge
                   </span>
                 </label>
                 <Select
@@ -160,9 +160,9 @@ export function EditScheduleModal({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Scribe</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Safety Officer</label>
                 <Select
-                  placeholder="Select scribe"
+                  placeholder="Select safety officer"
                   value={scribeId || undefined}
                   onChange={setScribeId}
                   options={members.map((m) => ({

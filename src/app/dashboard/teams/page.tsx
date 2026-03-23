@@ -147,21 +147,21 @@ export default function TeamsPage() {
       setMemberEmailByTeam((prev) => ({ ...prev, [teamId]: '' }));
       if (organizationId) await loadTeams(organizationId);
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to add team member');
+      setError(err?.response?.data?.message || 'Failed to add crew member');
     } finally {
       setAddingMemberTeamId(null);
     }
   };
 
   const handleRemoveTeamMember = async (teamId: string, targetUserId: string) => {
-    if (!confirm('Remove this member from the team?')) return;
+    if (!confirm('Remove this crew member from the flight crew?')) return;
     try {
       setError('');
       setRemovingMember(`${teamId}-${targetUserId}`);
       await teamsService.removeMember(teamId, targetUserId);
       if (organizationId) await loadTeams(organizationId);
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to remove member');
+      setError(err?.response?.data?.message || 'Failed to remove crew member');
     } finally {
       setRemovingMember(null);
     }
@@ -200,7 +200,7 @@ export default function TeamsPage() {
             <Select
               value={currentTeamId || undefined}
               onChange={(v) => handleTeamSelect(v ?? '')}
-              placeholder="Select team"
+              placeholder="Select flight crew"
               options={teams.map((team) => ({ label: team.name, value: team.id }))}
               className="max-w-xs w-full"
             />
@@ -219,7 +219,7 @@ export default function TeamsPage() {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="New team name"
+              placeholder="New flight crew name"
               className="flex-1 px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
             <button
@@ -227,7 +227,7 @@ export default function TeamsPage() {
               disabled={creating}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {creating ? 'Creating...' : 'Create team'}
+              {creating ? 'Creating...' : 'Create flight crew'}
             </button>
           </form>
         )}
@@ -241,7 +241,7 @@ export default function TeamsPage() {
         {/* List */}
         {isLoading ? (
           <div className="bg-card border border-border rounded-lg p-6">
-            <p className="text-foreground/70">Loading teams...</p>
+            <p className="text-foreground/70">Loading flight crews...</p>
           </div>
         ) : teams.length === 0 ? (
           <div className="bg-card border border-border rounded-lg p-6">
@@ -286,14 +286,14 @@ export default function TeamsPage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <h2 className="text-lg font-medium text-foreground">{team.name}</h2>
-                        <p className="text-sm text-foreground/60 mt-1">Team ID: {team.id}</p>
+                        <p className="text-sm text-foreground/60 mt-1">Flight Crew ID: {team.id}</p>
                       </div>
                       {isAdminOrManager && (
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => handleStartEdit(team)}
                             className="p-2 text-foreground/60 hover:bg-accent rounded transition-colors"
-                            title="Edit team"
+                            title="Edit flight crew"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
@@ -301,14 +301,14 @@ export default function TeamsPage() {
                             onClick={() => void handleDelete(team.id)}
                             disabled={deleting === team.id}
                             className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                            title="Delete team"
+                            title="Delete flight crew"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       )}
                     </div>
-                    {/* Team members list + add member (ADMIN/MANAGER only) */}
+                    {/* Crew members list + add crew member (ADMIN/MANAGER only) */}
                     {team.members && team.members.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-border">
                         <p className="text-xs font-medium text-foreground/70 mb-2">Crew</p>
@@ -324,7 +324,7 @@ export default function TeamsPage() {
                                   onClick={() => void handleRemoveTeamMember(team.id, tm.userId)}
                                   disabled={removingMember === `${team.id}-${tm.userId}`}
                                   className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                                  title="Remove from team"
+                                  title="Remove from flight crew"
                                 >
                                   <UserMinus className="w-4 h-4" />
                                 </button>
@@ -342,7 +342,7 @@ export default function TeamsPage() {
                           onChange={(e) =>
                             setMemberEmailByTeam((prev) => ({ ...prev, [team.id]: e.target.value }))
                           }
-                          placeholder="Add member by email"
+                          placeholder="Add crew member by email"
                           className="flex-1 min-w-0 px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
                         />
                         <button
@@ -351,7 +351,7 @@ export default function TeamsPage() {
                           className="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1"
                         >
                           <UserPlus className="w-4 h-4" />
-                          {addingMemberTeamId === team.id ? 'Adding...' : 'Add member'}
+                          {addingMemberTeamId === team.id ? 'Adding...' : 'Add crew member'}
                         </button>
                       </div>
                     )}

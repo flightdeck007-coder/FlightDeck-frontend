@@ -285,7 +285,7 @@ export function ConcludeSegmentView({
                   <th className="text-left font-medium text-foreground px-4 py-2 w-8" />
                   <th className="text-left font-medium text-foreground px-4 py-2">Title</th>
                   <th className="text-left font-medium text-foreground px-4 py-2">Due By</th>
-                  <th className="text-left font-medium text-foreground px-4 py-2">Owner</th>
+                  <th className="text-left font-medium text-foreground px-4 py-2">Assigner</th>
                   <th className="w-10" />
                 </tr>
               </thead>
@@ -429,7 +429,7 @@ export function ConcludeSegmentView({
                   </td>
                   <td className="px-4 py-2">
                     {a.userId === facilitatorId ? (
-                      <span className="text-sm text-muted-foreground">Facilitator</span>
+                      <span className="text-sm text-muted-foreground">Pilot In Charge</span>
                     ) : (
                       <label className={`flex items-center gap-2 w-fit ${!isFacilitator ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
                         <input
@@ -477,7 +477,7 @@ export function ConcludeSegmentView({
                 className="rounded border-border text-primary"
               />
               <span className="text-sm text-foreground">
-                Archive all completed Crew Headlines, Clearances and Turbulence for {teamName}
+                Archive all completed Flight Announcements, Clearances and Turbulence for {teamName}
               </span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
@@ -503,7 +503,7 @@ export function ConcludeSegmentView({
               onClick={isFacilitator && onFinishMeeting ? openFinishFlow : undefined}
               disabled={isFinishing || !isFacilitator}
               className="ml-auto flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-70 disabled:cursor-not-allowed text-sm font-medium"
-              title={!isFacilitator ? 'Only the facilitator can end the meeting' : undefined}
+              title={!isFacilitator ? 'Only the Pilot In Charge can end the flight review' : undefined}
             >
               {isFinishing ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

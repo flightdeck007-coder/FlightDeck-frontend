@@ -41,7 +41,7 @@ export type MeasurableRow = {
 
 function downloadCsv(rows: MeasurableRow[], filename: string) {
   const periodKeys = rows.length ? Object.keys(rows.reduce((acc, r) => ({ ...acc, ...r.periodValues }), {} as Record<string, string>)) : [];
-  const headers = ['Title', 'Goal', 'Average', 'Total', 'Trend', ...periodKeys];
+  const headers = ['Metric Name', 'Target', 'Average', 'Total', 'Trend', ...periodKeys];
   const escape = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
   const csv = [headers.map(escape).join(','), ...rows.map((r) => [r.title, r.goal, r.average, r.total, r.trend, ...periodKeys.map((k) => r.periodValues[k] ?? '')].map(String).map(escape).join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -55,7 +55,7 @@ function downloadCsv(rows: MeasurableRow[], filename: string) {
 
 function downloadPdf(rows: MeasurableRow[], title: string) {
   const periodKeys = rows.length ? Object.keys(rows.reduce((acc, r) => ({ ...acc, ...r.periodValues }), {} as Record<string, string>)) : [];
-  const headers = ['Title', 'Goal', 'Average', 'Total', 'Trend', ...periodKeys];
+  const headers = ['Metric Name', 'Target', 'Average', 'Total', 'Trend', ...periodKeys];
   const th = headers.map((h) => `<th style="border:1px solid #ccc;padding:6px;text-align:left">${h}</th>`).join('');
   const trs = rows.map((r) => `<tr>${[r.title, r.goal, r.average, r.total, r.trend, ...periodKeys.map((k) => r.periodValues[k] ?? '')].map((c) => `<td style="border:1px solid #ccc;padding:6px">${String(c)}</td>`).join('')}</tr>`).join('');
   const html = `<!DOCTYPE html><html><head><title>${title}</title></head><body><h2>${title}</h2><table style="border-collapse:collapse;width:100%"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></body></html>`;
@@ -91,7 +91,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
       return new Set(arr);
     } catch { return new Set(); }
   });
-  const [viewFilter, setViewFilter] = useState<'Active Measurables' | 'Archived Measurables'>('Active Measurables');
+  const [viewFilter, setViewFilter] = useState<'Active Flight Metrics' | 'Archived Flight Metrics'>('Active Flight Metrics');
   const [typeFilter, setTypeFilter] = useState('All');
   const [searchKpis, setSearchKpis] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -174,7 +174,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
     fetchGroups();
   }, [fetchGroups]);
 
-  const isActive = viewFilter === 'Active Measurables';
+  const isActive = viewFilter === 'Active Flight Metrics';
   const filtered = measurables.filter((m) => {
     const achieved = achievedIds.has(m.id);
     if (isActive && achieved) return false;
@@ -225,7 +225,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
   };
   const handleExportPdf = () => {
     setMoreMenuOpen(false);
-    downloadPdf(filtered, 'Active Measurables');
+    downloadPdf(filtered, 'Active Flight Metrics');
   };
 
   const openReassignModal = useCallback((ids?: string[]) => {
@@ -255,7 +255,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
     setSelectActionOpen(false);
     setRowMenuId(null);
     const n = selectedMeasurablesForActions.length;
-    const title = `Review ${n} Measurable${n === 1 ? '' : 's'}`;
+    const title = `Review ${n} Flight Metric${n === 1 ? '' : 's'}`;
     const description = 'Measurables:\n' + selectedMeasurablesForActions.map((m) => '• ' + m.title).join('\n');
     const first = selectedMeasurablesForActions[0];
     setCreatePopupInitialType('todo');
@@ -268,7 +268,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
     setSelectActionOpen(false);
     setRowMenuId(null);
     const n = selectedMeasurablesForActions.length;
-    const title = `Review ${n} Measurable${n === 1 ? '' : 's'}`;
+    const title = `Review ${n} Flight Metric${n === 1 ? '' : 's'}`;
     const description = 'Measurables:\n' + selectedMeasurablesForActions.map((m) => '• ' + m.title).join('\n');
     const first = selectedMeasurablesForActions[0];
     setCreatePopupInitialType('issue');
@@ -378,7 +378,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
     return m;
   }, [scorecardGroups]);
 
-  const sectionTitle = isActive ? 'Active Measurables' : 'Archived Measurables';
+  const sectionTitle = isActive ? 'Active Flight Metrics' : 'Archived Flight Metrics';
   const sectionDescription = isActive
     ? 'All Measurables used across the company to measure progress, performance, and success in achieving business goals.'
     : 'Measurables that have been achieved or archived.';
@@ -391,25 +391,25 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
 
   return (
     <>
-      {/* Filters row: (3 filters + search) | (New Measurable + menu) — two responsive sections */}
+      {/* Filters row: (3 filters + search) | (New Flight Metric + menu) — two responsive sections */}
       <div className="border-b border-border bg-muted/30 px-6 py-3 flex flex-wrap items-center justify-between gap-4 min-w-0 overflow-x-hidden">
         <div className="flex flex-wrap items-center gap-3 min-w-0 shrink">
           <Select value={personFilter} onChange={setPersonFilter} options={[{ label: 'All', value: 'All' }]} className="w-[120px] shrink-0" />
           <Select
             value={viewFilter}
-            onChange={(v) => v && setViewFilter(v as 'Active Measurables' | 'Archived Measurables')}
+            onChange={(v) => v && setViewFilter(v as 'Active Flight Metrics' | 'Archived Flight Metrics')}
             options={[
-              { label: 'Active Measurables', value: 'Active Measurables' },
-              { label: 'Archived Measurables', value: 'Archived Measurables' },
+              { label: 'Active Flight Metrics', value: 'Active Flight Metrics' },
+              { label: 'Archived Flight Metrics', value: 'Archived Flight Metrics' },
             ]}
             className="w-[180px] shrink-0"
           />
           <Select value={typeFilter} onChange={setTypeFilter} options={[{ label: 'All', value: 'All' }]} className="w-[100px] shrink-0" />
-          <Input.Search placeholder="Search KPIs..." value={searchKpis} onChange={(e) => setSearchKpis(e.target.value)} allowClear className="max-w-[200px] min-w-0 w-full text-sm shrink" />
+          <Input.Search placeholder="Search Flight Metrics..." value={searchKpis} onChange={(e) => setSearchKpis(e.target.value)} allowClear className="max-w-[200px] min-w-0 w-full text-sm shrink" />
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button type="button" onClick={() => setNewMeasurableOpen(true)} className="flex items-center gap-2 px-3 py-2 border border-border rounded-md hover:bg-accent text-sm font-medium text-primary whitespace-nowrap">
-            <Plus className="w-4 h-4" /> New Measurable
+            <Plus className="w-4 h-4" /> New Flight Metric
           </button>
           <div className="relative">
             <button type="button" onClick={() => setMoreMenuOpen((o) => !o)} className="p-2 rounded-md border border-border hover:bg-accent text-muted-foreground hover:text-foreground">
@@ -456,8 +456,8 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
                       </div>
                       <div className="border-t border-border my-2" role="separator" />
                       <div className="px-2 py-1 space-y-0.5">
-                        <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={openCreateTodo}><CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create To-Do</button>
-                        <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={openCreateIssue}><AlertTriangle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Issue</button>
+                        <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={openCreateTodo}><CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Clearance</button>
+                        <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={openCreateIssue}><AlertTriangle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Turbulence</button>
                       </div>
                       <div className="border-t border-border my-2" role="separator" />
                       <div className="px-2 py-1">
@@ -474,9 +474,9 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="text-left p-3 w-10"><input type="checkbox" className="rounded border-border" checked={filtered.length > 0 && filtered.every((r) => selectedIds.has(r.id))} onChange={toggleSelectAll} /></th>
-                <th className="text-left p-3 font-medium text-foreground">Title</th>
+                <th className="text-left p-3 font-medium text-foreground">Metric Name</th>
                 <th className="text-left p-3 font-medium text-foreground">Teams</th>
-                <th className="text-left p-3 font-medium text-foreground w-16">Owner</th>
+                <th className="text-left p-3 font-medium text-foreground w-16">Assigner</th>
                 <th className="text-left p-3 font-medium text-foreground">Location</th>
                 <th className="text-left p-3 font-medium text-foreground">Last reported</th>
                 <th className="w-10 p-3" />
@@ -486,7 +486,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
               {loading ? (
                 <tr className="border-b border-border"><td colSpan={7} className="p-8 text-center text-muted-foreground">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr className="border-b border-border"><td colSpan={7} className="p-8 text-center text-muted-foreground">{isActive ? 'No active measurables.' : 'No archived measurables.'}</td></tr>
+                <tr className="border-b border-border"><td colSpan={7} className="p-8 text-center text-muted-foreground">{isActive ? 'No active flight metrics.' : 'No archived flight metrics.'}</td></tr>
               ) : (
                 filtered.map((row) => (
                   <tr key={row.id} className="border-b border-border hover:bg-muted/20 last:border-b-0">
@@ -513,8 +513,8 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
                             </div>
                             <div className="border-t border-border my-2" role="separator" />
                             <div className="px-2 py-1 space-y-0.5">
-                              <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { setCreatePopupInitialType('todo'); setCreatePopupInitialTitle('Review 1 Measurable'); setCreatePopupInitialDescription('Measurables:\n• ' + row.title); setCreatePopupInitialLinkedEntity({ type: 'measurable', id: row.id, title: row.title }); setCreatePopupOpen(true); setRowMenuId(null); setRowMenuAnchor(null); }}><CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create To-Do</button>
-                              <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { setCreatePopupInitialType('issue'); setCreatePopupInitialTitle('Review 1 Measurable'); setCreatePopupInitialDescription('Measurables:\n• ' + row.title); setCreatePopupInitialLinkedEntity({ type: 'measurable', id: row.id, title: row.title }); setCreatePopupOpen(true); setRowMenuId(null); setRowMenuAnchor(null); }}><AlertTriangle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Issue</button>
+                              <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { setCreatePopupInitialType('todo'); setCreatePopupInitialTitle(`Clearance: ${row.title}`); setCreatePopupInitialDescription('Flight Metrics:\n• ' + row.title); setCreatePopupInitialLinkedEntity({ type: 'measurable', id: row.id, title: row.title }); setCreatePopupOpen(true); setRowMenuId(null); setRowMenuAnchor(null); }}><CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Clearance</button>
+                              <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { setCreatePopupInitialType('issue'); setCreatePopupInitialTitle(`Turbulence: ${row.title}`); setCreatePopupInitialDescription('Flight Metrics:\n• ' + row.title); setCreatePopupInitialLinkedEntity({ type: 'measurable', id: row.id, title: row.title }); setCreatePopupOpen(true); setRowMenuId(null); setRowMenuAnchor(null); }}><AlertTriangle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Turbulence</button>
                             </div>
                             <div className="border-t border-border my-2" role="separator" />
                             <div className="px-2 py-1">
@@ -540,7 +540,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
           <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setNewMeasurableOpen(false)} aria-hidden />
           <div className="fixed inset-y-0 right-0 w-full max-w-lg bg-card border-l border-border shadow-xl z-50 flex flex-col">
             <header className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0 bg-muted/20">
-              <h3 className="text-lg font-semibold text-foreground">Create Measurable</h3>
+              <h3 className="text-lg font-semibold text-foreground">Create Flight Metric</h3>
               <div className="flex items-center gap-1">
                 <button type="button" className="p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground" aria-label="More"><MoreHorizontal className="w-5 h-5" /></button>
                 <button type="button" className="p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground" aria-label="Add"><Plus className="w-5 h-5" /></button>
@@ -549,8 +549,8 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
             </header>
             <div className="flex-1 overflow-y-auto p-5">
               <section className="mb-6">
-                <label className="block text-sm font-medium text-foreground mb-2">Title</label>
-                <input type="text" value={newMeasurableTitle} onChange={(e) => setNewMeasurableTitle(e.target.value)} placeholder="Title" className="w-full px-3 py-2.5 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
+                <label className="block text-sm font-medium text-foreground mb-2">Metric Name</label>
+                <input type="text" value={newMeasurableTitle} onChange={(e) => setNewMeasurableTitle(e.target.value)} placeholder="Metric name" className="w-full px-3 py-2.5 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary" />
               </section>
 
               <hr className="border-border my-6" />
@@ -566,7 +566,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
               <hr className="border-border my-6" />
 
               <section className="mb-6">
-                <label className="block text-sm font-medium text-foreground mb-2">Period Interval</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Reporting Interval</label>
                 <Select
                   value={newMeasurablePeriodInterval}
                   onChange={(v) => v && setNewMeasurablePeriodInterval(v)}
@@ -583,12 +583,12 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
               <hr className="border-border my-6" />
 
               <section className="mb-6">
-                <h4 className="text-sm font-semibold text-foreground mb-3">Owner</h4>
+                <h4 className="text-sm font-semibold text-foreground mb-3">Assigner</h4>
                 <Select
                   value={newMeasurableOwnerId ?? undefined}
                   onChange={(v) => setNewMeasurableOwnerId(v || null)}
                   className="w-full"
-                  placeholder="Owner"
+                  placeholder="Select crew member"
                   allowClear
                   options={[{ label: 'Select…', value: '' }, ...participants.map((p) => ({ label: p.label, value: p.id }))]}
                 />
@@ -605,7 +605,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
                   {[
                     { key: 'showTotal' as const, label: 'Show Total', desc: 'This column shows the sum total of all the data points in this row.' },
                     { key: 'showAverage' as const, label: 'Show Average', desc: 'This column shows the average of all the data points in this row.' },
-                    { key: 'showGoal' as const, label: 'Show Goal', desc: 'This column shows the intended goal of this measurable. You can choose to hide it for measurables you wish to just monitor.' },
+                    { key: 'showGoal' as const, label: 'Show Target', desc: 'This column shows the intended target of this flight metric. You can choose to hide it for flight metrics you wish to just monitor.' },
                   ].map(({ key, label, desc }) => (
                     <div key={key} className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
@@ -624,7 +624,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
 
               <section className="mb-6">
                 <div className="flex items-center gap-2 mb-3">
-                  <h4 className="text-sm font-semibold text-foreground">Goal</h4>
+                  <h4 className="text-sm font-semibold text-foreground">Target</h4>
                   <button type="button" className="p-0.5 rounded-full hover:bg-muted text-muted-foreground" aria-label="Info"><Info className="w-4 h-4" /></button>
                 </div>
                 <div className="space-y-4">
@@ -670,7 +670,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
                   <div className="mt-4 pt-4 border-t border-border space-y-4">
                     <div className="flex flex-wrap gap-2">
                       <button type="button" onClick={() => setFormulaMeasurablePickerOpen(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-background hover:bg-muted text-sm font-medium text-foreground">
-                        <Folder className="w-4 h-4 text-muted-foreground" /> Measurable group
+                        <Folder className="w-4 h-4 text-muted-foreground" /> Flight metric group
                       </button>
                       <button type="button" onClick={() => { setFormulaNumberInputValue(''); setFormulaNumberInputOpen(true); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-background hover:bg-muted text-sm font-medium text-foreground">
                         Number
@@ -684,7 +684,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
                     <div className="flex flex-wrap gap-2 items-center">
                       <button type="button" onClick={() => setNewMeasurableFormulaTokens((t) => t.slice(0, -1))} disabled={newMeasurableFormulaTokens.length === 0} className="w-10 h-10 rounded-lg border border-border bg-muted/50 hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed text-foreground shrink-0" title="Remove last"><Delete className="w-4 h-4 mx-auto" /></button>
                       <button type="button" onClick={() => setNewMeasurableFormulaTokens([])} disabled={newMeasurableFormulaTokens.length === 0} className="w-10 h-10 rounded-lg border border-border bg-muted/50 hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium text-foreground shrink-0">C</button>
-                      <span className="text-xs text-muted-foreground ml-2">Comparison (only after a Measurable):</span>
+                      <span className="text-xs text-muted-foreground ml-2">Comparison (only after a flight metric):</span>
                       {(['>=', '<=', '==', '>', '<'] as const).map((cmp) => {
                         const last = newMeasurableFormulaTokens[newMeasurableFormulaTokens.length - 1];
                         const canAdd = last?.type === 'measurable';
@@ -697,7 +697,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
                     </div>
                     <div className="min-h-[100px] rounded-lg border border-border bg-muted/20 p-3">
                       {newMeasurableFormulaTokens.length === 0 ? (
-                        <p className="text-sm text-muted-foreground italic">Build a formula by adding a Measurable, number, or operator...</p>
+                        <p className="text-sm text-muted-foreground italic">Build a formula by adding a flight metric, number, or operator...</p>
                       ) : (
                         <div className="flex flex-wrap gap-2 items-center">
                           {newMeasurableFormulaTokens.map((token, i) => (
@@ -715,7 +715,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
                     </div>
                     <p className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
                       <AlertTriangle className="w-4 h-4 shrink-0" />
-                      Build a formula by adding a Measurable, number, or operator. Edit inline as needed.
+                      Build a formula by adding a flight metric, number, or operator. Edit inline as needed.
                     </p>
                     <div className="flex items-center justify-between gap-4 pt-2 border-t border-border">
                       <div>
@@ -738,13 +738,13 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
         </>
       )}
 
-      {/* Formula: Pick Measurable Group modal */}
+      {/* Formula: Pick Flight Metric Group modal */}
       {formulaMeasurablePickerOpen && newMeasurableOpen && (
         <>
           <div className="fixed inset-0 bg-black/30 z-[60]" onClick={() => setFormulaMeasurablePickerOpen(false)} aria-hidden />
           <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[61] w-full max-w-2xl max-h-[80vh] bg-card border border-border rounded-lg shadow-xl flex flex-col">
             <div className="p-4 border-b border-border shrink-0">
-              <h3 className="text-lg font-semibold text-foreground">Measurable Groups</h3>
+              <h3 className="text-lg font-semibold text-foreground">Flight Metric Groups</h3>
               <p className="text-sm text-muted-foreground mt-0.5">Select a group to use in the formula. The formula will apply to that group.</p>
               <div className="mt-3">
                 <Input.Search placeholder="Search groups..." value={formulaMeasurableSearch} onChange={(e) => setFormulaMeasurableSearch(e.target.value)} allowClear className="max-w-xs" />
@@ -805,7 +805,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
           <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setReassignOpen(false)} aria-hidden />
           <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md bg-card border border-border rounded-lg shadow-xl p-5 flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">Reassign Measurable {reassignIds.length}</h3>
+              <h3 className="text-lg font-semibold text-foreground">Reassign Flight Metric {reassignIds.length}</h3>
               <button type="button" onClick={() => setReassignOpen(false)} className="p-1 rounded hover:bg-muted text-muted-foreground"><X className="w-5 h-5" /></button>
             </div>
             <p className="text-sm text-muted-foreground">Are you sure you want to reassign the selected Measurables?</p>

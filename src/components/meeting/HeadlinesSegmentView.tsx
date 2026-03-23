@@ -174,7 +174,7 @@ export function HeadlinesSegmentView({
       {/* Filter row — full width; facilitator-only with sync */}
       <div className="flex flex-wrap items-center gap-3 py-3 -mx-6 px-4 border-t border-b border-border bg-muted/30 shrink-0">
         <div className={`flex items-center gap-1 ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''}`}>
-          <span className="text-muted-foreground text-sm">Team:</span>
+          <span className="text-muted-foreground text-sm">Flight Crew:</span>
           <Select
             value={teamFilter || undefined}
             onChange={(v) => {
@@ -185,7 +185,7 @@ export function HeadlinesSegmentView({
             disabled={!canUseFilters || !teamName}
             options={teamName ? [{ label: teamName, value: teamName }] : []}
             className="w-[160px]"
-            placeholder="Team"
+            placeholder="Flight Crew"
           />
         </div>
         <label className={`flex items-center gap-2 group ${!canUseFilters ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
@@ -214,7 +214,7 @@ export function HeadlinesSegmentView({
         </label>
         <div className="flex-1 min-w-[200px] flex justify-end">
           <Input.Search
-            placeholder="Search Crew Headlines..."
+            placeholder="Search Flight Announcements..."
             value={searchQuery}
             onChange={(e) => {
               if (!canUseFilters) return;
@@ -237,17 +237,17 @@ export function HeadlinesSegmentView({
         {archiveOn ? (
           <>
             <ArchivedSection
-              title="Archived Crew Headlines (Headlines)"
+              title="Archived Flight Announcements"
               count={archivedHeadlines.length}
               subtitle="Customer/Employee Headlines"
-              emptyMessage="Your team doesn't have any Archived Crew Headlines."
-              hint="Crew Headlines are a great way to share news across teams."
-              learnLink="Learn more about Crew Headlines."
+              emptyMessage="Your crew doesn't have any archived flight announcements."
+              hint="Flight announcements are a great way to share updates across flight crews."
+              learnLink="Learn more about Flight Announcements."
             />
             <ArchivedSection
               title="Archived Cascading Messages"
               count={archivedCascading.length}
-              emptyMessage="Your team doesn't have any Archived Cascading Messages."
+              emptyMessage="Your crew doesn't have any archived cascading messages."
               hint="Cascading messages help communicate across the organization."
               learnLink="Learn more about Cascading Messages."
               className="mt-6"
@@ -266,7 +266,7 @@ export function HeadlinesSegmentView({
                     ? () => onOpenCreate('headline')
                     : () => setIsAddingHeadline(true)
                 }
-                sectionTitle="Crew Headlines"
+                sectionTitle="Flight Announcements"
                 sectionSubtitle="Customer/Employee Headlines"
                 createLabel="Create Headline"
                 isAdding={isAddingHeadline}
@@ -398,7 +398,7 @@ function HeadlinesList({
                 Created
               </th>
               <th className="text-left font-medium text-foreground px-4 py-2 w-24">
-                Owner
+                Assigner
               </th>
               <th className="text-right font-medium text-foreground px-4 py-2 w-14">
                 Actions
@@ -602,7 +602,7 @@ function CascadingList({
                 Created
               </th>
               <th className="text-left font-medium text-foreground px-4 py-2 w-24">
-                Owner
+                Assigner
               </th>
               <th className="text-right font-medium text-foreground px-4 py-2 w-14">
                 Actions
@@ -779,15 +779,15 @@ function HeadlineRowMenu({
           )}
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <Mountain className={icon} />
-            Create linked Waypoint (Rock)
+            Create linked Waypoint
           </button>
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <CheckSquare className={icon} />
-            Create linked To-Do
+            Create linked Clearance
           </button>
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <AlertCircle className={icon} />
-            Create linked Issue
+            Create linked Turbulence
           </button>
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <Megaphone className={icon} />

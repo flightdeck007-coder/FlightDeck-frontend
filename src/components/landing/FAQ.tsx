@@ -10,7 +10,7 @@ export function FAQ() {
     {
       question: 'What is FlightDeck?',
       answer:
-        'FlightDeck is a comprehensive operations platform for Weekly Flight Reviews. It helps crews run structured reviews, track KPIs on the Instrument Panel, manage waypoints, handle turbulence, manage clearances, and maintain accountability across your fleet.',
+        'FlightDeck is a comprehensive operations platform for Weekly Flight Reviews. It helps crews run structured reviews, track Flight Metrics on the Instrument Panel, manage waypoints, handle turbulence, manage clearances, and maintain accountability across your fleet.',
     },
     {
       question: 'How do Weekly Flight Reviews work?',

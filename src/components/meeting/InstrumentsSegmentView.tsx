@@ -168,6 +168,7 @@ function ScorecardTableCard({
   /** When set, double-click on measurable title opens edit panel with this row prefilled */
   onEditMeasurable?: (row: MeasurableRow) => void;
 }) {
+  const showAddExistingMeasurableOption = false;
   const effectiveGroupId = groupId ?? 'main';
   const visibility = columnVisibility ?? {
     showStatusIndicators: true,
@@ -221,7 +222,7 @@ function ScorecardTableCard({
       ), size: 100 });
     }
     cols.push(
-      { id: 'title', header: () => <span className="font-medium text-foreground">Title</span>, cell: ({ row }) => (
+      { id: 'title', header: () => <span className="font-medium text-foreground">Metric Name</span>, cell: ({ row }) => (
         <div
           className={`flex items-center gap-2 min-w-0 ${onEditMeasurable ? 'cursor-pointer select-none rounded px-1 -mx-1 hover:bg-muted/60' : ''}`}
           onDoubleClick={onEditMeasurable ? () => onEditMeasurable(row.original) : undefined}
@@ -237,7 +238,7 @@ function ScorecardTableCard({
         </div>
       ), size: 180 }
     );
-    if (visibility.showGoalColumn) cols.push({ id: 'goal', header: () => <span className="font-medium text-foreground">Goal</span>, cell: ({ row }) => { const r = row.original; if (r.showGoal === false) return ''; const v = r.goal; return (v != null && v !== '' ? v : '—'); }, size: 100 });
+    if (visibility.showGoalColumn) cols.push({ id: 'goal', header: () => <span className="font-medium text-foreground">Target</span>, cell: ({ row }) => { const r = row.original; if (r.showGoal === false) return ''; const v = r.goal; return (v != null && v !== '' ? v : '—'); }, size: 100 });
     if (visibility.showAverageColumn) cols.push({ id: 'average', header: () => <span className="font-medium text-foreground">Average</span>, cell: ({ row }) => { const r = row.original; if (r.showAverage === false) return ''; const v = r.average; return (v != null && v !== '' ? v : '—'); }, size: 90 });
     if (visibility.showTotalColumn) cols.push({ id: 'total', header: () => <span className="font-medium text-foreground">Total</span>, cell: ({ row }) => { const r = row.original; if (r.showTotal === false) return ''; const v = r.total; return (v != null && v !== '' ? v : '—'); }, size: 80 });
     const periodCols = (displayDirection === 'rtl' ? [...periodColumns].reverse() : periodColumns).map((label, i) => ({
@@ -308,7 +309,7 @@ function ScorecardTableCard({
     <>
     <div className={`border border-border rounded-lg overflow-visible bg-card flex flex-col ${isCollapsed ? 'min-h-0 shrink-0' : 'min-h-[72px]'} ${className}`}>
       <div className={`flex items-center justify-between gap-2 p-4 shrink-0 ${isCollapsed ? 'bg-muted/20' : 'border-b border-border bg-muted/20'}`}>
-        <h2 className="text-lg font-semibold text-foreground truncate">{title}{isCollapsed && <span className="text-muted-foreground font-normal ml-2">({data.length} measurables)</span>}</h2>
+        <h2 className="text-lg font-semibold text-foreground truncate">{title}{isCollapsed && <span className="text-muted-foreground font-normal ml-2">({data.length} metrics)</span>}</h2>
         <div className="flex items-center gap-1 shrink-0">
           {selectedList.length > 0 && (
             <div className="relative">
@@ -341,7 +342,7 @@ function ScorecardTableCard({
                         )}
                       </div>
                       <div className="border-t border-border my-2" role="separator" />
-                      {/* Create Clearance / Create Turbulence (with linking to measurable) */}
+                      {/* Create Clearance / Create Turbulence (with linking to metric) */}
                       <div className="px-2 py-1 space-y-0.5">
                         {onCreateTodo && selectedMeasurables.length > 0 && (
                           <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-md" onClick={() => { setSelectActionOpen(false); onCreateTodo(selectedMeasurables); setSelectedIds(new Set()); }}>
@@ -382,7 +383,7 @@ function ScorecardTableCard({
               onClick={onNewMeasurableToggle}
               className="flex items-center gap-2 px-3 py-1.5 border border-border text-primary rounded-md hover:bg-accent bg-background text-sm font-medium cursor-pointer transition-colors"
             >
-              New Measurable <ChevronDown className="w-4 h-4" />
+              New Flight Metric <ChevronDown className="w-4 h-4" />
             </button>
             {newMeasurableOpen && dropdownPosition != null && typeof document !== 'undefined' &&
               createPortal(
@@ -391,8 +392,10 @@ function ScorecardTableCard({
                     className="fixed z-[100] py-1 bg-card border border-border rounded-md shadow-lg min-w-[200px]"
                     style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
                   >
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer" onClick={() => { onNewMeasurableToggle(); onCreateNew(effectiveGroupId); }}><Plus className="w-4 h-4" /> Create new Measurable</button>
-                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer" onClick={() => { onNewMeasurableToggle(); onAddExisting(); }}><Plus className="w-4 h-4" /> Add existing Measurable</button>
+                    <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer" onClick={() => { onNewMeasurableToggle(); onCreateNew(effectiveGroupId); }}><Plus className="w-4 h-4" /> New Flight Metric</button>
+                    {showAddExistingMeasurableOption && (
+                      <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer" onClick={() => { onNewMeasurableToggle(); onAddExisting(); }}><Plus className="w-4 h-4" /> Add existing Flight Metric</button>
+                    )}
                   </div>
                   <div className="fixed inset-0 z-[99]" onClick={onNewMeasurableToggle} aria-hidden />
                 </>,
@@ -517,10 +520,10 @@ function ScorecardTableCard({
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="bg-card border border-border rounded-lg shadow-xl max-w-sm w-full p-6">
               <h3 className="text-lg font-semibold text-foreground mb-4">
-                {selectedList.length === 1 ? 'Move Measurable 1' : `Move ${selectedList.length} measurables`}
+                {selectedList.length === 1 ? 'Move Metric 1' : `Move ${selectedList.length} metrics`}
               </h3>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-foreground mb-2">New Measurable Group</label>
+                <label className="block text-sm font-medium text-foreground mb-2">New Instrument Group</label>
                 <Select
                   placeholder="Select group..."
                   value={moveTargetGroupId}
@@ -914,7 +917,7 @@ export function InstrumentsSegmentView({
 
   const timeframeLabel = timeframe === 'weekly' ? 'Weekly' : timeframe === 'monthly' ? 'Monthly' : timeframe === 'quarterly' ? 'Quarterly' : 'Annual';
   const currentGroups = groupsByTimeframe[timeframe] || [];
-  const mainGroup = { id: 'main', name: mainGroupName || `${timeframeLabel} KPIs`, description: mainGroupDescription || undefined };
+  const mainGroup = { id: 'main', name: mainGroupName || `${timeframeLabel} Flight Metrics`, description: mainGroupDescription || undefined };
   /** Move targets for main card: only real API groups (no synthetic default). */
   const otherGroupsForMain = currentGroups;
   /** For a custom group card: only other real groups. Include main only if it exists (not hidden/deleted). */
@@ -935,7 +938,7 @@ export function InstrumentsSegmentView({
 
   const downloadCsv = useCallback((rows: MeasurableRow[], filename: string) => {
     const periodKeys = rows.length ? Object.keys(rows.reduce((acc, r) => ({ ...acc, ...r.periodValues }), {} as Record<string, string>)) : [];
-    const headers = ['Title', 'Goal', 'Average', 'Total', 'Trend', ...periodKeys];
+    const headers = ['Metric Name', 'Target', 'Average', 'Total', 'Trend', ...periodKeys];
     const escape = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
     const csv = [headers.map(escape).join(','), ...rows.map((r) => [r.title, r.goal, r.average, r.total, r.trend, ...periodKeys.map((k) => r.periodValues[k] ?? '')].map(String).map(escape).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -949,7 +952,7 @@ export function InstrumentsSegmentView({
 
   const downloadPdf = useCallback((rows: MeasurableRow[], title: string) => {
     const periodKeys = rows.length ? Object.keys(rows.reduce((acc, r) => ({ ...acc, ...r.periodValues }), {} as Record<string, string>)) : [];
-    const headers = ['Title', 'Goal', 'Average', 'Total', 'Trend', ...periodKeys];
+    const headers = ['Metric Name', 'Target', 'Average', 'Total', 'Trend', ...periodKeys];
     const th = headers.map((h) => `<th style="border:1px solid #ccc;padding:6px;text-align:left">${h}</th>`).join('');
     const trs = rows.map((r) => `<tr>${[r.title, r.goal, r.average, r.total, r.trend, ...periodKeys.map((k) => r.periodValues[k] ?? '')].map((c) => `<td style="border:1px solid #ccc;padding:6px">${String(c)}</td>`).join('')}</tr>`).join('');
     const html = `<!DOCTYPE html><html><head><title>${title}</title></head><body><h2>${title}</h2><table style="border-collapse:collapse;width:100%"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></body></html>`;
@@ -1088,8 +1091,8 @@ export function InstrumentsSegmentView({
     const title =
       n === 1 && first
         ? `Clearance: ${first.title}`
-        : `Clearance: ${n} Measurable${n === 1 ? '' : 's'}`;
-    const description = 'Measurables:\n' + measurables.map((m) => '• ' + m.title).join('\n');
+        : `Clearance: ${n} Flight Metric${n === 1 ? '' : 's'}`;
+    const description = 'Flight Metrics:\n' + measurables.map((m) => '• ' + m.title).join('\n');
     onOpenCreate?.('todo', { title, description, linkedEntity: first ? { type: 'measurable', id: first.id, title: first.title } : undefined });
   }, [onOpenCreate]);
   const handleCreateIssueFromMeasurable = useCallback((measurables: MeasurableRow[]) => {
@@ -1098,8 +1101,8 @@ export function InstrumentsSegmentView({
     const title =
       n === 1 && first
         ? `Turbulence: ${first.title}`
-        : `Turbulence: ${n} Measurable${n === 1 ? '' : 's'}`;
-    const description = 'Measurables:\n' + measurables.map((m) => '• ' + m.title).join('\n');
+        : `Turbulence: ${n} Flight Metric${n === 1 ? '' : 's'}`;
+    const description = 'Flight Metrics:\n' + measurables.map((m) => '• ' + m.title).join('\n');
     onOpenCreate?.('issue', { title, description, linkedEntity: first ? { type: 'measurable', id: first.id, title: first.title } : undefined });
   }, [onOpenCreate]);
   const handleMoveToGroup = useCallback(
@@ -1245,7 +1248,7 @@ export function InstrumentsSegmentView({
               options={teamName ? [{ label: teamName, value: teamName }] : []}
               className="w-[160px] shrink-0"
               disabled={!canUseFilters || !teamName}
-              placeholder="Team"
+              placeholder="Flight Crew"
             />
             <span className="text-muted-foreground text-xs shrink-0">View by:</span>
             <Select<ViewBy>
@@ -1310,9 +1313,9 @@ export function InstrumentsSegmentView({
           <div className="flex flex-wrap items-center gap-2 min-w-0 flex-shrink-0">
             <button type="button" disabled={!canUseFilters || scorecardHistory.length === 0} onClick={handleUndoScorecard} className="p-1.5 rounded-md border border-border hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer disabled:bg-muted/50 shrink-0" title="Undo score change"><RotateCcw className="w-4 h-4" /></button>
             <button type="button" disabled={!canUseFilters || scorecardRedo.length === 0} onClick={handleRedoScorecard} className="p-1.5 rounded-md border border-border hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer disabled:bg-muted/50 shrink-0" title="Redo score change"><RotateCw className="w-4 h-4" /></button>
-            <button type="button" disabled={!canUseFilters} onClick={() => { setEditGroupId(null); setEditGroupInitial(null); setCreateGroupName(''); setCreateGroupDescription(''); setCreateGroupOpen(true); }} className={`flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-md text-xs font-medium shrink-0 ${canUseFilters ? 'text-primary hover:bg-accent cursor-pointer' : 'text-muted-foreground bg-muted/50 cursor-not-allowed opacity-60'}`}><Plus className="w-3.5 h-3.5" /> New group</button>
-            {meetingId ? <Link href={`/meeting/${meetingId}?segment=scorecard&manager=1`} className="px-2.5 py-1.5 border border-border rounded-md hover:bg-accent text-xs font-medium text-primary cursor-pointer inline-flex items-center shrink-0 whitespace-nowrap">Go to Measurable Manager</Link> : <button type="button" disabled={!canUseFilters} className="px-2.5 py-1.5 border border-border rounded-md hover:bg-accent text-xs font-medium text-primary shrink-0 whitespace-nowrap disabled:opacity-60 disabled:bg-muted/50 disabled:cursor-not-allowed">Go to Measurable Manager</button>}
-            <Input.Search placeholder="Search KPIs..." value={searchKpis} onChange={(e) => setSearchKpis(e.target.value)} allowClear className="max-w-[180px] min-w-0 w-full text-sm shrink" disabled={!canUseFilters} />
+            <button type="button" disabled={!canUseFilters} onClick={() => { setEditGroupId(null); setEditGroupInitial(null); setCreateGroupName(''); setCreateGroupDescription(''); setCreateGroupOpen(true); }} className={`flex items-center gap-1.5 px-2.5 py-1.5 border border-border rounded-md text-xs font-medium shrink-0 ${canUseFilters ? 'text-primary hover:bg-accent cursor-pointer' : 'text-muted-foreground bg-muted/50 cursor-not-allowed opacity-60'}`}><Plus className="w-3.5 h-3.5" /> New Instrument Group</button>
+            {meetingId ? <Link href={`/meeting/${meetingId}?segment=scorecard&manager=1`} className="px-2.5 py-1.5 border border-border rounded-md hover:bg-accent text-xs font-medium text-primary cursor-pointer inline-flex items-center shrink-0 whitespace-nowrap">Go to Metrics Console</Link> : <button type="button" disabled={!canUseFilters} className="px-2.5 py-1.5 border border-border rounded-md hover:bg-accent text-xs font-medium text-primary shrink-0 whitespace-nowrap disabled:opacity-60 disabled:bg-muted/50 disabled:cursor-not-allowed">Go to Metrics Console</button>}
+            <Input.Search placeholder="Search Flight Metrics..." value={searchKpis} onChange={(e) => setSearchKpis(e.target.value)} allowClear className="max-w-[180px] min-w-0 w-full text-sm shrink" disabled={!canUseFilters} />
             {canUseFilters && (
               <div className="relative shrink-0">
                 <button ref={moreMenuBtnRef} type="button" onClick={() => setMoreMenuOpen((o) => !o)} className="p-1.5 rounded-md border border-border hover:bg-accent hover:text-foreground text-muted-foreground transition-colors cursor-pointer" title="More options (Settings, Export, Print)">
@@ -1325,7 +1328,7 @@ export function InstrumentsSegmentView({
                       <button type="button" className="w-full text-left px-3 py-2.5 text-sm text-foreground hover:bg-muted/60 flex items-center gap-3 cursor-pointer" onClick={() => { setMoreMenuOpen(false); setSettingsPanelOpen(true); }}><Settings className="w-4 h-4 text-muted-foreground" /> Settings</button>
                       <div className="border-t border-border my-1" />
                       <button type="button" className="w-full text-left px-3 py-2.5 text-sm text-foreground hover:bg-muted/60 flex items-center gap-3 cursor-pointer" onClick={() => { setMoreMenuOpen(false); downloadCsv(measurablesForCurrentTab, `scorecard-${timeframe}.csv`); }}><Download className="w-4 h-4 text-muted-foreground" /> Export as CSV</button>
-                      <button type="button" className="w-full text-left px-3 py-2.5 text-sm text-foreground hover:bg-muted/60 flex items-center gap-3 cursor-pointer" onClick={() => { setMoreMenuOpen(false); downloadPdf(measurablesForCurrentTab, `Scorecard ${timeframeLabel}`); }}><FileText className="w-4 h-4 text-muted-foreground" /> Print PDF</button>
+                      <button type="button" className="w-full text-left px-3 py-2.5 text-sm text-foreground hover:bg-muted/60 flex items-center gap-3 cursor-pointer" onClick={() => { setMoreMenuOpen(false); downloadPdf(measurablesForCurrentTab, `Flight Metrics ${timeframeLabel}`); }}><FileText className="w-4 h-4 text-muted-foreground" /> Print PDF</button>
                     </div>
                   </>,
                   document.body
@@ -1364,9 +1367,9 @@ export function InstrumentsSegmentView({
                 </button>
               </div>
               {[
-                { key: 'showStatusIndicators' as const, label: 'Show Measurable status indicators', desc: 'Display icon status indicators with colors based on each Measurable\'s target. Green: On-track. Orange: At-risk. Red: Off-track.' },
-                { key: 'showOwnerColumn' as const, label: 'Show Owner column', desc: 'Display the owner of the Measurable.' },
-                { key: 'showGoalColumn' as const, label: 'Show Goal column', desc: 'Display Measurable Goals.' },
+                { key: 'showStatusIndicators' as const, label: 'Show Flight Metric status indicators', desc: 'Display icon status indicators with colors based on each flight metric\'s target. Green: On-track. Orange: At-risk. Red: Off-track.' },
+                { key: 'showOwnerColumn' as const, label: 'Show Assigner column', desc: 'Display the assigner of the flight metric.' },
+                { key: 'showGoalColumn' as const, label: 'Show Target column', desc: 'Display flight metric targets.' },
                 { key: 'showAverageColumn' as const, label: 'Show Average column', desc: 'Display the average of all the data points in the selected date range.' },
                 { key: 'showTotalColumn' as const, label: 'Show Total column', desc: 'Display the sum total of all the data points in the selected date range.' },
                 { key: 'showCurrentPeriod' as const, label: 'Show current period', desc: 'Display the current period on the Scorecard.' },
@@ -1404,7 +1407,7 @@ export function InstrumentsSegmentView({
             <div className="bg-card border border-border rounded-lg shadow-xl max-w-sm w-full p-6">
               <h3 className="text-lg font-semibold text-foreground">Delete group?</h3>
               <div className="mt-4 pt-4 border-t border-border">
-                <p className="text-sm text-muted-foreground">This action cannot be undone. The group and its measurables will be removed from this scorecard.</p>
+                <p className="text-sm text-muted-foreground">This action cannot be undone. The group and its flight metrics will be removed from this flight metrics board.</p>
               </div>
               <div className="mt-4 pt-4 border-t border-border flex justify-end gap-2">
                 <button
@@ -1578,7 +1581,7 @@ export function InstrumentsSegmentView({
         </>
       )}
 
-      {/* Add existing measurable — modal */}
+      {/* Add existing flight metric — modal */}
       {addExistingModalOpen && (
         <>
           <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setAddExistingModalOpen(false)} aria-hidden />
@@ -1589,7 +1592,7 @@ export function InstrumentsSegmentView({
             </header>
             <div className="p-4 border-b border-border shrink-0 flex flex-col sm:flex-row gap-3 flex-wrap">
               <Input.Search
-                placeholder="Search measurables..."
+                placeholder="Search flight metrics..."
                 value={addExistingSearch}
                 onChange={(e) => setAddExistingSearch(e.target.value)}
                 allowClear
@@ -1628,19 +1631,19 @@ export function InstrumentsSegmentView({
         </>
       )}
 
-      {/* Create measurable — right-side panel */}
+      {/* Create flight metric — right-side panel */}
       {(createMeasurableOpen || editingMeasurable) && (
         <>
           <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setCreateMeasurableCloseConfirmOpen(true)} aria-hidden />
           <div className="fixed inset-y-0 right-0 w-full max-w-md bg-card border-l border-border shadow-xl z-50 flex flex-col">
             <header className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0 bg-muted/20">
-              <h3 className="text-lg font-semibold text-foreground">{editingMeasurable ? 'Edit Measurable' : 'Create Measurable'}</h3>
+              <h3 className="text-lg font-semibold text-foreground">{editingMeasurable ? 'Edit Flight Metric' : 'Create Flight Metric'}</h3>
               <button type="button" onClick={() => setCreateMeasurableCloseConfirmOpen(true)} className="p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-colors" aria-label="Close"><X className="w-5 h-5" /></button>
             </header>
             <div className="flex-1 overflow-y-auto p-5 space-y-6">
               <section>
                 <label className="block text-sm font-medium text-foreground mb-2">Title</label>
-                <input type="text" value={createMeasurableTitle} onChange={(e) => setCreateMeasurableTitle(e.target.value)} placeholder="Title" className="w-full px-3 py-2.5 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-shadow" />
+                <input type="text" value={createMeasurableTitle} onChange={(e) => setCreateMeasurableTitle(e.target.value)} placeholder="Metric name" className="w-full px-3 py-2.5 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-shadow" />
               </section>
 
               <hr className="border-border" />
@@ -1656,7 +1659,7 @@ export function InstrumentsSegmentView({
               <hr className="border-border" />
 
               <section>
-                <label className="block text-sm font-medium text-foreground mb-2">Period Interval</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Reporting Interval</label>
                 <Select
                   className="w-full"
                   options={[
@@ -1668,10 +1671,10 @@ export function InstrumentsSegmentView({
                 />
               </section>
               <section>
-                <label className="block text-sm font-medium text-foreground mb-2">Owner</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Assigner</label>
                 <Select
                   className="w-full"
-                  placeholder="Select person in meeting"
+                  placeholder="Select crew member"
                   options={personOptions.filter((o) => o.value !== 'All')}
                 />
               </section>
@@ -1684,7 +1687,7 @@ export function InstrumentsSegmentView({
                   {[
                     { key: 'showTotal' as const, label: 'Show Total', desc: 'This column shows the sum total of all the data points in this row.' },
                     { key: 'showAverage' as const, label: 'Show Average', desc: 'This column shows the average of all the data points in this row.' },
-                    { key: 'showGoal' as const, label: 'Show Goal', desc: 'This column shows the intended goal of this measurable.' },
+                    { key: 'showGoal' as const, label: 'Show Target', desc: 'This column shows the intended target of this flight metric.' },
                   ].map(({ key, label, desc }) => (
                     <div key={key} className="flex items-center justify-between gap-4">
                       <div>
@@ -1703,7 +1706,7 @@ export function InstrumentsSegmentView({
 
               <section>
                 <div className="flex items-center gap-2 mb-3">
-                  <h4 className="text-sm font-medium text-foreground">Goal</h4>
+                  <h4 className="text-sm font-medium text-foreground">Target</h4>
                   <button type="button" className="p-0.5 rounded-full hover:bg-muted text-muted-foreground" aria-label="Info"><Info className="w-4 h-4" /></button>
                 </div>
                 <div className="space-y-4">
@@ -1876,7 +1879,7 @@ export function InstrumentsSegmentView({
         </>
       )}
 
-      {/* Create measurable — close confirmation */}
+      {/* Create flight metric — close confirmation */}
       {createMeasurableCloseConfirmOpen && (
         <>
           <div className="fixed inset-0 bg-black/30 z-[60]" onClick={() => setCreateMeasurableCloseConfirmOpen(false)} aria-hidden />

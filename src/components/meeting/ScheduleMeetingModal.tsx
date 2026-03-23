@@ -258,7 +258,7 @@ export function ScheduleMeetingModal({
                 <label className="block text-sm font-medium text-foreground mb-1">
                   <span className="flex items-center gap-2">
                     <User className="w-4 h-4" />
-                    Facilitator
+                    Pilot In Charge
                   </span>
                 </label>
                 <Select
@@ -272,9 +272,9 @@ export function ScheduleMeetingModal({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Scribe</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Safety Officer</label>
                 <Select
-                  placeholder="Select scribe"
+                  placeholder="Select safety officer"
                   value={scribeId || undefined}
                   onChange={(v) => setScribeId(v ?? '')}
                   options={members.map((m) => ({
@@ -286,7 +286,7 @@ export function ScheduleMeetingModal({
                 />
               </div>
             </div>
-            <p className="text-xs text-foreground/80">The facilitator runs the meeting. The scribe can add and edit notes, todos, and issues.</p>
+            <p className="text-xs text-foreground/80">The Pilot In Charge runs the flight review. The Safety Officer can add and edit notes, clearances, and turbulence.</p>
           </div>
           <div className="flex justify-end gap-2 px-6 py-4 border-t border-border bg-accent/30 shrink-0">
             <button

@@ -30,7 +30,7 @@ const meetingSections = [
   { id: 'segue', title: SECTION_DISPLAY_TITLES.segue ?? 'Pre-Flight', duration: 5, order: 1 },
   { id: 'scorecard', title: SECTION_DISPLAY_TITLES.scorecard ?? 'Flight Desk', duration: 5, order: 2 },
   { id: 'rocks', title: SECTION_DISPLAY_TITLES.rocks ?? 'Waypoint Review', duration: 5, order: 3 },
-  { id: 'headlines', title: SECTION_DISPLAY_TITLES.headlines ?? 'Crew Headlines', duration: 5, order: 4 },
+  { id: 'headlines', title: SECTION_DISPLAY_TITLES.headlines ?? 'Flight Announcements', duration: 5, order: 4 },
   { id: 'todos', title: SECTION_DISPLAY_TITLES.todos ?? 'Clearances', duration: 5, order: 5 },
   { id: 'issues', title: SECTION_DISPLAY_TITLES.issues ?? 'Turbulence', duration: 60, order: 6 },
   { id: 'conclude', title: SECTION_DISPLAY_TITLES.conclude ?? 'Debrief', duration: 5, order: 7 },
@@ -54,7 +54,7 @@ const sectionTitleToId: Record<string, string> = {
   'DEBRIEF': 'conclude', 'CONCLUDE': 'conclude',
   // Flight-first display titles (for reference / if API returns them)
   'Pre-Flight': 'segue', 'Flight Desk': 'scorecard', 'Waypoint Review': 'rocks',
-  'Crew Headlines': 'headlines', 'Clearances': 'todos', 'Turbulence': 'issues', 'Debrief': 'conclude',
+  'Flight Announcements': 'headlines', 'Clearances': 'todos', 'Turbulence': 'issues', 'Debrief': 'conclude',
 };
 
 const VALID_SEGMENT_IDS = ['segue', 'scorecard', 'rocks', 'headlines', 'todos', 'issues', 'conclude'];
@@ -81,7 +81,7 @@ export default function MeetingPage() {
   const [segmentProgressPercent, setSegmentProgressPercent] = useState(0);
   const [segmentElapsedSeconds, setSegmentElapsedSeconds] = useState(0);
   const [totalElapsedSeconds, setTotalElapsedSeconds] = useState(0);
-  const [headerTitle, setHeaderTitle] = useState('Meeting');
+  const [headerTitle, setHeaderTitle] = useState('Flight Review');
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [loadedSections, setLoadedSections] = useState(meetingSections);
   const [organizationId, setOrganizationId] = useState<string>('');
@@ -555,9 +555,9 @@ export default function MeetingPage() {
         ? (err as { response?: { status?: number } }).response?.status
         : null;
       if (status === 404) {
-        console.error('Recap 404: Meeting not found. Ensure backend is up to date and organizationId is correct.');
+        console.error('Recap 404: Flight review not found. Ensure backend is up to date and organizationId is correct.');
       }
-      setFinishError(msg || (status === 404 ? 'Meeting not found. Try refreshing and finishing again.' : 'Failed to end meeting. Try again.'));
+      setFinishError(msg || (status === 404 ? 'Flight review not found. Try refreshing and ending again.' : 'Failed to end flight review. Try again.'));
     } finally {
       setFinishLoading(false);
     }
@@ -735,7 +735,7 @@ export default function MeetingPage() {
 
       {/* Main: header row + component details row */}
       <div className="flex-1 overflow-hidden flex flex-col min-w-0">
-        {/* Header row: hamburger | Segment (or Back to Scorecard + Measurable Manager) | user + Create */}
+        {/* Header row: hamburger | Segment (or Back to Flight Metrics + Metrics Console) | user + Create */}
         <header className="flex items-center gap-4 p-4 border-b border-border bg-card shrink-0">
           <button
             type="button"
@@ -749,9 +749,9 @@ export default function MeetingPage() {
             {showManager ? (
               <>
                 <Link href={`${pathname}?segment=scorecard`} className="text-sm font-medium text-primary hover:underline flex items-center gap-1 shrink-0">
-                  <ArrowLeft className="w-4 h-4" /> Back to Flight Desk
+                  <ArrowLeft className="w-4 h-4" /> Back to Flight Metrics
                 </Link>
-                <h1 className="text-lg font-semibold text-foreground truncate">Measurable Manager</h1>
+                <h1 className="text-lg font-semibold text-foreground truncate">Metrics Console</h1>
               </>
             ) : (
               <h1 className="text-lg font-semibold text-foreground truncate">{headerSegmentLine}</h1>

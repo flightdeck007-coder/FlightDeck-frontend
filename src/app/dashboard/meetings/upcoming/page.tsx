@@ -200,7 +200,7 @@ export default function MeetingsUpcomingPage() {
         err && typeof err === 'object' && 'response' in err
           ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
           : null;
-      setDeleteMeetingError(message || 'Failed to delete meeting');
+      setDeleteMeetingError(message || 'Failed to delete flight review');
     }
   };
 
@@ -309,7 +309,7 @@ export default function MeetingsUpcomingPage() {
         {resumingMeetingId && (
           <div className="p-4 rounded-lg border border-primary/30 bg-primary/5 flex items-center justify-between gap-4">
             <p className="text-sm text-foreground">
-              You have a suspended meeting. Open it to continue.
+              You have a flight review on hold. Open it to continue.
             </p>
             <div className="flex gap-2">
               <button
@@ -356,14 +356,14 @@ export default function MeetingsUpcomingPage() {
         {suspendedMeeting && !continueMeetingModal && (
           <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/5 flex items-center justify-between gap-4">
             <p className="text-sm text-foreground">
-              Meeting &quot;{suspendedMeeting.series.name}&quot; was suspended.
+              Flight review &quot;{suspendedMeeting.series.name}&quot; is on hold.
             </p>
             <button
               type="button"
               onClick={() => setContinueMeetingModal(suspendedMeeting)}
               className="px-3 py-1.5 rounded-md bg-amber-600 text-white text-sm font-medium"
             >
-              Continue meeting
+              Continue flight review
             </button>
           </div>
         )}
@@ -414,7 +414,7 @@ export default function MeetingsUpcomingPage() {
                             return (
                               <span
                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium text-muted-foreground cursor-not-allowed"
-                                title="Meeting has not started yet"
+                                title="Flight review has not started yet"
                               >
                                 <Play className="w-4 h-4 opacity-50" />
                                 Join
@@ -436,7 +436,7 @@ export default function MeetingsUpcomingPage() {
                             type="button"
                             onClick={(e) => openRowMenu(e, meeting.id)}
                             className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                            aria-label="Meeting actions"
+                            aria-label="Flight review actions"
                           >
                             <MoreHorizontal className="w-4 h-4" />
                           </button>
@@ -584,7 +584,7 @@ export default function MeetingsUpcomingPage() {
             role="dialog"
             aria-modal="true"
           >
-            <h3 className="text-lg font-semibold text-foreground mb-2">Continue meeting?</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Continue flight review?</h3>
             <p className="text-sm text-muted-foreground mb-4">
               Resume &quot;{continueMeetingModal.series.name}&quot; from where you left off.
             </p>

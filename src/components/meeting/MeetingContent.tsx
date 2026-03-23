@@ -59,7 +59,7 @@ const demoData: Record<string, any> = {
   },
   headlines: {
     type: 'prompt',
-    content: 'Crew Headlines',
+    content: 'Flight Announcements',
     empty: true,
   },
   rocks: {
