@@ -398,7 +398,7 @@ function HeadlinesList({
                 Created
               </th>
               <th className="text-left font-medium text-foreground px-4 py-2 w-24">
-                Assigner
+                Owner
               </th>
               <th className="text-right font-medium text-foreground px-4 py-2 w-14">
                 Actions
@@ -602,7 +602,7 @@ function CascadingList({
                 Created
               </th>
               <th className="text-left font-medium text-foreground px-4 py-2 w-24">
-                Assigner
+                Owner
               </th>
               <th className="text-right font-medium text-foreground px-4 py-2 w-14">
                 Actions

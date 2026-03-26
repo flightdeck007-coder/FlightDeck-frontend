@@ -62,6 +62,7 @@ interface IssuesContextValue {
     linkedEntityType?: string;
     linkedEntityId?: string;
     linkedEntityTitle?: string;
+    createdById?: string;
   }) => Promise<string>;
   updateIssue: (id: string, patch: Partial<IssueItem>) => void;
   deleteIssue: (id: string) => void;
@@ -227,6 +228,7 @@ export function IssuesProvider({
       linkedEntityType?: string;
       linkedEntityId?: string;
       linkedEntityTitle?: string;
+      createdById?: string;
     }): Promise<string> => {
       if (!organizationId || !teamId) return '';
       const term = data.termType ?? 'short_term';
@@ -239,6 +241,7 @@ export function IssuesProvider({
           linkedEntityType: data.linkedEntityType,
           linkedEntityId: data.linkedEntityId,
           linkedEntityTitle: data.linkedEntityTitle,
+          createdById: data.createdById,
         };
         const created = await issuesService.create(
           organizationId,
@@ -276,6 +279,7 @@ export function IssuesProvider({
             linkedEntityType: patch.linkedEntityType,
             linkedEntityId: patch.linkedEntityId,
             linkedEntityTitle: patch.linkedEntityTitle,
+            createdById: patch.createdById,
           },
           meetingId
         );

@@ -90,7 +90,7 @@ const demoData: Record<string, any> = {
   },
   conclude: {
     type: 'text',
-    content: 'Debrief complete. All clearances and action items have been assigned and documented.',
+    content: 'Debrief complete. All clearances and action items have owners and are documented.',
   },
 };
 
@@ -187,6 +187,9 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
           <IssuesSegmentView
             embedded
             teamName={meetingTeamName ?? 'No team found'}
+            teamId={meetingTeamId}
+            teams={meetingTeams}
+            organizationId={organizationId}
             meetingId={meetingId}
             isFacilitator={isFacilitator}
             canRecord={canRecordOrFacilitator}

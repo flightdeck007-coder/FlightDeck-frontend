@@ -81,6 +81,9 @@ export default function IssuesPage() {
               <div className="flex-1 min-h-0">
                 <IssuesSegmentView
                   teamName={teamName}
+                  teamId={selectedTeamId || undefined}
+                  teams={teams.map((t) => ({ id: t.id, name: t.name }))}
+                  organizationId={organizationId}
                   meetingId={undefined}
                   canRecord
                   onOpenCreate={(type, options) => {

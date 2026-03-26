@@ -476,7 +476,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
                 <th className="text-left p-3 w-10"><input type="checkbox" className="rounded border-border" checked={filtered.length > 0 && filtered.every((r) => selectedIds.has(r.id))} onChange={toggleSelectAll} /></th>
                 <th className="text-left p-3 font-medium text-foreground">Metric Name</th>
                 <th className="text-left p-3 font-medium text-foreground">Teams</th>
-                <th className="text-left p-3 font-medium text-foreground w-16">Assigner</th>
+                <th className="text-left p-3 font-medium text-foreground w-16">Owner</th>
                 <th className="text-left p-3 font-medium text-foreground">Location</th>
                 <th className="text-left p-3 font-medium text-foreground">Last reported</th>
                 <th className="w-10 p-3" />
@@ -583,7 +583,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
               <hr className="border-border my-6" />
 
               <section className="mb-6">
-                <h4 className="text-sm font-semibold text-foreground mb-3">Assigner</h4>
+                <h4 className="text-sm font-semibold text-foreground mb-3">Owner</h4>
                 <Select
                   value={newMeasurableOwnerId ?? undefined}
                   onChange={(v) => setNewMeasurableOwnerId(v || null)}

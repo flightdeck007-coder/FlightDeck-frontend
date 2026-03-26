@@ -285,7 +285,7 @@ export function ConcludeSegmentView({
                   <th className="text-left font-medium text-foreground px-4 py-2 w-8" />
                   <th className="text-left font-medium text-foreground px-4 py-2">Title</th>
                   <th className="text-left font-medium text-foreground px-4 py-2">Due By</th>
-                  <th className="text-left font-medium text-foreground px-4 py-2">Assigner</th>
+                  <th className="text-left font-medium text-foreground px-4 py-2">Owner</th>
                   <th className="w-10" />
                 </tr>
               </thead>
@@ -588,6 +588,8 @@ export function ConcludeSegmentView({
             todo={todo}
             onClose={() => setEditTodoId(null)}
             onUpdate={(patch) => updateTodo(editTodoId, patch)}
+            onArchive={() => { archiveTodo(editTodoId); setEditTodoId(null); }}
+            onDelete={() => { deleteTodo(editTodoId); setEditTodoId(null); }}
             teams={teams}
             currentTeamId={currentTeamId}
             organizationId={organizationId}
@@ -652,7 +654,7 @@ function RecapTodoRow({
         <td className="px-4 py-2 text-muted-foreground align-middle">{formatDueDate(item.dueDate)}</td>
         <td className="px-4 py-2 align-middle">
           {item.assigneeId ? (
-            <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground" title="Assigned">
+            <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground" title="Owner">
               {item.ownerInitials}
             </div>
           ) : (

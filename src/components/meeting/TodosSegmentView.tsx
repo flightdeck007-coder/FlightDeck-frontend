@@ -106,6 +106,22 @@ function linkedEntityTypeLabel(type: string | null | undefined): string {
   return map[type] ?? type;
 }
 
+function getLinkedCreateOptions(item: TodoItem, target: CreatePopupType) {
+  const linkedEntity = { type: 'todo' as const, id: item.id, title: item.title };
+  const sourceDue = item.dueDate ? formatDueDate(item.dueDate) : null;
+  const details = [
+    `Linked clearance: ${item.title}`,
+    sourceDue ? `Due date: ${sourceDue}` : null,
+    item.assigneeId ? `Owner: ${item.ownerInitials}` : null,
+  ].filter(Boolean);
+  const description = details.join('\n');
+  if (target === 'rock') return { title: `Waypoint: ${item.title}`, description, linkedEntity };
+  if (target === 'todo') return { title: `Clearance: ${item.title}`, description, linkedEntity };
+  if (target === 'issue') return { title: `Turbulence: ${item.title}`, description, linkedEntity };
+  if (target === 'headline') return { title: `Headline: ${item.title}`, description, linkedEntity };
+  return { title: item.title, description, linkedEntity };
+}
+
 function getInitials(name?: string | null, email?: string): string {
   if (name?.trim()) {
     const parts = name.trim().split(/\s+/);
@@ -299,7 +315,7 @@ export function TodosSegmentView({
           />
         </div>
         <div className="flex items-center gap-1 relative" ref={ownerDropdownRef}>
-          <span className="text-muted-foreground text-sm">Assigner:</span>
+          <span className="text-muted-foreground text-sm">Owner:</span>
           <button
             type="button"
             disabled={!canUseFilters}
@@ -378,7 +394,7 @@ export function TodosSegmentView({
             }}
             className={`relative w-11 h-6 rounded-full transition-colors border-2 flex items-center ${!canUseFilters ? 'cursor-not-allowed' : ''} ${
               archiveOn
-                ? 'bg-muted border-border justify-end'
+                ? 'bg-primary border-primary justify-end'
                 : 'bg-muted border-border justify-start hover:bg-muted/80'
             }`}
           >
@@ -470,7 +486,7 @@ export function TodosSegmentView({
                     Due By
                   </th>
                   <th className="text-left font-medium text-foreground px-4 py-2 w-20">
-                    Assigner
+                    Owner
                   </th>
                   <th className="text-right font-medium text-foreground px-4 py-2 w-14" />
                 </tr>
@@ -540,7 +556,7 @@ export function TodosSegmentView({
                       onUpdateDueDate={(dueDate) =>
                         updateTodo(item.id, { dueDate })
                       }
-                      onArchive={() => archiveTodo(item.id)}
+                      onArchive={() => updateTodo(item.id, { archived: !item.archived })}
                       onDelete={() => deleteTodo(item.id)}
                       onMoveToTop={() => moveToTop(item.id)}
                       onMoveToBottom={() => moveToBottom(item.id)}
@@ -638,6 +654,16 @@ export function TodosSegmentView({
           todo={todos.find((t) => t.id === editTodoId)!}
           onClose={() => setEditTodoId(null)}
           onUpdate={(patch) => updateTodo(editTodoId, patch)}
+          onArchive={() => {
+            const current = todos.find((t) => t.id === editTodoId);
+            if (current) updateTodo(editTodoId, { archived: !current.archived });
+            setEditTodoId(null);
+          }}
+          onDelete={() => {
+            deleteTodo(editTodoId);
+            setEditTodoId(null);
+          }}
+          onOpenCreate={onOpenCreate}
           teams={teams}
           currentTeamId={currentTeamId}
           organizationId={organizationId}
@@ -784,7 +810,7 @@ function TodoRow({
         </td>
         <td className="px-4 py-2 align-middle">
           {item.assigneeId ? (
-            <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground" title="Assigned">
+            <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground" title="Owner">
               {item.ownerInitials}
             </div>
           ) : (
@@ -841,7 +867,6 @@ function TodoRowMenu({
   onDelete: () => void;
   onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
 }) {
-  const linkedTodo = useMemo(() => ({ type: 'todo' as const, id: item.id, title: item.title }), [item.id, item.title]);
   const position = useMemo(() => {
     if (typeof window === 'undefined')
       return { top: anchorRect.top, left: anchorRect.right + MENU_GAP };
@@ -900,19 +925,19 @@ function TodoRowMenu({
         </div>
         <div className="border-t border-border my-1" />
         <div className="px-2 py-1">
-          <button type="button" className={btn} onClick={() => { onOpenCreate?.('rock', { linkedEntity: linkedTodo }); onClose(); }} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('rock', getLinkedCreateOptions(item, 'rock')); onClose(); }} role="menuitem">
             <Mountain className={icon} />
             Link Waypoint
           </button>
-          <button type="button" className={btn} onClick={() => { onOpenCreate?.('todo', { title: `Clearance: ${item.title}`, linkedEntity: linkedTodo }); onClose(); }} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('todo', getLinkedCreateOptions(item, 'todo')); onClose(); }} role="menuitem">
             <CheckSquare className={icon} />
             Link Clearance
           </button>
-          <button type="button" className={btn} onClick={() => { onOpenCreate?.('issue', { title: `Turbulence: ${item.title}`, linkedEntity: linkedTodo }); onClose(); }} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('issue', getLinkedCreateOptions(item, 'issue')); onClose(); }} role="menuitem">
             <AlertCircle className={icon} />
             Link Turbulence
           </button>
-          <button type="button" className={btn} onClick={() => { onOpenCreate?.('headline', { title: item.title, linkedEntity: linkedTodo }); onClose(); }} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('headline', getLinkedCreateOptions(item, 'headline')); onClose(); }} role="menuitem">
             <Megaphone className={icon} />
             Link Headline
           </button>
@@ -929,7 +954,7 @@ function TodoRowMenu({
             role="menuitem"
           >
             <Archive className={icon} />
-            Archive
+            {item.archived ? 'Unarchive' : 'Archive'}
           </button>
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <Link2 className={icon} />
@@ -961,6 +986,9 @@ export function EditTodoPanel({
   todo,
   onClose,
   onUpdate,
+  onArchive,
+  onDelete,
+  onOpenCreate,
   teams = [],
   currentTeamId,
   organizationId,
@@ -968,6 +996,9 @@ export function EditTodoPanel({
   todo: TodoItem;
   onClose: () => void;
   onUpdate: (patch: Partial<TodoItem>) => void;
+  onArchive: () => void;
+  onDelete: () => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
   /** List of teams for the Team dropdown */
   teams?: Array<{ id: string; name: string }>;
   /** Current team id (e.g. selected team or meeting team); used as initial value when todo has no teamId */
@@ -987,6 +1018,9 @@ export function EditTodoPanel({
   const [teamId, setTeamId] = useState(initialTeamId);
   const [assigneeId, setAssigneeId] = useState<string>(todo.assigneeId ?? '');
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [ownerPickerOpen, setOwnerPickerOpen] = useState(false);
+  const [ownerSearch, setOwnerSearch] = useState('');
 
   useEffect(() => {
     setTeamId(todo.teamId ?? currentTeamId ?? teams[0]?.id ?? '');
@@ -994,13 +1028,55 @@ export function EditTodoPanel({
   }, [todo.id, todo.teamId, todo.assigneeId, currentTeamId, teams]);
 
   useEffect(() => {
-    const isTeamIdFromList = teams.some((t) => t.id === teamId);
-    if (!organizationId || !teamId || !isTeamIdFromList) {
+    if (!organizationId || !teamId) {
       setTeamMembers([]);
       return;
     }
-    teamsService.getOne(organizationId, teamId).then((team) => setTeamMembers(team.members ?? [])).catch(() => setTeamMembers([]));
-  }, [organizationId, teamId, teams]);
+    Promise.allSettled([
+      teamsService.getOne(organizationId, teamId),
+      teamsService.list(organizationId),
+    ])
+      .then(([singleRes, listRes]) => {
+        const fromSingle =
+          singleRes.status === 'fulfilled' ? singleRes.value.members ?? [] : [];
+        const fromListTeam =
+          listRes.status === 'fulfilled'
+            ? (listRes.value.find((t) => t.id === teamId)?.members ?? [])
+            : [];
+
+        const mergedByUserId = new Map<string, TeamMember>();
+        [...fromSingle, ...fromListTeam].forEach((m) => {
+          const key = m.user?.id ?? m.userId;
+          if (!mergedByUserId.has(key)) mergedByUserId.set(key, m);
+        });
+
+        setTeamMembers(Array.from(mergedByUserId.values()));
+      })
+      .catch(() => setTeamMembers([]));
+  }, [organizationId, teamId]);
+
+  const selectedOwner = teamMembers.find((m) => (m.user?.id ?? m.userId) === assigneeId);
+  const ownerInitials = selectedOwner
+    ? getInitials(selectedOwner.user?.name, selectedOwner.user?.email)
+    : todo.ownerInitials;
+  const ownerName = selectedOwner?.user?.name || selectedOwner?.user?.email || 'No owner';
+  const ownerCandidates = teamMembers.filter((m) => {
+    const q = ownerSearch.trim().toLowerCase();
+    if (!q) return true;
+    const label = `${m.user?.name ?? ''} ${m.user?.email ?? ''}`.toLowerCase();
+    return label.includes(q);
+  });
+
+  const handleOwnerSelect = (nextAssigneeId: string) => {
+    setAssigneeId(nextAssigneeId);
+    const selected = teamMembers.find((m) => (m.user?.id ?? m.userId) === nextAssigneeId);
+    onUpdate({
+      assigneeId: nextAssigneeId || undefined,
+      ownerInitials: selected ? getInitials(selected.user?.name, selected.user?.email) : todo.ownerInitials,
+    });
+    setOwnerPickerOpen(false);
+    setOwnerSearch('');
+  };
 
   const handleSave = (andClose = false) => {
     const isoDate = dueDateValue
@@ -1045,16 +1121,105 @@ export function EditTodoPanel({
           </button>
           <h2 className="font-semibold text-foreground">Edit Clearance</h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 relative">
           <button
             type="button"
-            className="p-2 rounded-md hover:bg-muted text-muted-foreground"
+            onClick={() => setHeaderMenuOpen((v) => !v)}
+            className="p-2.5 rounded-md hover:bg-muted text-muted-foreground"
             aria-label="More options"
           >
-            <MoreHorizontal className="w-4 h-4" />
+            <MoreHorizontal className="w-5 h-5" />
           </button>
-          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
-            {todo.ownerInitials}
+          {headerMenuOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setHeaderMenuOpen(false)} aria-hidden />
+              <div className="absolute right-20 top-full z-20 py-2 bg-card border border-border rounded-lg shadow-xl min-w-[220px]">
+                {onOpenCreate && (
+                  <>
+                    <div className="px-2 py-1 space-y-0.5">
+                      <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onClose(); onOpenCreate('rock', getLinkedCreateOptions(todo, 'rock')); }}>
+                        <Mountain className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Waypoint
+                      </button>
+                      <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onClose(); onOpenCreate('todo', getLinkedCreateOptions(todo, 'todo')); }}>
+                        <CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Clearance
+                      </button>
+                      <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onClose(); onOpenCreate('issue', getLinkedCreateOptions(todo, 'issue')); }}>
+                        <AlertCircle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Turbulence
+                      </button>
+                      <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onClose(); onOpenCreate('headline', getLinkedCreateOptions(todo, 'headline')); }}>
+                        <Megaphone className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Headline
+                      </button>
+                    </div>
+                    <div className="border-t border-border my-2" />
+                  </>
+                )}
+                <div className="px-2 py-1 space-y-0.5">
+                  <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { navigator.clipboard?.writeText(`${window.location.href}#todo-${todo.id}`); setHeaderMenuOpen(false); }}>
+                    <Link2 className="w-4 h-4 shrink-0 text-muted-foreground" /> Copy link
+                  </button>
+                  <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onArchive(); setHeaderMenuOpen(false); }}>
+                    <Archive className="w-4 h-4 shrink-0 text-muted-foreground" /> {todo.archived ? 'Unarchive' : 'Archive'}
+                  </button>
+                </div>
+                <div className="border-t border-border my-2" />
+                <div className="px-2 py-1">
+                  <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 text-destructive rounded-md" onClick={() => { onDelete(); setHeaderMenuOpen(false); }}>
+                    <Trash2 className="w-4 h-4 shrink-0" /> Delete
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setOwnerPickerOpen((v) => !v)}
+              className="w-9 h-9 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary hover:bg-primary/20"
+              title={`Owner: ${ownerName}`}
+              aria-label="Change owner"
+            >
+              {ownerInitials}
+            </button>
+            {ownerPickerOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setOwnerPickerOpen(false)} aria-hidden />
+                <div className="absolute right-0 top-full mt-2 z-20 w-[280px] bg-card border border-border rounded-lg shadow-xl p-2">
+                  <input
+                    type="text"
+                    value={ownerSearch}
+                    onChange={(e) => setOwnerSearch(e.target.value)}
+                    placeholder="Search crew member..."
+                    className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm mb-2"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleOwnerSelect('')}
+                    className="w-full text-left px-2.5 py-2 rounded hover:bg-muted text-sm text-muted-foreground"
+                  >
+                    No owner
+                  </button>
+                  <div className="max-h-60 overflow-auto">
+                    {ownerCandidates.map((m) => {
+                      const uid = m.user?.id ?? m.userId;
+                      const label = m.user?.name || m.user?.email || uid;
+                      const initials = getInitials(m.user?.name, m.user?.email);
+                      const isSelected = assigneeId === uid;
+                      return (
+                        <button
+                          key={uid}
+                          type="button"
+                          onClick={() => handleOwnerSelect(uid)}
+                          className={`w-full text-left px-2.5 py-2 rounded flex items-center gap-2 text-sm ${isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'}`}
+                        >
+                          <span className="w-6 h-6 rounded-full bg-muted inline-flex items-center justify-center text-xs">{initials}</span>
+                          <span className="truncate">{label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
           <button
             type="button"
@@ -1067,24 +1232,6 @@ export function EditTodoPanel({
         </div>
       </header>
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-        {todo.linkedEntityTitle && (
-          <div className="border border-border rounded-lg bg-muted/30 p-4 shadow-sm">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-              Linked to
-            </p>
-            <div className="flex items-start gap-3">
-              <Link2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium text-muted-foreground mb-0.5">
-                  {linkedEntityTypeLabel(todo.linkedEntityType)}
-                </p>
-                <p className="text-sm font-semibold text-foreground break-words">
-                  {todo.linkedEntityTitle}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
         <div>
           <label className="block text-sm font-medium text-foreground mb-1">
             Title
@@ -1179,7 +1326,7 @@ export function EditTodoPanel({
               className="w-full"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Clearance must be assigned to a crew.
+              Clearance must be owned by a crew.
             </p>
           </div>
           <div>
@@ -1190,21 +1337,21 @@ export function EditTodoPanel({
               value={assigneeId || undefined}
               onChange={(v) => setAssigneeId(v ?? '')}
               allowClear
-              placeholder="Unassigned"
+              placeholder="No owner"
               options={[
-                { label: 'Unassigned', value: '' },
+                { label: 'No owner', value: '' },
                 ...teamMembers.map((m) => ({ label: m.user?.name || m.user?.email || m.userId, value: m.user?.id ?? m.userId })),
               ]}
               className="w-full"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Optionally assign to a member of the selected flight crew.
+              Optionally choose an owner from the selected flight crew.
             </p>
           </div>
         </div>
         <section className="pt-6 mt-6 border-t border-border">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="font-medium text-foreground">Linked Items 0</h4>
+            <h4 className="font-medium text-foreground">Linked Items {todo.linkedEntityTitle ? 1 : 0}</h4>
             <button
               type="button"
               className="text-sm text-primary hover:underline"
@@ -1212,12 +1359,28 @@ export function EditTodoPanel({
               Edit
             </button>
           </div>
-          <button
-            type="button"
-            className="text-sm text-primary hover:underline"
-          >
-            + Linked Item
-          </button>
+          {todo.linkedEntityTitle ? (
+            <div className="border border-border rounded-lg bg-muted/30 p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <Link2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-muted-foreground mb-0.5">
+                    {linkedEntityTypeLabel(todo.linkedEntityType)}
+                  </p>
+                  <p className="text-sm font-semibold text-foreground break-words">
+                    {todo.linkedEntityTitle}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="text-sm text-primary hover:underline"
+            >
+              + Linked Item
+            </button>
+          )}
         </section>
         <section className="pt-6 mt-6 border-t border-border">
           <h4 className="font-medium text-foreground mb-3">Attachments 0</h4>

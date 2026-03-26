@@ -28,6 +28,11 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function persistTokenCookie(token: string) {
+  // Ensure value is cookie-safe and sent to middleware on same-site navigations.
+  document.cookie = `token=${encodeURIComponent(token)}; path=/; max-age=${7 * 24 * 60 * 60}; samesite=lax`;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -54,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('token', response.access_token);
       localStorage.setItem('user', JSON.stringify(response.user));
       // Also set cookie for middleware
-      document.cookie = `token=${response.access_token}; path=/; max-age=${7 * 24 * 60 * 60}`;
+      persistTokenCookie(response.access_token);
       
       // Auto-set organization if provided
       if (response.organization) {
@@ -88,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('token', response.access_token);
       localStorage.setItem('user', JSON.stringify(response.user));
       // Also set cookie for middleware
-      document.cookie = `token=${response.access_token}; path=/; max-age=${7 * 24 * 60 * 60}`;
+      persistTokenCookie(response.access_token);
       
       // Auto-set organization if provided (from signup)
       if (response.organization) {

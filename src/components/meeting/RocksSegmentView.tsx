@@ -56,6 +56,8 @@ import { useTodosOptional } from '@/contexts/TodosContext';
 import { FLIGHT_TERMS } from '@/lib/constants/flightTerminology';
 import { ContentAreaLoader } from '@/components/ui/loaders';
 import { RichTextEditor } from './RichTextEditor';
+import { teamsService } from '@/lib/api/teams.service';
+import type { TeamMember } from '@/lib/api/teams.service';
 
 const COLUMN_LABELS: Record<RockColumnId, string> = {
   current: 'Current',
@@ -380,7 +382,7 @@ export function RocksSegmentView({
           />
         </div>
         <div className={`flex items-center gap-1 ${!canUseFilters ? 'cursor-not-allowed opacity-70' : ''}`}>
-          <span className="text-muted-foreground text-sm">Assigner:</span>
+          <span className="text-muted-foreground text-sm">Owner:</span>
           <Select
             value={ownerFilter}
             onChange={(v) => {
@@ -832,7 +834,7 @@ function RocksTabContent({
                   Milestone progress
                 </th>
                 <th className="text-left font-medium text-foreground px-4 py-2">
-                  Assigner
+                  Owner
                 </th>
                 <th className="text-left font-medium text-foreground px-4 py-2">
                   Due by
@@ -1191,6 +1193,16 @@ function RockDatePickerModal({
   );
 }
 
+function rockAssigneeInitials(name?: string | null, email?: string): string {
+  if (name?.trim()) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  }
+  if (email) return email.slice(0, 2).toUpperCase();
+  return '?';
+}
+
 function RockDetailPanel({
   rock,
   meetingId,
@@ -1222,6 +1234,8 @@ function RockDetailPanel({
   const [milestones, setMilestones] = useState<RockMilestone[]>(initialMilestones ?? []);
   const [linkedItems, setLinkedItems] = useState<LinkedRockItem[]>([]);
   const [linkedEditMode, setLinkedEditMode] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [ownerUserId, setOwnerUserId] = useState('');
   const { updateRock } = useRocks();
 
   useEffect(() => {
@@ -1229,6 +1243,35 @@ function RockDetailPanel({
     setDueBy(rock.dueBy);
     setMilestones(initialMilestones ?? []);
   }, [rock.id, rock.title, rock.dueBy, initialMilestones]);
+
+  useEffect(() => {
+    if (!organizationId || !teamId) {
+      setTeamMembers([]);
+      return;
+    }
+    let cancelled = false;
+    teamsService
+      .getOne(organizationId, teamId)
+      .then((t) => {
+        if (!cancelled) setTeamMembers(t.members ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setTeamMembers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId, teamId]);
+
+  useEffect(() => {
+    const match = teamMembers.find((m) => {
+      const u = m.user;
+      if (!u) return false;
+      const display = u.name || u.email || '';
+      return display === rock.ownerName || u.email === rock.ownerName;
+    });
+    setOwnerUserId(match?.user?.id ?? '');
+  }, [rock.id, rock.ownerName, teamMembers]);
 
   const loadLinkedItems = useCallback(async () => {
     if (!organizationId || !teamId) {
@@ -1373,14 +1416,51 @@ function RockDetailPanel({
                 <label className="block text-sm font-medium text-foreground mb-1">Description (optional)</label>
                 <RichTextEditor value={description} onChange={setDescription} placeholder="Description..." className="min-h-[80px]" />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Flight Crew</label>
-                <Select
-                  options={[{ label: teamName, value: 'team' }]}
-                  className="w-full"
-                  value="team"
-                  disabled
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Flight crew</label>
+                  <Select
+                    options={[{ label: teamName, value: 'team' }]}
+                    className="w-full"
+                    value="team"
+                    disabled
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Owner (optional)</label>
+                  <Select
+                    value={ownerUserId || undefined}
+                    allowClear
+                    placeholder="Assign from crew"
+                    disabled={!organizationId || !teamId}
+                    onChange={(v) => {
+                      setOwnerUserId(v ?? '');
+                      if (!v) {
+                        updateRock(rock.id, {
+                          ownerName: teamName,
+                          ownerInitials: rockAssigneeInitials(teamName, '').slice(0, 2),
+                        });
+                        return;
+                      }
+                      const m = teamMembers.find((x) => (x.user?.id ?? x.userId) === v);
+                      const u = m?.user;
+                      if (u) {
+                        updateRock(rock.id, {
+                          ownerName: u.name || u.email || 'User',
+                          ownerInitials: rockAssigneeInitials(u.name, u.email).slice(0, 2),
+                        });
+                      }
+                    }}
+                    options={teamMembers.map((m) => ({
+                      label: m.user?.name || m.user?.email || m.userId,
+                      value: m.user?.id ?? m.userId,
+                    }))}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Assign to a member of this flight crew (optional).
+                  </p>
+                </div>
               </div>
             </div>
           </section>
@@ -2801,7 +2881,7 @@ function ArchiveTabContent({
                   Milestone progress
                 </th>
                 <th className="text-left font-medium text-foreground px-4 py-2">
-                  Assigner
+                  Owner
                 </th>
                 <th className="text-left font-medium text-foreground px-4 py-2">
                   Due by

@@ -21,15 +21,15 @@ import { ArrowLeft, GripVertical, Lock, Pencil, MoreVertical, Printer, ChevronLe
 import { Select } from 'antd';
 import { RichTextEditor } from '@/components/meeting/RichTextEditor';
 
-/** Default L10 meeting agenda: SEGUE, SCORECARD, ROCK REVIEW, etc. Editable (pencil): SEGUE, SCORECARD, CUSTOMER/EMPLOYEE HEADLINES; locked (padlock): rest. */
+/** Default flight review agenda template used for new and reset states. */
 const DEFAULT_SECTION_TEMPLATE: SectionTemplateItem[] = [
-  { title: 'SEGUE', durationMinutes: 5, order: 0, visible: true, isDefaultLocked: false, subtitle: '', details: '' },
-  { title: 'SCORECARD', durationMinutes: 5, order: 1, visible: true, isDefaultLocked: false, subtitle: '', details: '' },
-  { title: 'ROCK REVIEW', durationMinutes: 5, order: 2, visible: true, isDefaultLocked: true, subtitle: '', details: '' },
-  { title: 'CUSTOMER / EMPLOYEE HEADLINES', durationMinutes: 5, order: 3, visible: true, isDefaultLocked: false, subtitle: '', details: '' },
-  { title: 'TO-DO LIST', durationMinutes: 5, order: 4, visible: true, isDefaultLocked: true, subtitle: '', details: '' },
-  { title: 'IDS™', durationMinutes: 60, order: 5, visible: true, isDefaultLocked: true, subtitle: '', details: '' },
-  { title: 'CONCLUDE', durationMinutes: 5, order: 6, visible: true, isDefaultLocked: true, subtitle: '', details: '' },
+  { title: 'PRE-FLIGHT', durationMinutes: 5, order: 0, visible: true, isDefaultLocked: false, subtitle: '', details: '' },
+  { title: 'INSTRUMENTS', durationMinutes: 5, order: 1, visible: true, isDefaultLocked: false, subtitle: '', details: '' },
+  { title: 'WAYPOINT REVIEW', durationMinutes: 5, order: 2, visible: true, isDefaultLocked: true, subtitle: '', details: '' },
+  { title: 'FLIGHT ANNOUNCEMENTS', durationMinutes: 5, order: 3, visible: true, isDefaultLocked: false, subtitle: '', details: '' },
+  { title: 'CLEARANCES', durationMinutes: 5, order: 4, visible: true, isDefaultLocked: true, subtitle: '', details: '' },
+  { title: 'TURBULENCE', durationMinutes: 60, order: 5, visible: true, isDefaultLocked: true, subtitle: '', details: '' },
+  { title: 'DEBRIEF', durationMinutes: 5, order: 6, visible: true, isDefaultLocked: true, subtitle: '', details: '' },
 ];
 
 function getTotalDuration(sections: SectionTemplateItem[]): number {

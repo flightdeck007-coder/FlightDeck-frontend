@@ -47,6 +47,7 @@ export const issuesService = {
       linkedEntityType?: string;
       linkedEntityId?: string;
       linkedEntityTitle?: string;
+      createdById?: string;
     },
     meetingId?: string
   ): Promise<IssueApiItem> => {
@@ -72,6 +73,7 @@ export const issuesService = {
       linkedEntityType?: string | null;
       linkedEntityId?: string | null;
       linkedEntityTitle?: string | null;
+      createdById?: string | null;
     },
     meetingId?: string
   ): Promise<IssueApiItem> => {

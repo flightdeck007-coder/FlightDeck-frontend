@@ -34,6 +34,8 @@ import { useIssues, type IssueItem } from '@/contexts/IssuesContext';
 import { ContentAreaLoader } from '@/components/ui/loaders';
 import { formatDate } from '@/lib/formatDate';
 import { RichTextEditor } from '@/components/meeting/RichTextEditor';
+import { teamsService } from '@/lib/api/teams.service';
+import type { TeamMember } from '@/lib/api/teams.service';
 
 const MENU_WIDTH = 248;
 const MENU_GAP = 8;
@@ -51,10 +53,29 @@ function linkedEntityTypeLabel(type: string | null | undefined): string {
   return map[type] ?? type;
 }
 
+function getLinkedCreateOptions(item: IssueItem, target: CreatePopupType) {
+  const linkedEntity = { type: 'issue' as const, id: item.id, title: item.title };
+  const details = [
+    `Linked turbulence: ${item.title}`,
+    item.priority ? `Priority: ${item.priority}` : null,
+  ].filter(Boolean);
+  const description = details.join('\n');
+  if (target === 'rock') return { title: `Waypoint: ${item.title}`, description, linkedEntity };
+  if (target === 'todo') return { title: `Clearance: ${item.title}`, description, linkedEntity };
+  if (target === 'issue') return { title: `Turbulence: ${item.title}`, description, linkedEntity };
+  if (target === 'headline') return { title: `Headline: ${item.title}`, description, linkedEntity };
+  return { title: item.title, description, linkedEntity };
+}
+
 type CreatePopupType = 'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message';
 
 interface IssuesSegmentViewProps {
   teamName?: string;
+  /** Flight crew id (for edit-panel member fetch) */
+  teamId?: string | null;
+  /** Teams list (reserved for future team switching in edit) */
+  teams?: Array<{ id: string; name: string }>;
+  organizationId?: string | null;
   embedded?: boolean;
   meetingId?: string;
   isFacilitator?: boolean;
@@ -88,6 +109,8 @@ function FilterIconButton({
 
 export function IssuesSegmentView({
   teamName = 'No team found',
+  teamId: contextTeamId,
+  organizationId,
   embedded = false,
   meetingId,
   isFacilitator = true,
@@ -504,7 +527,7 @@ export function IssuesSegmentView({
                   <th className="text-left font-medium text-foreground px-4 py-2">Title</th>
                   <th className="text-left font-medium text-foreground px-4 py-2 w-16">#</th>
                   <th className="text-left font-medium text-foreground px-4 py-2 w-24">Created</th>
-                  <th className="text-left font-medium text-foreground px-4 py-2 w-20">Assigner</th>
+                  <th className="text-left font-medium text-foreground px-4 py-2 w-20">Owner</th>
                   <th className="text-right font-medium text-foreground px-4 py-2 w-14" />
                 </tr>
               </thead>
@@ -605,6 +628,9 @@ export function IssuesSegmentView({
         return issue ? (
           <IssueDetailPanel
             issue={issue}
+            teamName={teamName}
+            organizationId={organizationId}
+            teamId={contextTeamId}
             onClose={() => setSelectedIssueId(null)}
             onUpdate={(patch) => updateIssue(issue.id, patch)}
           />
@@ -848,21 +874,67 @@ function IssueRow({
   );
 }
 
+function issueAssigneeInitials(name?: string | null, email?: string): string {
+  if (name?.trim()) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  }
+  if (email) return email.slice(0, 2).toUpperCase();
+  return '?';
+}
+
 function IssueDetailPanel({
   issue,
+  teamName,
+  organizationId,
+  teamId,
   onClose,
   onUpdate,
 }: {
   issue: IssueItem;
+  teamName: string;
+  organizationId?: string | null;
+  teamId?: string | null;
   onClose: () => void;
   onUpdate: (patch: Partial<IssueItem>) => void;
 }) {
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(issue.description ?? '');
   const [priority, setPriority] = useState(issue.priority);
+  const [createdById, setCreatedById] = useState(issue.createdById ?? '');
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+
+  useEffect(() => {
+    setTitle(issue.title);
+    setDescription(issue.description ?? '');
+    setPriority(issue.priority);
+    setCreatedById(issue.createdById ?? '');
+  }, [issue.id, issue.title, issue.description, issue.priority, issue.createdById]);
+
+  useEffect(() => {
+    if (!organizationId || !teamId) {
+      setTeamMembers([]);
+      return;
+    }
+    teamsService.getOne(organizationId, teamId).then((t) => setTeamMembers(t.members ?? [])).catch(() => setTeamMembers([]));
+  }, [organizationId, teamId]);
+
+  const headerInitials = useMemo(() => {
+    if (!createdById) return issue.ownerInitials;
+    const m = teamMembers.find((x) => (x.user?.id ?? x.userId) === createdById);
+    const u = m?.user;
+    if (u) return issueAssigneeInitials(u.name, u.email);
+    return issue.ownerInitials;
+  }, [createdById, teamMembers, issue.ownerInitials]);
 
   const handleSave = (andClose = false) => {
-    onUpdate({ title, description: description || undefined, priority });
+    onUpdate({
+      title,
+      description: description || undefined,
+      priority,
+      createdById: createdById ? createdById : null,
+    });
     if (andClose) onClose();
   };
 
@@ -876,7 +948,7 @@ function IssueDetailPanel({
           </div>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
-              {issue.ownerInitials}
+              {headerInitials}
             </div>
             <button
               type="button"
@@ -935,6 +1007,35 @@ function IssueDetailPanel({
               className="w-[80px]"
             />
           </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Flight crew</label>
+              <Select
+                options={[{ label: teamName, value: 'crew' }]}
+                value="crew"
+                disabled
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Who (optional)</label>
+              <Select
+                value={createdById || undefined}
+                onChange={(v) => setCreatedById(v ?? '')}
+                allowClear
+                placeholder="No owner"
+                disabled={!organizationId || !teamId}
+                options={teamMembers.map((m) => ({
+                  label: m.user?.name || m.user?.email || m.userId,
+                  value: m.user?.id ?? m.userId,
+                }))}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Optionally choose an owner from this flight crew.
+              </p>
+            </div>
+          </div>
           <section className="pt-6 mt-6 border-t border-border flex items-center gap-2">
             <button
               type="button"
@@ -981,7 +1082,6 @@ function IssueRowMenu({
   onMakeLongTerm?: () => void;
   onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
 }) {
-  const linkedIssue = useMemo(() => ({ type: 'issue' as const, id: item.id, title: item.title }), [item.id, item.title]);
   const position = useMemo(() => {
     if (typeof window === 'undefined')
       return { top: anchorRect.top, left: anchorRect.right + MENU_GAP };
@@ -1024,19 +1124,19 @@ function IssueRowMenu({
         </div>
         <div className="border-t border-border my-1" />
         <div className="px-2 py-1">
-          <button type="button" className={btn} onClick={() => { onOpenCreate?.('rock', { linkedEntity: linkedIssue }); onClose(); }} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('rock', getLinkedCreateOptions(item, 'rock')); onClose(); }} role="menuitem">
             <Mountain className={icon} />
             Link Waypoint
           </button>
-          <button type="button" className={btn} onClick={() => { onOpenCreate?.('todo', { title: `Clearance: ${item.title}`, linkedEntity: linkedIssue }); onClose(); }} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('todo', getLinkedCreateOptions(item, 'todo')); onClose(); }} role="menuitem">
             <CheckSquare className={icon} />
             Link Clearance
           </button>
-          <button type="button" className={btn} onClick={() => { onOpenCreate?.('issue', { title: `Turbulence: ${item.title}`, linkedEntity: linkedIssue }); onClose(); }} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('issue', getLinkedCreateOptions(item, 'issue')); onClose(); }} role="menuitem">
             <AlertCircle className={icon} />
             Link Turbulence
           </button>
-          <button type="button" className={btn} onClick={() => { onOpenCreate?.('headline', { title: item.title, linkedEntity: linkedIssue }); onClose(); }} role="menuitem">
+          <button type="button" className={btn} onClick={() => { onOpenCreate?.('headline', getLinkedCreateOptions(item, 'headline')); onClose(); }} role="menuitem">
             <Megaphone className={icon} />
             Link Headline
           </button>

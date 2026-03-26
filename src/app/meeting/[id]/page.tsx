@@ -162,7 +162,7 @@ export default function MeetingPage() {
       try {
         const meeting = await meetingsService.findOne(organizationId, meetingId);
         setMeeting(meeting);
-        setHeaderTitle(`${meeting.series?.name ?? 'Weekly Flight Review'} - ${meeting.team.name}`);
+        setHeaderTitle(`${meeting.series?.name ?? 'Flight Review'} - ${meeting.team.name}`);
         setTeamId(meeting.teamId);
         const suspended = !!(meeting.suspendedAt && !meeting.endedAt);
         setIsSuspended(suspended);

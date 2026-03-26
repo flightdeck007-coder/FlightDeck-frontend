@@ -72,7 +72,6 @@ export default function MeetingsAgendasPage() {
       const created = await meetingSeriesService.create(organizationId, {
         teamId: selectedTeamId,
         name: newAgendaName.trim(),
-        type: 'EOS',
       });
       setCreateModalOpen(false);
       setNewAgendaName('');
@@ -97,19 +96,18 @@ export default function MeetingsAgendasPage() {
           <SimpleTable
             columns={[
               { key: 'title', label: 'Title' },
-              { key: 'type', label: 'Type', align: 'right', className: 'w-24' },
             ]}
             headerRowClassName="border-b border-border/50"
           >
             {loading ? (
               <tr>
-                <td colSpan={2} className="px-4 py-10 text-center text-muted-foreground text-sm">
+                <td colSpan={1} className="px-4 py-10 text-center text-muted-foreground text-sm">
                   Loading…
                 </td>
               </tr>
             ) : agendas.length === 0 ? (
               <tr>
-                <td colSpan={2} className="px-4 py-10 text-center text-muted-foreground text-sm">
+                <td colSpan={1} className="px-4 py-10 text-center text-muted-foreground text-sm">
                   No flight plans yet. Create one below.
                 </td>
               </tr>
@@ -123,9 +121,6 @@ export default function MeetingsAgendasPage() {
                   <td className="px-4 py-5 flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
                     <span className="font-medium text-foreground">{series.name}</span>
-                  </td>
-                  <td className="px-4 py-5 text-muted-foreground text-sm text-right">
-                    {series.type ?? 'EOS'}
                   </td>
                 </tr>
               ))
@@ -158,7 +153,7 @@ export default function MeetingsAgendasPage() {
                 type="text"
                 value={newAgendaName}
                 onChange={(e) => setNewAgendaName(e.target.value)}
-                placeholder="e.g. Weekly Flight Review"
+                placeholder="e.g. Flight Review"
                 className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-primary"
                 onKeyDown={(e) => e.key === 'Enter' && handleCreateAgenda()}
               />

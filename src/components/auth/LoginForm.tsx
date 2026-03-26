@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ROUTES } from '@/lib/constants/routes';
 
 export function LoginForm() {
@@ -12,6 +12,18 @@ export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const getRedirectTarget = () => {
+    const redirect = searchParams.get('redirect');
+    if (!redirect) return ROUTES.OVERVIEW;
+
+    // Prevent open-redirects; allow only internal absolute paths.
+    if (redirect.startsWith('/') && !redirect.startsWith('//')) {
+      return redirect;
+    }
+    return ROUTES.OVERVIEW;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,7 +32,9 @@ export function LoginForm() {
 
     try {
       await login(email, password);
-      router.push(ROUTES.OVERVIEW);
+      const target = getRedirectTarget();
+      router.replace(target);
+      router.refresh();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Login failed. Please try again.');
     } finally {

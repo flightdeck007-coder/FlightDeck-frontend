@@ -699,7 +699,7 @@ export function InstrumentsSegmentView({
     const list = Array.isArray(meetingAttendances) ? meetingAttendances : [];
     return [
       { label: 'All', value: 'All' },
-      { label: 'Unassigned', value: 'Unassigned' },
+      { label: 'No owner', value: 'Unassigned' },
       ...list.map((a) => ({ label: a.user?.name || a.user?.email || a.user?.id || 'Unknown', value: a.user?.id ?? a.id })),
     ];
   }, [meetingAttendances]);
@@ -1368,7 +1368,7 @@ export function InstrumentsSegmentView({
               </div>
               {[
                 { key: 'showStatusIndicators' as const, label: 'Show Flight Metric status indicators', desc: 'Display icon status indicators with colors based on each flight metric\'s target. Green: On-track. Orange: At-risk. Red: Off-track.' },
-                { key: 'showOwnerColumn' as const, label: 'Show Assigner column', desc: 'Display the assigner of the flight metric.' },
+                { key: 'showOwnerColumn' as const, label: 'Show Owner column', desc: 'Display the owner of the flight metric.' },
                 { key: 'showGoalColumn' as const, label: 'Show Target column', desc: 'Display flight metric targets.' },
                 { key: 'showAverageColumn' as const, label: 'Show Average column', desc: 'Display the average of all the data points in the selected date range.' },
                 { key: 'showTotalColumn' as const, label: 'Show Total column', desc: 'Display the sum total of all the data points in the selected date range.' },
@@ -1671,7 +1671,7 @@ export function InstrumentsSegmentView({
                 />
               </section>
               <section>
-                <label className="block text-sm font-medium text-foreground mb-2">Assigner</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Owner</label>
                 <Select
                   className="w-full"
                   placeholder="Select crew member"

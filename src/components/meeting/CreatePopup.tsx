@@ -486,24 +486,65 @@ export function CreatePopup({
     defaultValues: { title: "", description: "", teamId: defaultTeamId || (teamsForSelect[0]?.id ?? "") },
   });
 
+  const resetPopupState = () => {
+    setCreateType("issue");
+    setMinimized(false);
+    setIsModal(false);
+    setLinkedEntity(undefined);
+    setAttachmentFiles([]);
+    setAttachmentError(null);
+    setRockAttachmentFiles([]);
+    setRockAttachmentError(null);
+    setTodoAttachmentFiles([]);
+    setTodoAttachmentError(null);
+    setHeadlineAttachmentFiles([]);
+    setHeadlineAttachmentError(null);
+    setCascadingAttachmentFiles([]);
+    setCascadingAttachmentError(null);
+    reset({
+      title: "",
+      description: "",
+      priority: "",
+      who: "",
+      teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""),
+      interval: "short",
+    });
+    rockForm.reset({
+      title: "",
+      description: "",
+      dueBy: "",
+      dueByTime: "",
+      status: "on_track",
+      isCompanyRock: false,
+      ownerId: currentUserId ?? "",
+      teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""),
+      quarter: "",
+      otherTeamId: "",
+    });
+    todoForm.reset({
+      title: "",
+      description: "",
+      dueDate: "",
+      repeat: "Don't repeat",
+      teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""),
+      assigneeId: "",
+      private: false,
+    });
+    headlineForm.reset({
+      title: "",
+      description: "",
+      teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""),
+    });
+    cascadingForm.reset({
+      title: "",
+      description: "",
+      teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""),
+    });
+  };
+
   useEffect(() => {
     if (!open) {
-      setMinimized(false);
-      setAttachmentFiles([]);
-      setAttachmentError(null);
-      setRockAttachmentFiles([]);
-      setRockAttachmentError(null);
-      setTodoAttachmentFiles([]);
-      setTodoAttachmentError(null);
-      setHeadlineAttachmentFiles([]);
-      setHeadlineAttachmentError(null);
-      setCascadingAttachmentFiles([]);
-      setCascadingAttachmentError(null);
-      reset();
-      rockForm.reset();
-      todoForm.reset();
-      headlineForm.reset();
-      cascadingForm.reset();
+      resetPopupState();
     }
     if (open && initialType) setCreateType(initialType === 'measurable' ? 'todo' : initialType);
     if (open && (initialTitle != null || initialDescription != null) && initialType) {
@@ -511,6 +552,34 @@ export function CreatePopup({
       const desc = initialDescription ?? "";
       if (initialType === "todo") todoForm.reset({ title, description: desc, dueDate: "", repeat: "Don't repeat", teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""), assigneeId: "", private: false });
       if (initialType === "issue") reset({ title, description: desc, priority: "", who: "", teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""), interval: "short" });
+      if (initialType === "rock") {
+        rockForm.reset({
+          title,
+          description: desc,
+          dueBy: "",
+          dueByTime: "",
+          status: "on_track",
+          isCompanyRock: false,
+          ownerId: currentUserId ?? "",
+          teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""),
+          quarter: "",
+          otherTeamId: "",
+        });
+      }
+      if (initialType === "headline") {
+        headlineForm.reset({
+          title,
+          description: desc,
+          teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""),
+        });
+      }
+      if (initialType === "cascading_message") {
+        cascadingForm.reset({
+          title,
+          description: desc,
+          teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""),
+        });
+      }
     }
     if (open && initialLinkedEntity) {
       setLinkedEntity(initialLinkedEntity);
@@ -529,6 +598,7 @@ export function CreatePopup({
         description: data.description || undefined,
         priority: data.priority ? parseInt(data.priority, 10) : 0,
         termType: data.interval === "long" ? "long_term" : "short_term",
+        ...(data.who?.trim() ? { createdById: data.who.trim() } : {}),
         ...(linkedEntity && {
           linkedEntityType: linkedEntity.type,
           linkedEntityId: linkedEntity.id,
@@ -536,8 +606,8 @@ export function CreatePopup({
         }),
       });
     }
+    resetPopupState();
     onClose();
-    reset();
   };
 
   const onRockSubmit = (data: RockFormData) => {
@@ -556,10 +626,8 @@ export function CreatePopup({
       achieved: false,
       isCompanyRock: isCompany,
     });
+    resetPopupState();
     onClose();
-    rockForm.reset();
-    setRockAttachmentFiles([]);
-    setRockAttachmentError(null);
   };
 
   const onTodoSubmit = async (data: TodoFormData) => {
@@ -581,10 +649,8 @@ export function CreatePopup({
         }),
       });
     }
+    resetPopupState();
     onClose();
-    todoForm.reset();
-    setTodoAttachmentFiles([]);
-    setTodoAttachmentError(null);
   };
 
   const onHeadlineSubmit = (data: HeadlineFormData) => {
@@ -596,10 +662,8 @@ export function CreatePopup({
       ownerInitials: "U",
       archived: false,
     });
+    resetPopupState();
     onClose();
-    headlineForm.reset();
-    setHeadlineAttachmentFiles([]);
-    setHeadlineAttachmentError(null);
   };
 
   const onCascadingSubmit = (data: CascadingFormData) => {
@@ -612,10 +676,8 @@ export function CreatePopup({
       ownerInitials: "U",
       archived: false,
     });
+    resetPopupState();
     onClose();
-    cascadingForm.reset();
-    setCascadingAttachmentFiles([]);
-    setCascadingAttachmentError(null);
   };
 
   if (!open) return null;
@@ -695,7 +757,7 @@ export function CreatePopup({
                 onSubmit={handleSubmit(onIssueSubmit)}
                 className="space-y-4"
               >
-                <div className="mt-5 pt-5 border-t border-border">
+                <div>
                   <label
                     htmlFor="create-title"
                     className="block text-sm font-medium text-foreground mb-1"
@@ -738,9 +800,10 @@ export function CreatePopup({
                   />
                 </div>
 
-                {/* Priority | Who | Flight crew | Interval — 2 columns */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="mt-5 pt-5 border-t border-border">
+                {/* Full-width divider, then Priority | Who | Flight crew | Interval */}
+                <div className="w-full border-t border-border pt-5 mt-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
+                  <div>
                     <label
                       htmlFor="create-priority"
                       className="block text-sm font-medium text-foreground mb-1"
@@ -816,7 +879,7 @@ export function CreatePopup({
                     />
                     <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">
                       Changing the team will affect which users the Turbulence can be
-                      assigned to.
+                      owned by.
                     </p>
                   </div>
                   <div>
@@ -843,6 +906,7 @@ export function CreatePopup({
                       )}
                     />
                   </div>
+                </div>
                 </div>
 
                 {linkedEntity && <LinkingToSection linkedEntity={linkedEntity} />}
@@ -945,7 +1009,7 @@ export function CreatePopup({
                   </label>
                   {rockOwnerOptions.length > 0 && (
                     <div>
-                      <label className="block text-sm font-medium text-foreground mb-1">Assigner</label>
+                      <label className="block text-sm font-medium text-foreground mb-1">Owner</label>
                       <Controller
                         name="ownerId"
                         control={rockForm.control}
@@ -1198,7 +1262,7 @@ export function CreatePopup({
                         />
                       )}
                     />
-                    <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Clearance must be assigned to a crew.</p>
+                    <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Clearance must be owned by a crew.</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1">Crew member (optional)</label>
@@ -1210,9 +1274,9 @@ export function CreatePopup({
                           value={field.value || undefined}
                           onChange={(v) => field.onChange(v ?? "")}
                           allowClear
-                          placeholder="Unassigned"
+                          placeholder="No owner"
                           options={[
-                            { label: "Unassigned", value: "" },
+                            { label: "No owner", value: "" },
                             ...(todoTeamMembers ?? []).map((m) => ({ label: m.user?.name || m.user?.email || m.userId, value: m.user?.id ?? m.userId })),
                           ]}
                           className="w-full"
@@ -1306,7 +1370,7 @@ export function CreatePopup({
                       />
                     )}
                   />
-                  <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Changing the team will affect which users the Headline can be assigned to.</p>
+                  <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Changing the team will affect which users the Headline can be owned by.</p>
                 </div>
                 {linkedEntity && <LinkingToSection linkedEntity={linkedEntity} />}
                 <div>
