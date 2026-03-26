@@ -1,6 +1,11 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { ROUTES } from '@/lib/constants/routes';
+
+function LoginFormWrapper() {
+  return <LoginForm />;
+}
 
 export default function LoginPage() {
   return (
@@ -12,7 +17,9 @@ export default function LoginPage() {
             <p className="text-foreground/70">Sign in to your account</p>
           </div>
           
-          <LoginForm />
+          <Suspense fallback={<div className="text-foreground/70">Loading...</div>}>
+            <LoginFormWrapper />
+          </Suspense>
           
           <div className="mt-6 text-center text-sm text-foreground/70">
             Don't have an account?{' '}
