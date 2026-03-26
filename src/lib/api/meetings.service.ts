@@ -216,6 +216,28 @@ export const meetingsService = {
     );
     return response.data as Array<{
       id: string;
+      meetingId?: string;
+      title: string;
+      ownerName: string;
+      ownerInitials: string;
+      dueBy: string;
+      status: string;
+      column: string;
+      achieved: boolean;
+      isCompanyRock?: boolean;
+      milestoneLabel?: string | null;
+      milestones?: Array<{ id: string; title: string; dueDate: string; description?: string; completed?: boolean }>;
+    }>;
+  },
+  getRocksAll: async (organizationId: string, teamId?: string) => {
+    const params = new URLSearchParams({ organizationId });
+    if (teamId) params.set('teamId', teamId);
+    const response = await apiClient.get(
+      `/meetings/rocks?${params.toString()}`,
+    );
+    return response.data as Array<{
+      id: string;
+      meetingId: string;
       title: string;
       ownerName: string;
       ownerInitials: string;
@@ -285,6 +307,23 @@ export const meetingsService = {
     );
     return response.data as Array<{
       id: string;
+      meetingId?: string;
+      title: string;
+      createdAt: string;
+      createdAgo: string;
+      ownerInitials: string;
+      archived: boolean;
+    }>;
+  },
+  getHeadlinesAll: async (organizationId: string, teamId?: string) => {
+    const params = new URLSearchParams({ organizationId });
+    if (teamId) params.set('teamId', teamId);
+    const response = await apiClient.get(
+      `/meetings/headlines?${params.toString()}`,
+    );
+    return response.data as Array<{
+      id: string;
+      meetingId: string;
       title: string;
       createdAt: string;
       createdAgo: string;
@@ -315,6 +354,17 @@ export const meetingsService = {
     );
     return response.data;
   },
+  updateHeadlineById: async (
+    organizationId: string,
+    headlineId: string,
+    data: { archived?: boolean; order?: number },
+  ) => {
+    const response = await apiClient.put(
+      `/meetings/headlines/${headlineId}?organizationId=${organizationId}`,
+      data,
+    );
+    return response.data;
+  },
   reorderHeadlines: async (
     organizationId: string,
     meetingId: string,
@@ -335,13 +385,50 @@ export const meetingsService = {
       `/meetings/${meetingId}/headlines/${headlineId}?organizationId=${organizationId}`,
     );
   },
+  deleteHeadlineById: async (
+    organizationId: string,
+    headlineId: string,
+  ) => {
+    await apiClient.delete(
+      `/meetings/headlines/${headlineId}?organizationId=${organizationId}`,
+    );
+  },
+  createHeadlineAll: async (
+    organizationId: string,
+    meetingId: string,
+    data: { title: string; ownerInitials?: string },
+  ) => {
+    const response = await apiClient.post(
+      `/meetings/headlines?organizationId=${organizationId}&meetingId=${meetingId}`,
+      data,
+    );
+    return response.data;
+  },
 
   getCascadingMessages: async (organizationId: string, meetingId: string) => {
     const response = await apiClient.get(
-      `/meetings/${meetingId}/cascading-messages?organizationId=${organizationId}`,
+      `/meetings/${meetingId}/flight-directives?organizationId=${organizationId}`,
     );
     return response.data as Array<{
       id: string;
+      meetingId?: string;
+      title: string;
+      from: string;
+      createdAt: string;
+      createdAgo: string;
+      ownerInitials: string;
+      archived: boolean;
+    }>;
+  },
+  getCascadingMessagesAll: async (organizationId: string, teamId?: string) => {
+    const params = new URLSearchParams({ organizationId });
+    if (teamId) params.set('teamId', teamId);
+    const response = await apiClient.get(
+      `/meetings/flight-directives?${params.toString()}`,
+    );
+    return response.data as Array<{
+      id: string;
+      meetingId: string;
       title: string;
       from: string;
       createdAt: string;
@@ -356,7 +443,7 @@ export const meetingsService = {
     data: { title: string; from: string; ownerInitials?: string },
   ) => {
     const response = await apiClient.post(
-      `/meetings/${meetingId}/cascading-messages?organizationId=${organizationId}`,
+      `/meetings/${meetingId}/flight-directives?organizationId=${organizationId}`,
       data,
     );
     return response.data;
@@ -368,7 +455,18 @@ export const meetingsService = {
     data: { archived?: boolean; order?: number },
   ) => {
     const response = await apiClient.put(
-      `/meetings/${meetingId}/cascading-messages/${messageId}?organizationId=${organizationId}`,
+      `/meetings/${meetingId}/flight-directives/${messageId}?organizationId=${organizationId}`,
+      data,
+    );
+    return response.data;
+  },
+  updateCascadingMessageById: async (
+    organizationId: string,
+    messageId: string,
+    data: { archived?: boolean; order?: number },
+  ) => {
+    const response = await apiClient.put(
+      `/meetings/flight-directives/${messageId}?organizationId=${organizationId}`,
       data,
     );
     return response.data;
@@ -379,7 +477,7 @@ export const meetingsService = {
     ids: string[],
   ) => {
     const response = await apiClient.post(
-      `/meetings/${meetingId}/cascading-messages/reorder?organizationId=${organizationId}`,
+      `/meetings/${meetingId}/flight-directives/reorder?organizationId=${organizationId}`,
       { ids },
     );
     return response.data;
@@ -390,8 +488,27 @@ export const meetingsService = {
     messageId: string,
   ) => {
     await apiClient.delete(
-      `/meetings/${meetingId}/cascading-messages/${messageId}?organizationId=${organizationId}`,
+      `/meetings/${meetingId}/flight-directives/${messageId}?organizationId=${organizationId}`,
     );
+  },
+  deleteCascadingMessageById: async (
+    organizationId: string,
+    messageId: string,
+  ) => {
+    await apiClient.delete(
+      `/meetings/flight-directives/${messageId}?organizationId=${organizationId}`,
+    );
+  },
+  createCascadingMessageAll: async (
+    organizationId: string,
+    meetingId: string,
+    data: { title: string; from: string; ownerInitials?: string },
+  ) => {
+    const response = await apiClient.post(
+      `/meetings/flight-directives?organizationId=${organizationId}&meetingId=${meetingId}`,
+      data,
+    );
+    return response.data;
   },
 
   downloadAttachment: async (

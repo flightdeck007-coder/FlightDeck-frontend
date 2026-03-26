@@ -23,6 +23,7 @@ export default function IssuesPage() {
   const [createType, setCreateType] = useState<'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | undefined>(undefined);
   const [createTitle, setCreateTitle] = useState<string | undefined>(undefined);
   const [createDescription, setCreateDescription] = useState<string | undefined>(undefined);
+  const [createIssueInterval, setCreateIssueInterval] = useState<'short' | 'long' | undefined>(undefined);
   const [createLinkedEntity, setCreateLinkedEntity] = useState<{ type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } | undefined>(undefined);
 
   const teamName = selectedTeam?.name ?? 'No team found';
@@ -48,7 +49,8 @@ export default function IssuesPage() {
         <IssuesProvider organizationId={organizationId} teamId={selectedTeamId || undefined} meetingId={undefined}>
           <TodosProvider meetingId={undefined} organizationId={organizationId} teamId={selectedTeamId || undefined}>
             <div className="p-6 flex flex-col min-h-0 h-full">
-              <div className="flex flex-wrap items-center justify-between gap-4 mb-4 shrink-0">
+              <div className="-mx-6 -mt-6 px-6 pt-6 pb-4 border-b border-border bg-white shrink-0">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h1 className="text-2xl font-semibold text-foreground">Turbulence</h1>
                   <p className="text-sm text-muted-foreground mt-1">
@@ -69,6 +71,7 @@ export default function IssuesPage() {
                       setCreateType('issue');
                       setCreateTitle(undefined);
                       setCreateDescription(undefined);
+                      setCreateIssueInterval('short');
                       setCreateLinkedEntity(undefined);
                       setCreateOpen(true);
                     }}
@@ -77,6 +80,7 @@ export default function IssuesPage() {
                     + Add Turbulence
                   </button>
                 </div>
+              </div>
               </div>
               <div className="flex-1 min-h-0">
                 <IssuesSegmentView
@@ -90,6 +94,7 @@ export default function IssuesPage() {
                     setCreateType(type);
                     setCreateTitle(options?.title);
                     setCreateDescription(options?.description);
+                    setCreateIssueInterval(options?.issueInterval);
                     setCreateLinkedEntity(options?.linkedEntity);
                     setCreateOpen(true);
                   }}
@@ -97,6 +102,7 @@ export default function IssuesPage() {
                     setCreateType('issue');
                     setCreateTitle(undefined);
                     setCreateDescription(undefined);
+                    setCreateIssueInterval('short');
                     setCreateLinkedEntity(undefined);
                     setCreateOpen(true);
                   }}
@@ -111,6 +117,7 @@ export default function IssuesPage() {
                 setCreateType(undefined);
                 setCreateTitle(undefined);
                 setCreateDescription(undefined);
+                setCreateIssueInterval(undefined);
                 setCreateLinkedEntity(undefined);
               }}
               teamName={teamName}
@@ -120,6 +127,7 @@ export default function IssuesPage() {
               initialType={createType}
               initialTitle={createTitle}
               initialDescription={createDescription}
+              initialIssueInterval={createIssueInterval}
               initialLinkedEntity={createLinkedEntity}
               meetingAttendances={meetingAttendances}
             />

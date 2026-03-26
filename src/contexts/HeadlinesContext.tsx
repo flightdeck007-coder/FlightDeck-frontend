@@ -15,6 +15,7 @@ import { meetingsService } from '@/lib/api/meetings.service';
 
 export interface HeadlineItem {
   id: string;
+  meetingId?: string;
   title: string;
   createdAt: string;
   createdAgo: string;
@@ -24,6 +25,7 @@ export interface HeadlineItem {
 
 export interface CascadingMessageItem {
   id: string;
+  meetingId?: string;
   title: string;
   from: string;
   createdAt: string;
@@ -52,24 +54,37 @@ export function HeadlinesProvider({
   children,
   meetingId,
   organizationId,
-}: { children: ReactNode; meetingId?: string; organizationId?: string }) {
+  teamId,
+  fallbackMeetingId,
+}: {
+  children: ReactNode;
+  meetingId?: string;
+  organizationId?: string;
+  teamId?: string;
+  fallbackMeetingId?: string;
+}) {
   const { socket } = useMeetingSocket();
   const [headlines, setHeadlines] = useState<HeadlineItem[]>([]);
   const [cascadingMessages, setCascadingMessages] = useState<CascadingMessageItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchAll = useCallback(async () => {
-    if (!organizationId || !meetingId || typeof window === 'undefined') {
+    if (!organizationId || typeof window === 'undefined') {
       setHeadlines([]);
       setCascadingMessages([]);
       return;
     }
     setIsLoading(true);
     try {
-      const [hList, cList] = await Promise.all([
-        meetingsService.getHeadlines(organizationId, meetingId),
-        meetingsService.getCascadingMessages(organizationId, meetingId),
-      ]);
+      const [hList, cList] = meetingId
+        ? await Promise.all([
+            meetingsService.getHeadlines(organizationId, meetingId),
+            meetingsService.getCascadingMessages(organizationId, meetingId),
+          ])
+        : await Promise.all([
+            meetingsService.getHeadlinesAll(organizationId, teamId),
+            meetingsService.getCascadingMessagesAll(organizationId, teamId),
+          ]);
       setHeadlines(hList);
       setCascadingMessages(cList);
     } catch {
@@ -78,18 +93,11 @@ export function HeadlinesProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [organizationId, meetingId]);
+  }, [organizationId, meetingId, teamId]);
 
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
-
-  useEffect(() => {
-    if (!meetingId) {
-      setHeadlines([]);
-      setCascadingMessages([]);
-    }
-  }, [meetingId]);
 
   useEffect(() => {
     if (!socket || !meetingId) return;
@@ -137,30 +145,37 @@ export function HeadlinesProvider({
     socket.on('headline_updated', onHeadlineUpdated);
     socket.on('headline_deleted', onHeadlineDeleted);
     socket.on('headlines_reordered', onHeadlinesReordered);
-    socket.on('cascading_message_created', onCascadingCreated);
-    socket.on('cascading_message_updated', onCascadingUpdated);
-    socket.on('cascading_message_deleted', onCascadingDeleted);
-    socket.on('cascading_messages_reordered', onCascadingReordered);
+    socket.on('flight_directive_created', onCascadingCreated);
+    socket.on('flight_directive_updated', onCascadingUpdated);
+    socket.on('flight_directive_deleted', onCascadingDeleted);
+    socket.on('flight_directives_reordered', onCascadingReordered);
     return () => {
       socket.off('headline_created', onHeadlineCreated);
       socket.off('headline_updated', onHeadlineUpdated);
       socket.off('headline_deleted', onHeadlineDeleted);
       socket.off('headlines_reordered', onHeadlinesReordered);
-      socket.off('cascading_message_created', onCascadingCreated);
-      socket.off('cascading_message_updated', onCascadingUpdated);
-      socket.off('cascading_message_deleted', onCascadingDeleted);
-      socket.off('cascading_messages_reordered', onCascadingReordered);
+      socket.off('flight_directive_created', onCascadingCreated);
+      socket.off('flight_directive_updated', onCascadingUpdated);
+      socket.off('flight_directive_deleted', onCascadingDeleted);
+      socket.off('flight_directives_reordered', onCascadingReordered);
     };
   }, [socket, meetingId]);
 
   const addHeadline = useCallback(
     async (item: Omit<HeadlineItem, 'id'>) => {
-      if (!organizationId || !meetingId) return;
+      if (!organizationId) return;
+      const targetMeetingId = meetingId ?? fallbackMeetingId;
+      if (!targetMeetingId) return;
       try {
-        const created = await meetingsService.createHeadline(organizationId, meetingId, {
-          title: item.title,
-          ownerInitials: item.ownerInitials,
-        });
+        const created = meetingId
+          ? await meetingsService.createHeadline(organizationId, targetMeetingId, {
+              title: item.title,
+              ownerInitials: item.ownerInitials,
+            })
+          : await meetingsService.createHeadlineAll(organizationId, targetMeetingId, {
+              title: item.title,
+              ownerInitials: item.ownerInitials,
+            });
         setHeadlines((prev) =>
           prev.some((h) => h.id === created.id) ? prev : [...prev, created]
         );
@@ -168,18 +183,26 @@ export function HeadlinesProvider({
         // keep UI unchanged on error
       }
     },
-    [organizationId, meetingId]
+    [organizationId, meetingId, fallbackMeetingId]
   );
 
   const addCascadingMessage = useCallback(
     async (item: Omit<CascadingMessageItem, 'id'>) => {
-      if (!organizationId || !meetingId) return;
+      if (!organizationId) return;
+      const targetMeetingId = meetingId ?? fallbackMeetingId;
+      if (!targetMeetingId) return;
       try {
-        const created = await meetingsService.createCascadingMessage(
-          organizationId,
-          meetingId,
-          { title: item.title, from: item.from, ownerInitials: item.ownerInitials }
-        );
+        const created = meetingId
+          ? await meetingsService.createCascadingMessage(
+              organizationId,
+              targetMeetingId,
+              { title: item.title, from: item.from, ownerInitials: item.ownerInitials }
+            )
+          : await meetingsService.createCascadingMessageAll(
+              organizationId,
+              targetMeetingId,
+              { title: item.title, from: item.from, ownerInitials: item.ownerInitials }
+            );
         setCascadingMessages((prev) =>
           prev.some((c) => c.id === created.id) ? prev : [...prev, created]
         );
@@ -187,7 +210,7 @@ export function HeadlinesProvider({
         // keep UI unchanged on error
       }
     },
-    [organizationId, meetingId]
+    [organizationId, meetingId, fallbackMeetingId]
   );
 
   const reorderHeadlines = useCallback(
@@ -236,12 +259,16 @@ export function HeadlinesProvider({
 
   const archiveHeadline = useCallback(
     async (id: string) => {
-      if (!organizationId || !meetingId) return;
+      if (!organizationId) return;
       setHeadlines((prev) =>
         prev.map((h) => (h.id === id ? { ...h, archived: true } : h))
       );
       try {
-        await meetingsService.updateHeadline(organizationId, meetingId, id, { archived: true });
+        if (meetingId) {
+          await meetingsService.updateHeadline(organizationId, meetingId, id, { archived: true });
+        } else {
+          await meetingsService.updateHeadlineById(organizationId, id, { archived: true });
+        }
       } catch {
         fetchAll();
       }
@@ -251,17 +278,21 @@ export function HeadlinesProvider({
 
   const archiveCascadingMessage = useCallback(
     async (id: string) => {
-      if (!organizationId || !meetingId) return;
+      if (!organizationId) return;
       setCascadingMessages((prev) =>
         prev.map((c) => (c.id === id ? { ...c, archived: true } : c))
       );
       try {
-        await meetingsService.updateCascadingMessage(
-          organizationId,
-          meetingId,
-          id,
-          { archived: true }
-        );
+        if (meetingId) {
+          await meetingsService.updateCascadingMessage(
+            organizationId,
+            meetingId,
+            id,
+            { archived: true }
+          );
+        } else {
+          await meetingsService.updateCascadingMessageById(organizationId, id, { archived: true });
+        }
       } catch {
         fetchAll();
       }
@@ -271,10 +302,14 @@ export function HeadlinesProvider({
 
   const deleteHeadline = useCallback(
     async (id: string) => {
-      if (!organizationId || !meetingId) return;
+      if (!organizationId) return;
       setHeadlines((prev) => prev.filter((h) => h.id !== id));
       try {
-        await meetingsService.deleteHeadline(organizationId, meetingId, id);
+        if (meetingId) {
+          await meetingsService.deleteHeadline(organizationId, meetingId, id);
+        } else {
+          await meetingsService.deleteHeadlineById(organizationId, id);
+        }
       } catch {
         fetchAll();
       }
@@ -284,10 +319,14 @@ export function HeadlinesProvider({
 
   const deleteCascadingMessage = useCallback(
     async (id: string) => {
-      if (!organizationId || !meetingId) return;
+      if (!organizationId) return;
       setCascadingMessages((prev) => prev.filter((c) => c.id !== id));
       try {
-        await meetingsService.deleteCascadingMessage(organizationId, meetingId, id);
+        if (meetingId) {
+          await meetingsService.deleteCascadingMessage(organizationId, meetingId, id);
+        } else {
+          await meetingsService.deleteCascadingMessageById(organizationId, id);
+        }
       } catch {
         fetchAll();
       }

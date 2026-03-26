@@ -105,23 +105,14 @@ export function IssuesProvider({
       const fetches: Promise<IssueApiItem[]>[] = [
         issuesService.findAll(organizationId, teamId, 'short_term', false, meetingId),
         issuesService.findAll(organizationId, teamId, 'long_term', false, meetingId),
+        issuesService.findAll(organizationId, teamId, 'short_term', true, meetingId),
+        issuesService.findAll(organizationId, teamId, 'long_term', true, meetingId),
       ];
-      if (meetingId) {
-        fetches.push(
-          issuesService.findAll(organizationId, teamId, 'short_term', true, meetingId),
-          issuesService.findAll(organizationId, teamId, 'long_term', true, meetingId)
-        );
-      }
       const results = await Promise.all(fetches);
       setShortTerm(results[0].map(apiToItem));
       setLongTerm(results[1].map(apiToItem));
-      if (meetingId && results.length >= 4) {
-        setShortTermResolved(results[2].map(apiToItem));
-        setLongTermResolved(results[3].map(apiToItem));
-      } else {
-        setShortTermResolved([]);
-        setLongTermResolved([]);
-      }
+      setShortTermResolved(results[2].map(apiToItem));
+      setLongTermResolved(results[3].map(apiToItem));
     } catch {
       setShortTerm([]);
       setLongTerm([]);

@@ -48,34 +48,36 @@ export default function TodosPage() {
         <TodosProvider meetingId={undefined} organizationId={organizationId} teamId={selectedTeamId || undefined}>
           <IssuesProvider organizationId={organizationId} teamId={selectedTeamId || undefined} meetingId={undefined}>
             <div className="p-6 flex flex-col min-h-0 h-full">
-              <div className="flex flex-wrap items-center justify-between gap-4 mb-4 shrink-0">
-                <div>
-                  <h1 className="text-2xl font-semibold text-foreground">Clearances</h1>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    All to-dos for the team across meetings.
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Select
-                    value={selectedTeamId || undefined}
-                    onChange={(v) => setSelectedTeamId(v ?? '')}
-                    options={teams.map((t) => ({ label: t.name, value: t.id }))}
-                    className="min-w-[180px]"
-                    placeholder="Select team"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCreateType('todo');
-                      setCreateTitle(undefined);
-                      setCreateDescription(undefined);
-                      setCreateLinkedEntity(undefined);
-                      setCreateOpen(true);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium"
-                  >
-                    + Add To-Do
-                  </button>
+              <div className="-mx-6 -mt-6 px-6 pt-6 pb-4 border-b border-border bg-white shrink-0">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h1 className="text-2xl font-semibold text-foreground">Clearances</h1>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      All to-dos for the team across meetings.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Select
+                      value={selectedTeamId || undefined}
+                      onChange={(v) => setSelectedTeamId(v ?? '')}
+                      options={teams.map((t) => ({ label: t.name, value: t.id }))}
+                      className="min-w-[180px]"
+                      placeholder="Select team"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateType('todo');
+                        setCreateTitle(undefined);
+                        setCreateDescription(undefined);
+                        setCreateLinkedEntity(undefined);
+                        setCreateOpen(true);
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium"
+                    >
+                      + Add To-Do
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="flex-1 min-h-0">

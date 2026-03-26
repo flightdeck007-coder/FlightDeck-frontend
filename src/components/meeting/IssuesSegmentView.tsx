@@ -6,6 +6,7 @@ import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
 import { Select, Input } from 'antd';
 import {
   MoreVertical,
+  MoreHorizontal,
   CheckCircle2,
   Circle,
   Mountain,
@@ -23,12 +24,11 @@ import {
   ChevronUp,
   LayoutList,
   LayoutGrid,
-  Eye,
-  EyeOff,
   Paperclip,
   Settings,
   Loader2,
   X,
+  User,
 } from 'lucide-react';
 import { useIssues, type IssueItem } from '@/contexts/IssuesContext';
 import { ContentAreaLoader } from '@/components/ui/loaders';
@@ -36,6 +36,8 @@ import { formatDate } from '@/lib/formatDate';
 import { RichTextEditor } from '@/components/meeting/RichTextEditor';
 import { teamsService } from '@/lib/api/teams.service';
 import type { TeamMember } from '@/lib/api/teams.service';
+import { issuesService } from '@/lib/api/issues.service';
+import { toast } from 'sonner';
 
 const MENU_WIDTH = 248;
 const MENU_GAP = 8;
@@ -47,8 +49,8 @@ function linkedEntityTypeLabel(type: string | null | undefined): string {
     issue: 'Turbulence',
     rock: 'Waypoint',
     todo: 'Clearance',
-    headline: 'Headline',
-    cascading_message: 'Cascading message',
+    headline: 'Announcement',
+    cascading_message: 'Flight Directive',
   };
   return map[type] ?? type;
 }
@@ -63,7 +65,7 @@ function getLinkedCreateOptions(item: IssueItem, target: CreatePopupType) {
   if (target === 'rock') return { title: `Waypoint: ${item.title}`, description, linkedEntity };
   if (target === 'todo') return { title: `Clearance: ${item.title}`, description, linkedEntity };
   if (target === 'issue') return { title: `Turbulence: ${item.title}`, description, linkedEntity };
-  if (target === 'headline') return { title: `Headline: ${item.title}`, description, linkedEntity };
+  if (target === 'headline') return { title: `Announcement: ${item.title}`, description, linkedEntity };
   return { title: item.title, description, linkedEntity };
 }
 
@@ -81,7 +83,7 @@ interface IssuesSegmentViewProps {
   isFacilitator?: boolean;
   /** Scribe or facilitator can change filters and create (recording) */
   canRecord?: boolean;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; issueInterval?: 'short' | 'long'; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
   onOpenCreateIssue?: () => void;
 }
 
@@ -123,12 +125,15 @@ export function IssuesSegmentView({
   const [archiveOn, setArchiveOn] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'short_term' | 'long_term' | 'completed'>('short_term');
-  const [statsVisible, setStatsVisible] = useState(true);
-  const [topThreeOnly, setTopThreeOnly] = useState(false);
   const [layout, setLayout] = useState<'list' | 'column'>('list');
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const [page, setPage] = useState(0);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+  const [mergeMode, setMergeMode] = useState<{
+    sourceIssueId: string;
+    sourceTermType: 'short_term' | 'long_term';
+    targetTermType: 'short_term' | 'long_term';
+  } | null>(null);
 
   const { socket } = useMeetingSocket();
 
@@ -139,16 +144,12 @@ export function IssuesSegmentView({
       archiveOn?: boolean;
       searchQuery?: string;
       activeTab?: 'short_term' | 'long_term' | 'completed';
-      statsVisible?: boolean;
-      topThreeOnly?: boolean;
       layout?: 'list' | 'column';
     }) => {
       if (payload.teamFilter !== undefined) setTeamFilter(payload.teamFilter);
       if (payload.archiveOn !== undefined) setArchiveOn(payload.archiveOn);
       if (payload.searchQuery !== undefined) setSearchQuery(payload.searchQuery);
       if (payload.activeTab !== undefined) setActiveTab(payload.activeTab);
-      if (payload.statsVisible !== undefined) setStatsVisible(payload.statsVisible);
-      if (payload.topThreeOnly !== undefined) setTopThreeOnly(payload.topThreeOnly);
       if (payload.layout !== undefined) setLayout(payload.layout);
     };
     socket.on('issues_filter', onIssuesFilter);
@@ -177,13 +178,18 @@ export function IssuesSegmentView({
   );
 
   const currentList = useMemo(() => {
+    if (archiveOn) {
+      const combined = [...shortTermResolved, ...longTermResolved];
+      combined.sort((a, b) => (b.resolvedAt && a.resolvedAt ? new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime() : 0));
+      return combined;
+    }
     if (activeTab === 'short_term') return shortTerm;
     if (activeTab === 'long_term') return longTerm;
     // Completed: all resolved for this meeting (short + long), newest first
     const combined = [...shortTermResolved, ...longTermResolved];
     combined.sort((a, b) => (b.resolvedAt && a.resolvedAt ? new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime() : 0));
     return combined;
-  }, [activeTab, shortTerm, longTerm, shortTermResolved, longTermResolved]);
+  }, [archiveOn, activeTab, shortTerm, longTerm, shortTermResolved, longTermResolved]);
 
   const filteredList = useMemo(() => {
     let list = [...currentList];
@@ -191,13 +197,8 @@ export function IssuesSegmentView({
       const q = searchQuery.toLowerCase();
       list = list.filter((t) => t.title.toLowerCase().includes(q));
     }
-    if (activeTab !== 'completed' && topThreeOnly) {
-      list = list
-        .sort((a, b) => b.priority - a.priority)
-        .slice(0, 3);
-    }
     return list;
-  }, [currentList, searchQuery, topThreeOnly, activeTab]);
+  }, [currentList, searchQuery]);
 
   const totalItems = filteredList.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
@@ -207,28 +208,40 @@ export function IssuesSegmentView({
     return filteredList.slice(start, start + itemsPerPage);
   }, [filteredList, currentPage, itemsPerPage]);
 
-  const todayStart = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
-  }, []);
-  const solvedToday = useMemo(
-    () =>
-      shortTermResolved.filter(
-        (i) => i.resolvedAt && new Date(i.resolvedAt).getTime() >= todayStart
-      ).length +
-      longTermResolved.filter(
-        (i) => i.resolvedAt && new Date(i.resolvedAt).getTime() >= todayStart
-      ).length,
-    [shortTermResolved, longTermResolved, todayStart]
+  const mergeSourceIssue = useMemo(
+    () => (mergeMode ? allIssues.find((i) => i.id === mergeMode.sourceIssueId) ?? null : null),
+    [mergeMode, allIssues]
   );
-  const totalTrackedShort = shortTerm.length + shortTermResolved.length;
-  const solvedInThisMeeting = shortTermResolved.length + longTermResolved.length;
-  const solvedLastMeeting = solvedInThisMeeting; // "Solved in this meeting" when in meeting
-  const solveRate =
-    totalTrackedShort > 0
-      ? Math.round((shortTermResolved.length / totalTrackedShort) * 100)
-      : 0;
+
+  const performMergeInto = async (targetIssue: IssueItem) => {
+    if (!organizationId || !mergeMode || !mergeSourceIssue) return;
+    if (targetIssue.id === mergeSourceIssue.id) return;
+    const combine = (a?: string | null, b?: string | null) => {
+      const left = (a ?? '').trim();
+      const right = (b ?? '').trim();
+      if (left && right) return `${left} / ${right}`;
+      return left || right || '';
+    };
+    const mergedTitle = combine(targetIssue.title, mergeSourceIssue.title);
+    const mergedDescription = combine(targetIssue.description ?? '', mergeSourceIssue.description ?? '');
+    try {
+      await issuesService.update(
+        organizationId,
+        targetIssue.id,
+        {
+          title: mergedTitle,
+          description: mergedDescription || null,
+        },
+        meetingId
+      );
+      await issuesService.delete(organizationId, mergeSourceIssue.id, meetingId);
+      await refetch();
+      setMergeMode(null);
+      toast.success('Turbulence merged successfully');
+    } catch {
+      toast.error('Failed to merge turbulence');
+    }
+  };
 
   const wrap = embedded ? 'pt-0 pb-0' : 'pt-0 pb-0';
   const contentPad = embedded ? 'px-4' : 'px-6';
@@ -386,36 +399,15 @@ export function IssuesSegmentView({
         <ContentAreaLoader label="Loading issues…" />
       ) : (
       <div className="flex-1 overflow-auto min-h-0">
-        <div className={`w-[80%] max-w-full mx-auto space-y-16 ${contentPad}`}>
-      {/* Short-Term only: stats row above the Short-Term card, controlled by Show/Hide */}
-      {activeTab === 'short_term' && statsVisible && (
-        <div className="grid grid-cols-4 gap-4 pt-6 shrink-0">
-          <div className="border border-border rounded-lg p-4 bg-card">
-            <p className="text-sm text-muted-foreground">Total Tracked Turbulence</p>
-            <p className="text-2xl font-bold text-foreground mt-1">{totalTrackedShort}</p>
-          </div>
-          <div className="border border-border rounded-lg p-4 bg-card">
-            <p className="text-sm text-muted-foreground">
-              {meetingId ? 'Solved in this Flight Review' : 'Turbulence Solved Last Flight Review'}
-            </p>
-            <p className="text-2xl font-bold text-foreground mt-1">{solvedLastMeeting}</p>
-          </div>
-          <div className="border border-border rounded-lg p-4 bg-card">
-            <p className="text-sm text-muted-foreground">Turbulence Solved Today</p>
-            <p className="text-2xl font-bold text-foreground mt-1">{solvedToday}</p>
-          </div>
-          <div className="border border-border rounded-lg p-4 bg-card">
-            <p className="text-sm text-muted-foreground">Solve Rate</p>
-            <p className="text-2xl font-bold text-foreground mt-1">{solveRate}%</p>
-          </div>
-        </div>
-      )}
+        <div className={`w-[80%] max-w-full mx-auto pt-3 ${contentPad}`}>
 
       {/* Content card — spacing from space-y-16 above */}
       <div className="flex-1 min-h-0 bg-card border border-border rounded-lg flex flex-col">
         <div className="p-4 border-b border-border flex items-center justify-between flex-wrap gap-2">
           <h3 className="font-semibold text-foreground">
-            {activeTab === 'short_term'
+            {archiveOn
+              ? 'Archived'
+              : activeTab === 'short_term'
               ? 'Short-Term'
               : activeTab === 'long_term'
                 ? 'Long-Term'
@@ -423,47 +415,6 @@ export function IssuesSegmentView({
             {currentList.length}
           </h3>
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              disabled={!canUseFilters}
-              onClick={() => {
-                setStatsVisible((v) => {
-                  const next = !v;
-                  if (meetingId && socket) socket.emit('issues_filter', { meetingId, statsVisible: next });
-                  return next;
-                });
-              }}
-              className={`flex items-center gap-1.5 text-sm transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground dark:bg-zinc-600/60 dark:text-zinc-300' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              {statsVisible ? (
-                <>
-                  <EyeOff className="w-4 h-4" />
-                  Hide
-                </>
-              ) : (
-                <>
-                  <Eye className="w-4 h-4" />
-                  Show
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              disabled={!canUseFilters}
-              onClick={() => {
-                setTopThreeOnly((v) => {
-                  const next = !v;
-                  if (meetingId && socket) socket.emit('issues_filter', { meetingId, topThreeOnly: next });
-                  return next;
-                });
-              }}
-              className={`p-1.5 rounded transition-colors ${!canUseFilters ? 'cursor-not-allowed opacity-70 text-muted-foreground dark:bg-zinc-600/60 dark:text-zinc-300' : ''} ${
-                topThreeOnly ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-              }`}
-              title="Selected top 3 priority issues"
-            >
-              <LayoutList className="w-4 h-4" />
-            </button>
             <div className="flex items-center gap-0.5 border border-border rounded-lg p-0.5">
               <button
                 type="button"
@@ -498,6 +449,20 @@ export function IssuesSegmentView({
         </div>
 
         <div className="overflow-x-auto flex-1 relative">
+          {mergeMode && (
+            <div className="mx-4 mt-3 mb-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
+              <span className="font-medium">Merge mode:</span>{' '}
+              Select a {mergeMode.targetTermType === 'long_term' ? 'Long-Term' : 'Short-Term'} turbulence row to merge{' '}
+              <span className="font-semibold">"{mergeSourceIssue?.title ?? 'selected item'}"</span> into it.
+              <button
+                type="button"
+                onClick={() => setMergeMode(null)}
+                className="ml-3 text-primary hover:underline"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
           {isLoading && (
             <div className="absolute inset-0 bg-background/60 flex items-center justify-center z-10">
               <Loader2 className="w-8 h-8 animate-spin text-primary" aria-label="Loading" />
@@ -510,12 +475,29 @@ export function IssuesSegmentView({
                   key={item.id}
                   item={item}
                   onEdit={() => setSelectedIssueId(item.id)}
+                  onRowOpen={() => setSelectedIssueId(item.id)}
                   onToggleResolved={(resolved) => setResolved(item.id, resolved)}
                   onPriorityChange={(priority) => updateIssue(item.id, { priority })}
-                  onArchive={() => setResolved(item.id, true)}
+                  onArchive={() => setResolved(item.id, !item.resolvedAt)}
                   onDelete={() => deleteIssue(item.id)}
                   onMakeLongTerm={activeTab === 'short_term' ? () => makeLongTerm(item.id) : undefined}
                   onOpenCreate={onOpenCreate}
+                  onMergeIntoAnother={() => {
+                    const targetTermType = item.termType === 'short_term' ? 'long_term' : 'short_term';
+                    setMergeMode({
+                      sourceIssueId: item.id,
+                      sourceTermType: item.termType,
+                      targetTermType,
+                    });
+                    setActiveTab(targetTermType);
+                  }}
+                  mergeModeActive={!!mergeMode}
+                  onMergeSelectTarget={() => performMergeInto(item)}
+                  isMergeTarget={
+                    !!mergeMode &&
+                    mergeMode.targetTermType === item.termType &&
+                    mergeMode.sourceIssueId !== item.id
+                  }
                 />
               ))}
             </div>
@@ -537,12 +519,29 @@ export function IssuesSegmentView({
                     key={item.id}
                     item={item}
                     onEdit={() => setSelectedIssueId(item.id)}
+                    onRowOpen={() => setSelectedIssueId(item.id)}
                     onToggleResolved={(resolved) => setResolved(item.id, resolved)}
                     onPriorityChange={(priority) => updateIssue(item.id, { priority })}
-                    onArchive={() => setResolved(item.id, true)}
+                    onArchive={() => setResolved(item.id, !item.resolvedAt)}
                     onDelete={() => deleteIssue(item.id)}
                     onMakeLongTerm={activeTab === 'short_term' ? () => makeLongTerm(item.id) : undefined}
                     onOpenCreate={onOpenCreate}
+                    onMergeIntoAnother={() => {
+                      const targetTermType = item.termType === 'short_term' ? 'long_term' : 'short_term';
+                      setMergeMode({
+                        sourceIssueId: item.id,
+                        sourceTermType: item.termType,
+                        targetTermType,
+                      });
+                      setActiveTab(targetTermType);
+                    }}
+                    mergeModeActive={!!mergeMode}
+                    onMergeSelectTarget={() => performMergeInto(item)}
+                    isMergeTarget={
+                      !!mergeMode &&
+                      mergeMode.targetTermType === item.termType &&
+                      mergeMode.sourceIssueId !== item.id
+                    }
                   />
                 ))}
               </tbody>
@@ -553,7 +552,14 @@ export function IssuesSegmentView({
         <div className="p-3 border-t border-border flex items-center justify-between flex-wrap gap-2">
           <button
             type="button"
-            onClick={onOpenCreate ? () => onOpenCreate('issue') : onOpenCreateIssue}
+            onClick={
+              onOpenCreate
+                ? () =>
+                    onOpenCreate('issue', {
+                      issueInterval: activeTab === 'long_term' ? 'long' : 'short',
+                    })
+                : onOpenCreateIssue
+            }
             className="text-primary hover:underline text-sm font-medium hover:text-primary/90 transition-colors cursor-pointer"
           >
             + Add Turbulence
@@ -633,6 +639,24 @@ export function IssuesSegmentView({
             teamId={contextTeamId}
             onClose={() => setSelectedIssueId(null)}
             onUpdate={(patch) => updateIssue(issue.id, patch)}
+            onArchive={() => setResolved(issue.id, !issue.resolvedAt)}
+            onDelete={() => {
+              deleteIssue(issue.id);
+              setSelectedIssueId(null);
+            }}
+            onMakeLongTerm={activeTab === 'short_term' ? () => makeLongTerm(issue.id) : undefined}
+            onOpenCreate={onOpenCreate}
+            onToggleResolved={(resolved) => setResolved(issue.id, resolved)}
+            onMergeIntoAnother={() => {
+              const targetTermType = issue.termType === 'short_term' ? 'long_term' : 'short_term';
+              setMergeMode({
+                sourceIssueId: issue.id,
+                sourceTermType: issue.termType,
+                targetTermType,
+              });
+              setActiveTab(targetTermType);
+              setSelectedIssueId(null);
+            }}
           />
         ) : null;
       })()}
@@ -643,21 +667,31 @@ export function IssuesSegmentView({
 function IssueCard({
   item,
   onEdit,
+  onRowOpen,
   onToggleResolved,
   onPriorityChange,
   onArchive,
   onDelete,
   onMakeLongTerm,
   onOpenCreate,
+  onMergeIntoAnother,
+  mergeModeActive,
+  onMergeSelectTarget,
+  isMergeTarget,
 }: {
   item: IssueItem;
   onEdit?: () => void;
+  onRowOpen?: () => void;
   onToggleResolved: (resolved: boolean) => void;
   onPriorityChange: (priority: number) => void;
   onArchive: () => void;
   onDelete: () => void;
   onMakeLongTerm?: () => void;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; issueInterval?: 'short' | 'long'; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
+  onMergeIntoAnother?: () => void;
+  mergeModeActive?: boolean;
+  onMergeSelectTarget?: () => void;
+  isMergeTarget?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -670,11 +704,25 @@ function IssueCard({
     }
   };
   return (
-    <div className="border border-border rounded-lg p-4 bg-card hover:bg-muted/5 transition-colors flex flex-col gap-3">
+    <div
+      className={`border border-border rounded-lg p-4 bg-card hover:bg-muted/5 transition-colors flex flex-col gap-3 cursor-pointer ${isMergeTarget ? 'bg-primary/5' : ''}`}
+      onClick={mergeModeActive ? (isMergeTarget ? onMergeSelectTarget : undefined) : onRowOpen}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && onRowOpen) {
+          e.preventDefault();
+          onRowOpen();
+        }
+      }}
+    >
       <div className="flex items-start justify-between gap-2">
         <button
           type="button"
-          onClick={() => onToggleResolved(!resolved)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleResolved(!resolved);
+          }}
           className="rounded-full w-6 h-6 flex items-center justify-center hover:bg-muted/80 text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
           aria-label={resolved ? 'Mark unresolved' : 'Mark resolved'}
         >
@@ -687,7 +735,10 @@ function IssueCard({
         <button
           ref={buttonRef}
           type="button"
-          onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
+          onClick={(e) => {
+            e.stopPropagation();
+            menuOpen ? setMenuOpen(false) : openMenu();
+          }}
           className="p-1.5 rounded-md hover:bg-muted/80 text-muted-foreground shrink-0"
           aria-label="More actions"
         >
@@ -699,7 +750,10 @@ function IssueCard({
           {onEdit ? (
             <button
               type="button"
-              onClick={onEdit}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit?.();
+              }}
               className="font-medium text-foreground break-words text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring rounded"
             >
               {item.title}
@@ -725,11 +779,12 @@ function IssueCard({
         <Select
           value={item.priority}
           onChange={onPriorityChange}
+          onClick={(e) => e.stopPropagation()}
           options={[1, 2, 3, 4, 5].map((n) => ({ label: String(n), value: n }))}
           className="w-[60px]"
         />
         <span className="text-xs text-muted-foreground">{formatDate(item.createdAt)}</span>
-        <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground shrink-0">
+        <div className="w-7 h-7 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
           {item.ownerInitials}
         </div>
       </div>
@@ -745,6 +800,7 @@ function IssueCard({
           onDelete={onDelete}
           onMakeLongTerm={onMakeLongTerm}
           onOpenCreate={onOpenCreate}
+          onMergeIntoAnother={onMergeIntoAnother}
         />
       )}
     </div>
@@ -754,21 +810,31 @@ function IssueCard({
 function IssueRow({
   item,
   onEdit,
+  onRowOpen,
   onToggleResolved,
   onPriorityChange,
   onArchive,
   onDelete,
   onMakeLongTerm,
   onOpenCreate,
+  onMergeIntoAnother,
+  mergeModeActive,
+  onMergeSelectTarget,
+  isMergeTarget,
 }: {
   item: IssueItem;
   onEdit?: () => void;
+  onRowOpen?: () => void;
   onToggleResolved: (resolved: boolean) => void;
   onPriorityChange: (priority: number) => void;
   onArchive: () => void;
   onDelete: () => void;
   onMakeLongTerm?: () => void;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; issueInterval?: 'short' | 'long'; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
+  onMergeIntoAnother?: () => void;
+  mergeModeActive?: boolean;
+  onMergeSelectTarget?: () => void;
+  isMergeTarget?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -784,11 +850,17 @@ function IssueRow({
 
   return (
     <>
-      <tr className="border-b border-border hover:bg-muted/10">
+      <tr
+        className={`border-b border-border hover:bg-muted/10 cursor-pointer ${isMergeTarget ? 'bg-primary/5' : ''}`}
+        onClick={mergeModeActive ? (isMergeTarget ? onMergeSelectTarget : undefined) : onRowOpen}
+      >
         <td className="px-4 py-2 w-10 align-middle">
           <button
             type="button"
-            onClick={() => onToggleResolved(!resolved)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleResolved(!resolved);
+            }}
             className="rounded-full w-6 h-6 flex items-center justify-center hover:bg-muted/80 text-muted-foreground hover:text-foreground"
             aria-label={resolved ? 'Mark unresolved' : 'Mark resolved'}
           >
@@ -805,7 +877,10 @@ function IssueRow({
               {onEdit ? (
                 <button
                   type="button"
-                  onClick={onEdit}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit?.();
+                  }}
                   className="text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring rounded"
                 >
                   {item.title}
@@ -832,6 +907,7 @@ function IssueRow({
           <Select
             value={item.priority}
             onChange={onPriorityChange}
+            onClick={(e) => e.stopPropagation()}
             options={[1, 2, 3, 4, 5].map((n) => ({ label: String(n), value: n }))}
             className="w-[60px]"
           />
@@ -840,7 +916,7 @@ function IssueRow({
           {formatDate(item.createdAt)}
         </td>
         <td className="px-4 py-2 align-middle">
-          <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
+          <div className="w-7 h-7 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary">
             {item.ownerInitials}
           </div>
         </td>
@@ -848,7 +924,10 @@ function IssueRow({
           <button
             ref={buttonRef}
             type="button"
-            onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
+            onClick={(e) => {
+              e.stopPropagation();
+              menuOpen ? setMenuOpen(false) : openMenu();
+            }}
             className="p-2 rounded-md hover:bg-muted/80 text-muted-foreground"
             aria-label="More actions"
           >
@@ -866,6 +945,7 @@ function IssueRow({
               onDelete={onDelete}
               onMakeLongTerm={onMakeLongTerm}
               onOpenCreate={onOpenCreate}
+              onMergeIntoAnother={onMergeIntoAnother}
             />
           )}
         </td>
@@ -891,6 +971,12 @@ function IssueDetailPanel({
   teamId,
   onClose,
   onUpdate,
+  onArchive,
+  onDelete,
+  onMakeLongTerm,
+  onOpenCreate,
+  onToggleResolved,
+  onMergeIntoAnother,
 }: {
   issue: IssueItem;
   teamName: string;
@@ -898,12 +984,26 @@ function IssueDetailPanel({
   teamId?: string | null;
   onClose: () => void;
   onUpdate: (patch: Partial<IssueItem>) => void;
+  onArchive: () => void;
+  onDelete: () => void;
+  onMakeLongTerm?: () => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; issueInterval?: 'short' | 'long'; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
+  onToggleResolved: (resolved: boolean) => void;
+  onMergeIntoAnother: () => void;
 }) {
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(issue.description ?? '');
   const [priority, setPriority] = useState(issue.priority);
   const [createdById, setCreatedById] = useState(issue.createdById ?? '');
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [ownerPickerOpen, setOwnerPickerOpen] = useState(false);
+  const [ownerSearch, setOwnerSearch] = useState('');
+  const [organizationRole, setOrganizationRole] = useState<string | null>(null);
+  const [confirmOwnerChangeOpen, setConfirmOwnerChangeOpen] = useState(false);
+  const [pendingOwnerId, setPendingOwnerId] = useState<string | null>(null);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [headerMenuRect, setHeaderMenuRect] = useState<DOMRect | null>(null);
+  const headerMenuBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setTitle(issue.title);
@@ -917,8 +1017,38 @@ function IssueDetailPanel({
       setTeamMembers([]);
       return;
     }
-    teamsService.getOne(organizationId, teamId).then((t) => setTeamMembers(t.members ?? [])).catch(() => setTeamMembers([]));
-  }, [organizationId, teamId]);
+    Promise.allSettled([
+      teamsService.getOne(organizationId, teamId),
+      teamsService.list(organizationId),
+    ])
+      .then(([singleRes, listRes]) => {
+        const fromSingle = singleRes.status === 'fulfilled' ? singleRes.value.members ?? [] : [];
+        const fromListTeam =
+          listRes.status === 'fulfilled'
+            ? (listRes.value.find((t) => t.id === teamId)?.members ?? [])
+            : [];
+        const mergedByUserId = new Map<string, TeamMember>();
+        [...fromSingle, ...fromListTeam].forEach((m) => {
+          const key = m.user?.id ?? m.userId;
+          if (!mergedByUserId.has(key)) mergedByUserId.set(key, m);
+        });
+        setTeamMembers(Array.from(mergedByUserId.values()));
+      })
+      .catch(() => setTeamMembers([]));
+  }, [organizationId, teamId, ownerPickerOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncRole = () => setOrganizationRole(localStorage.getItem('organizationRole'));
+    syncRole();
+    const onRoleChange = (e: Event) => {
+      const evt = e as CustomEvent<{ role?: string }>;
+      if (evt.detail?.role) setOrganizationRole(evt.detail.role);
+      else syncRole();
+    };
+    window.addEventListener('organizationRoleChanged', onRoleChange as EventListener);
+    return () => window.removeEventListener('organizationRoleChanged', onRoleChange as EventListener);
+  }, []);
 
   const headerInitials = useMemo(() => {
     if (!createdById) return issue.ownerInitials;
@@ -927,6 +1057,60 @@ function IssueDetailPanel({
     if (u) return issueAssigneeInitials(u.name, u.email);
     return issue.ownerInitials;
   }, [createdById, teamMembers, issue.ownerInitials]);
+
+  const ownerName = useMemo(() => {
+    if (!createdById) return 'No owner';
+    const m = teamMembers.find((x) => (x.user?.id ?? x.userId) === createdById);
+    return m?.user?.name || m?.user?.email || 'No owner';
+  }, [createdById, teamMembers]);
+
+  const ownerCandidates = useMemo(() => {
+    const q = ownerSearch.trim().toLowerCase();
+    return teamMembers.filter((m) => {
+      if (!q) return true;
+      const label = `${m.user?.name ?? ''} ${m.user?.email ?? ''}`.toLowerCase();
+      return label.includes(q);
+    });
+  }, [teamMembers, ownerSearch]);
+
+  const isAdmin = organizationRole === 'ADMIN';
+  const resolved = !!issue.resolvedAt;
+
+  const openHeaderMenu = () => {
+    if (!headerMenuBtnRef.current) return;
+    setHeaderMenuRect(headerMenuBtnRef.current.getBoundingClientRect());
+    setHeaderMenuOpen(true);
+  };
+
+  useEffect(() => {
+    if (!headerMenuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setHeaderMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [headerMenuOpen]);
+
+  const handleOwnerSelect = (nextOwnerId: string) => {
+    if (!isAdmin) {
+      toast.error("You're not admin");
+      return;
+    }
+    setPendingOwnerId(nextOwnerId);
+    setConfirmOwnerChangeOpen(true);
+  };
+
+  const confirmOwnerChange = () => {
+    const nextOwnerId = pendingOwnerId ?? '';
+    setCreatedById(nextOwnerId);
+    onUpdate({
+      createdById: nextOwnerId || null,
+    });
+    setOwnerPickerOpen(false);
+    setOwnerSearch('');
+    setConfirmOwnerChangeOpen(false);
+    setPendingOwnerId(null);
+  };
 
   const handleSave = (andClose = false) => {
     onUpdate({
@@ -944,10 +1128,100 @@ function IssueDetailPanel({
       <div className="fixed inset-y-0 right-0 w-[42%] min-w-[380px] max-w-[620px] bg-card border-l border-border shadow-xl z-50 flex flex-col">
         <header className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onToggleResolved(!resolved)}
+              className="rounded-full w-6 h-6 flex items-center justify-center hover:bg-muted/80 text-muted-foreground hover:text-foreground"
+              aria-label={resolved ? 'Mark unresolved' : 'Mark resolved'}
+            >
+              {resolved ? (
+                <CheckCircle2 className="w-5 h-5 text-primary" />
+              ) : (
+                <Circle className="w-5 h-5" />
+              )}
+            </button>
             <h2 className="font-semibold text-foreground">Edit Turbulence</h2>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
+          <div className="flex items-center gap-2 relative">
+            <button
+              ref={headerMenuBtnRef}
+              type="button"
+              onClick={() => (headerMenuOpen ? setHeaderMenuOpen(false) : openHeaderMenu())}
+              className="p-2.5 rounded-md hover:bg-muted text-muted-foreground"
+              aria-label="More options"
+            >
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+            {headerMenuOpen && headerMenuRect && typeof document !== 'undefined' && (
+              <IssueRowMenu
+                anchorRect={headerMenuRect}
+                item={issue}
+                onClose={() => setHeaderMenuOpen(false)}
+                onArchive={onArchive}
+                onDelete={() => {
+                  setHeaderMenuOpen(false);
+                  onDelete();
+                }}
+                onMakeLongTerm={onMakeLongTerm}
+                onOpenCreate={onOpenCreate}
+                showMoveActions={false}
+                overlayZIndex={55}
+                menuZIndex={56}
+                onMergeIntoAnother={onMergeIntoAnother}
+              />
+            )}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setOwnerPickerOpen((v) => !v)}
+                className="w-9 h-9 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary hover:bg-primary/20"
+                title={`Owner: ${ownerName}`}
+                aria-label="Change owner"
+              >
+                {headerInitials}
+              </button>
+              {ownerPickerOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setOwnerPickerOpen(false)} aria-hidden />
+                  <div className="absolute right-0 top-full mt-2 z-20 w-[280px] bg-card border border-border rounded-lg shadow-xl p-2">
+                    <input
+                      type="text"
+                      value={ownerSearch}
+                      onChange={(e) => setOwnerSearch(e.target.value)}
+                      placeholder="Search crew member..."
+                      className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm mb-2"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleOwnerSelect('')}
+                      className="w-full text-left px-2.5 py-2 rounded hover:bg-muted text-sm text-muted-foreground"
+                    >
+                      No owner
+                    </button>
+                    <div className="max-h-60 overflow-auto">
+                      {ownerCandidates.map((m) => {
+                        const uid = m.user?.id ?? m.userId;
+                        const label = m.user?.name || m.user?.email || uid;
+                        const initials = issueAssigneeInitials(m.user?.name, m.user?.email);
+                        const isSelected = createdById === uid;
+                        return (
+                          <button
+                            key={uid}
+                            type="button"
+                            onClick={() => handleOwnerSelect(uid)}
+                            className={`w-full text-left px-2.5 py-2 rounded flex items-center gap-2 text-sm ${isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'}`}
+                          >
+                            <span className="w-6 h-6 rounded-full bg-muted inline-flex items-center justify-center text-xs">{initials}</span>
+                            <span className="truncate">{label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground hidden">
               {headerInitials}
             </div>
             <button
@@ -961,24 +1235,6 @@ function IssueDetailPanel({
           </div>
         </header>
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-          {issue.linkedEntityTitle && (
-            <div className="border border-border rounded-lg bg-muted/30 p-4 shadow-sm">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                Linked to
-              </p>
-              <div className="flex items-start gap-3">
-                <Link2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-muted-foreground mb-0.5">
-                    {linkedEntityTypeLabel(issue.linkedEntityType)}
-                  </p>
-                  <p className="text-sm font-semibold text-foreground break-words">
-                    {issue.linkedEntityTitle}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Title</label>
             <input
@@ -998,22 +1254,13 @@ function IssueDetailPanel({
               className="min-h-[120px]"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Priority</label>
-            <Select
-              value={priority}
-              onChange={setPriority}
-              options={[1, 2, 3, 4, 5].map((n) => ({ label: String(n), value: n }))}
-              className="w-[80px]"
-            />
-          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Flight crew</label>
+              <label className="block text-sm font-medium text-foreground mb-1">Priority</label>
               <Select
-                options={[{ label: teamName, value: 'crew' }]}
-                value="crew"
-                disabled
+                value={priority}
+                onChange={setPriority}
+                options={[1, 2, 3, 4, 5].map((n) => ({ label: String(n), value: n }))}
                 className="w-full"
               />
             </div>
@@ -1036,31 +1283,130 @@ function IssueDetailPanel({
               </p>
             </div>
           </div>
-          <section className="pt-6 mt-6 border-t border-border flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleSave(true)}
-              className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium"
-            >
-              Save and close
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSave(false)}
-              className="px-4 py-2 rounded-md border border-border bg-background text-foreground hover:bg-muted text-sm font-medium"
-            >
-              Save
-            </button>
+          <div className="border-t border-border" />
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Team</label>
+            <Select
+              options={[{ label: teamName, value: 'crew' }]}
+              value="crew"
+              disabled
+              className="w-full"
+            />
+          </div>
+          <div className="border-t border-border" />
+          <section className="pt-6 mt-6 border-t border-border">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-medium text-foreground">Linked Items {issue.linkedEntityTitle ? 1 : 0}</h4>
+              <button type="button" className="text-sm text-primary hover:underline">
+                Edit
+              </button>
+            </div>
+            {issue.linkedEntityTitle ? (
+              <div className="border border-border rounded-lg bg-muted/30 p-4 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <Link2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-muted-foreground mb-0.5">
+                      {linkedEntityTypeLabel(issue.linkedEntityType)}
+                    </p>
+                    <p className="text-sm font-semibold text-foreground break-words">
+                      {issue.linkedEntityTitle}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className="text-sm text-primary hover:underline">
+                + Linked Item
+              </button>
+            )}
+          </section>
+          <section className="pt-6 mt-6 border-t border-border">
+            <h4 className="font-medium text-foreground mb-3">Attachments 0</h4>
+            <div className="border-2 border-dashed border-border rounded-lg p-8 text-center text-sm text-muted-foreground">
+              Drag and drop files to attach, or{' '}
+              <button type="button" className="text-primary hover:underline">
+                browse
+              </button>
+            </div>
+          </section>
+          <section className="pt-6 mt-6 border-t border-border">
+            <h4 className="font-medium text-foreground mb-3">Comments 0</h4>
+            <div className="flex gap-3">
+              <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground shrink-0">
+                {headerInitials}
+              </div>
+              <input
+                type="text"
+                placeholder="Add a comment..."
+                className="flex-1 px-3 py-2.5 border border-border rounded-md bg-background text-foreground text-sm"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground text-right mt-2">0/10000</p>
+          </section>
+        </div>
+        <footer className="px-6 py-4 border-t border-border shrink-0 space-y-3">
+          <div className="flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-md text-muted-foreground hover:text-foreground text-sm font-medium"
+              className="px-4 py-2 rounded-md border border-border bg-background text-foreground text-sm font-medium hover:bg-muted cursor-pointer"
             >
               Cancel
             </button>
-          </section>
-        </div>
+            <button
+              type="button"
+              onClick={() => handleSave(true)}
+              className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 cursor-pointer"
+            >
+              Save
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Created by {headerInitials} on {formatDate(issue.createdAt)} ·{' '}
+            <span className="inline-flex items-center gap-1">
+              ✔ Following <User className="w-3 h-3" />
+            </span>
+          </p>
+        </footer>
       </div>
+      {confirmOwnerChangeOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/20 z-[60]"
+            onClick={() => {
+              setConfirmOwnerChangeOpen(false);
+              setPendingOwnerId(null);
+            }}
+            aria-hidden
+          />
+          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[61] w-full max-w-sm bg-card border border-border rounded-lg shadow-xl p-5">
+            <h3 className="text-base font-semibold text-foreground mb-2">Change owner?</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Only admins can change owner. Confirm this owner update.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-3 py-2 border border-border rounded-md text-sm hover:bg-muted"
+                onClick={() => {
+                  setConfirmOwnerChangeOpen(false);
+                  setPendingOwnerId(null);
+                }}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                className="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90"
+                onClick={confirmOwnerChange}
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -1073,6 +1419,10 @@ function IssueRowMenu({
   onDelete,
   onMakeLongTerm,
   onOpenCreate,
+  showMoveActions = true,
+  overlayZIndex = 40,
+  menuZIndex = 50,
+  onMergeIntoAnother,
 }: {
   anchorRect: DOMRect;
   item: IssueItem;
@@ -1080,7 +1430,11 @@ function IssueRowMenu({
   onArchive: () => void;
   onDelete: () => void;
   onMakeLongTerm?: () => void;
-  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
+  onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; issueInterval?: 'short' | 'long'; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
+  showMoveActions?: boolean;
+  overlayZIndex?: number;
+  menuZIndex?: number;
+  onMergeIntoAnother?: () => void;
 }) {
   const position = useMemo(() => {
     if (typeof window === 'undefined')
@@ -1105,24 +1459,28 @@ function IssueRowMenu({
 
   return createPortal(
     <>
-      <div className="fixed inset-0 z-40" onClick={onClose} aria-hidden />
+      <div className="fixed inset-0" style={{ zIndex: overlayZIndex }} onClick={onClose} aria-hidden />
       <div
-        className="fixed z-50 py-2 bg-card border border-border rounded-lg shadow-xl min-w-[240px]"
-        style={{ top: position.top, left: position.left }}
+        className="fixed py-2 bg-card border border-border rounded-lg shadow-xl min-w-[240px]"
+        style={{ top: position.top, left: position.left, zIndex: menuZIndex }}
         role="menu"
         aria-label="Row actions"
       >
-        <div className="px-2 py-1">
-          <button type="button" className={btn} onClick={onClose} role="menuitem">
-            <ChevronUp className={icon} />
-            Top of List
-          </button>
-          <button type="button" className={btn} onClick={onClose} role="menuitem">
-            <ChevronDown className={icon} />
-            Bottom of List
-          </button>
-        </div>
-        <div className="border-t border-border my-1" />
+        {showMoveActions && (
+          <>
+            <div className="px-2 py-1">
+              <button type="button" className={btn} onClick={onClose} role="menuitem">
+                <ChevronUp className={icon} />
+                Top of List
+              </button>
+              <button type="button" className={btn} onClick={onClose} role="menuitem">
+                <ChevronDown className={icon} />
+                Bottom of List
+              </button>
+            </div>
+            <div className="border-t border-border my-1" />
+          </>
+        )}
         <div className="px-2 py-1">
           <button type="button" className={btn} onClick={() => { onOpenCreate?.('rock', getLinkedCreateOptions(item, 'rock')); onClose(); }} role="menuitem">
             <Mountain className={icon} />
@@ -1138,14 +1496,26 @@ function IssueRowMenu({
           </button>
           <button type="button" className={btn} onClick={() => { onOpenCreate?.('headline', getLinkedCreateOptions(item, 'headline')); onClose(); }} role="menuitem">
             <Megaphone className={icon} />
-            Link Headline
+            Link Announcement
           </button>
         </div>
         <div className="border-t border-border my-1" />
         <div className="px-2 py-1">
-          <button type="button" className={btn} onClick={onClose} role="menuitem">
-            Merge into Another Turbulence
-          </button>
+          {onMergeIntoAnother && (
+            <button
+              type="button"
+              className={btn}
+              onClick={() => {
+                onMergeIntoAnother();
+                onClose();
+              }}
+              role="menuitem"
+            >
+              {item.termType === 'short_term'
+                ? 'Merge into Long-Term Turbulence'
+                : 'Merge into Short-Term Turbulence'}
+            </button>
+          )}
           {onMakeLongTerm && (
             <button
               type="button"
@@ -1172,7 +1542,7 @@ function IssueRowMenu({
             role="menuitem"
           >
             <Archive className={icon} />
-            Archive
+            {item.resolvedAt ? 'Unarchive' : 'Archive'}
           </button>
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <Link2 className={icon} />

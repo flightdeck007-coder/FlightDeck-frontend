@@ -19,7 +19,6 @@ import {
   Minus,
   Maximize2,
   ChevronUp,
-  User,
   Settings,
   Download,
   FileText,
@@ -45,6 +44,8 @@ import {
   type ScorecardGroup as ApiScorecardGroup,
 } from '@/lib/api/meetings.service';
 import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
+import { teamsService, type TeamMember } from '@/lib/api/teams.service';
+import { toast } from 'sonner';
 
 export type TimeframeTab = 'weekly' | 'monthly' | 'quarterly' | 'annual';
 type ViewBy = 'week' | 'month' | 'quarter' | 'year';
@@ -103,11 +104,58 @@ export interface MeasurableRow {
   showGoal?: boolean;
   showAverage?: boolean;
   showTotal?: boolean;
+  ownerId?: string;
+  ownerName?: string;
+  ownerEmail?: string;
+  ownerInitials?: string;
 }
 
 const MOCK_MEASURABLES: MeasurableRow[] = [
-  { id: '1', title: 'measurable', goal: '>= 0', average: '0', total: '0', trend: 'down', periodValues: {} },
+  { id: '1', title: 'measurable', goal: '>= 0', average: '0', total: '0', trend: 'down', periodValues: {}, ownerId: '', ownerName: '', ownerEmail: '', ownerInitials: '' },
 ];
+
+function getInitials(name?: string | null, email?: string): string {
+  if (name?.trim()) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  }
+  if (email) return email.slice(0, 2).toUpperCase();
+  return '?';
+}
+
+function extractOwnerMeta(periodValues: Record<string, string> | undefined) {
+  const pv = periodValues ?? {};
+  return {
+    ownerId: pv.__ownerId ?? '',
+    ownerName: pv.__ownerName ?? '',
+    ownerEmail: pv.__ownerEmail ?? '',
+    ownerInitials: pv.__ownerInitials ?? '',
+  };
+}
+
+function stripOwnerMeta(periodValues: Record<string, string> | undefined) {
+  const pv = periodValues ?? {};
+  return Object.fromEntries(
+    Object.entries(pv).filter(([k]) => !k.startsWith('__owner'))
+  ) as Record<string, string>;
+}
+
+function withOwnerMeta(periodValues: Record<string, string>, owner: {
+  ownerId?: string;
+  ownerName?: string;
+  ownerEmail?: string;
+  ownerInitials?: string;
+}) {
+  const next: Record<string, string> = {
+    ...periodValues,
+  };
+  if (owner.ownerId) next.__ownerId = owner.ownerId;
+  if (owner.ownerName) next.__ownerName = owner.ownerName;
+  if (owner.ownerEmail) next.__ownerEmail = owner.ownerEmail;
+  if (owner.ownerInitials) next.__ownerInitials = owner.ownerInitials;
+  return next;
+}
 
 function ScorecardTableCard({
   title,
@@ -234,10 +282,34 @@ function ScorecardTableCard({
           >
             {row.original.title}
           </span>
-          {visibility.showOwnerColumn && <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs text-foreground/70"><User className="w-3 h-3" /></span>}
         </div>
       ), size: 180 }
     );
+    if (visibility.showOwnerColumn) {
+      cols.push({
+        id: 'owner',
+        header: () => <span className="font-medium text-foreground">Owner</span>,
+        cell: ({ row }) => {
+          const r = row.original;
+          const initials = r.ownerInitials || getInitials(r.ownerName, r.ownerEmail);
+          const label = r.ownerName || r.ownerEmail || 'No owner';
+          const tooltip = r.ownerName || r.ownerEmail ? `${r.ownerName ?? 'No name'}\n${r.ownerEmail ?? ''}`.trim() : 'No owner';
+          return (
+            <div className="flex items-center">
+              <button
+                type="button"
+                className="w-7 h-7 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-[11px] font-semibold text-primary cursor-default"
+                title={tooltip}
+                aria-label={`Owner: ${label}`}
+              >
+                {initials || '?'}
+              </button>
+            </div>
+          );
+        },
+        size: 82,
+      });
+    }
     if (visibility.showGoalColumn) cols.push({ id: 'goal', header: () => <span className="font-medium text-foreground">Target</span>, cell: ({ row }) => { const r = row.original; if (r.showGoal === false) return ''; const v = r.goal; return (v != null && v !== '' ? v : '—'); }, size: 100 });
     if (visibility.showAverageColumn) cols.push({ id: 'average', header: () => <span className="font-medium text-foreground">Average</span>, cell: ({ row }) => { const r = row.original; if (r.showAverage === false) return ''; const v = r.average; return (v != null && v !== '' ? v : '—'); }, size: 90 });
     if (visibility.showTotalColumn) cols.push({ id: 'total', header: () => <span className="font-medium text-foreground">Total</span>, cell: ({ row }) => { const r = row.original; if (r.showTotal === false) return ''; const v = r.total; return (v != null && v !== '' ? v : '—'); }, size: 80 });
@@ -269,6 +341,7 @@ function ScorecardTableCard({
     const ids = ['select'];
     if (visibility.showStatusIndicators) ids.push('trend');
     ids.push('title');
+    if (visibility.showOwnerColumn) ids.push('owner');
     if (visibility.showGoalColumn) ids.push('goal');
     if (visibility.showAverageColumn) ids.push('average');
     if (visibility.showTotalColumn) ids.push('total');
@@ -565,9 +638,11 @@ type CreatePopupType = 'issue' | 'rock' | 'todo' | 'headline' | 'cascading_messa
 
 interface InstrumentsSegmentViewProps {
   teamName?: string;
+  teamId?: string | null;
   embedded?: boolean;
   meetingId?: string;
   organizationId?: string;
+  currentUserId?: string | null;
   isFacilitator?: boolean;
   /** Scribe or facilitator: can change scorecard filters and create groups/measurables */
   canRecord?: boolean;
@@ -581,9 +656,11 @@ interface InstrumentsSegmentViewProps {
 
 export function InstrumentsSegmentView({
   teamName = 'No team found',
+  teamId,
   embedded = false,
   meetingId,
   organizationId,
+  currentUserId,
   isFacilitator = true,
   canRecord,
   isMeetingInFuture = false,
@@ -715,7 +792,15 @@ export function InstrumentsSegmentView({
   const [createMeasurableGoalValue, setCreateMeasurableGoalValue] = useState(0);
   const [createMeasurableRollup, setCreateMeasurableRollup] = useState('Total (default)');
   const [createMeasurableFormulaBuilder, setCreateMeasurableFormulaBuilder] = useState(false);
+  const [createMeasurableOwnerId, setCreateMeasurableOwnerId] = useState<string>('');
   const [savingMeasurable, setSavingMeasurable] = useState(false);
+  const [measurableMenuOpen, setMeasurableMenuOpen] = useState(false);
+  const [ownerPickerOpen, setOwnerPickerOpen] = useState(false);
+  const [ownerSearch, setOwnerSearch] = useState('');
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [organizationRole, setOrganizationRole] = useState<string | null>(null);
+  const [confirmOwnerChangeOpen, setConfirmOwnerChangeOpen] = useState(false);
+  const [pendingOwnerId, setPendingOwnerId] = useState<string | null>(null);
   const [editGroupId, setEditGroupId] = useState<string | null>(null);
   const [editGroupInitial, setEditGroupInitial] = useState<{ name: string; description: string } | null>(null);
   const [createGroupSaving, setCreateGroupSaving] = useState(false);
@@ -765,7 +850,111 @@ export function InstrumentsSegmentView({
     setCreateMeasurableShowTotal(editingMeasurable.showTotal !== false);
     setCreateMeasurableShowAverage(editingMeasurable.showAverage !== false);
     setCreateMeasurableShowGoal(editingMeasurable.showGoal !== false);
+    setCreateMeasurableOwnerId(editingMeasurable.ownerId ?? '');
   }, [editingMeasurable]);
+
+  useEffect(() => {
+    if (!createMeasurableOpen || editingMeasurable) return;
+    setCreateMeasurableOwnerId(currentUserId ?? '');
+  }, [createMeasurableOpen, editingMeasurable, currentUserId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncRole = () => setOrganizationRole(localStorage.getItem('organizationRole'));
+    syncRole();
+    const onRoleChange = (e: Event) => {
+      const evt = e as CustomEvent<{ role?: string }>;
+      if (evt.detail?.role) setOrganizationRole(evt.detail.role);
+      else syncRole();
+    };
+    window.addEventListener('organizationRoleChanged', onRoleChange as EventListener);
+    return () => window.removeEventListener('organizationRoleChanged', onRoleChange as EventListener);
+  }, []);
+
+  const isAdmin = organizationRole === 'ADMIN';
+
+  const fetchTeamMembers = useCallback(() => {
+    if (!organizationId || !teamId) {
+      setTeamMembers([]);
+      return Promise.resolve();
+    }
+    return Promise.allSettled([
+      teamsService.getOne(organizationId, teamId),
+      teamsService.list(organizationId),
+    ])
+      .then(([singleRes, listRes]) => {
+        const fromSingle = singleRes.status === 'fulfilled' ? singleRes.value.members ?? [] : [];
+        const fromListTeam =
+          listRes.status === 'fulfilled'
+            ? (listRes.value.find((t) => t.id === teamId)?.members ?? [])
+            : [];
+        const mergedByUserId = new Map<string, TeamMember>();
+        [...fromSingle, ...fromListTeam].forEach((m) => {
+          const key = m.user?.id ?? m.userId;
+          if (!mergedByUserId.has(key)) mergedByUserId.set(key, m);
+        });
+        setTeamMembers(Array.from(mergedByUserId.values()));
+      })
+      .catch(() => setTeamMembers([]));
+  }, [organizationId, teamId]);
+
+  useEffect(() => {
+    if (ownerPickerOpen) fetchTeamMembers();
+  }, [ownerPickerOpen, fetchTeamMembers]);
+
+  const selectedOwner = teamMembers.find((m) => (m.user?.id ?? m.userId) === createMeasurableOwnerId);
+  const ownerInitials = selectedOwner
+    ? getInitials(selectedOwner.user?.name, selectedOwner.user?.email)
+    : (editingMeasurable?.ownerInitials || '?');
+  const ownerName = selectedOwner?.user?.name || selectedOwner?.user?.email || 'No owner';
+  const ownerCandidates = teamMembers.filter((m) => {
+    const q = ownerSearch.trim().toLowerCase();
+    if (!q) return true;
+    const label = `${m.user?.name ?? ''} ${m.user?.email ?? ''}`.toLowerCase();
+    return label.includes(q);
+  });
+
+  const handleOwnerSelect = (nextOwnerId: string) => {
+    if (!isAdmin) {
+      toast.error("You're not admin");
+      return;
+    }
+    setPendingOwnerId(nextOwnerId);
+    setConfirmOwnerChangeOpen(true);
+  };
+
+  const confirmOwnerChange = () => {
+    const nextOwnerId = pendingOwnerId ?? '';
+    setCreateMeasurableOwnerId(nextOwnerId);
+    setOwnerPickerOpen(false);
+    setOwnerSearch('');
+    setConfirmOwnerChangeOpen(false);
+    setPendingOwnerId(null);
+  };
+
+  const resolveOwnerMeta = (ownerId: string) => {
+    const fromTeam = teamMembers.find((m) => (m.user?.id ?? m.userId) === ownerId);
+    if (fromTeam) {
+      return {
+        ownerName: fromTeam.user?.name || '',
+        ownerEmail: fromTeam.user?.email || '',
+        ownerInitials: getInitials(fromTeam.user?.name, fromTeam.user?.email),
+      };
+    }
+    const fromAttendance = meetingAttendances.find((a) => a.user?.id === ownerId)?.user;
+    if (fromAttendance) {
+      return {
+        ownerName: fromAttendance.name || '',
+        ownerEmail: fromAttendance.email || '',
+        ownerInitials: getInitials(fromAttendance.name, fromAttendance.email),
+      };
+    }
+    return {
+      ownerName: '',
+      ownerEmail: '',
+      ownerInitials: '',
+    };
+  };
 
   const useApiGroups = Boolean(meetingId && organizationId);
   const [scorecardGroupsLoading, setScorecardGroupsLoading] = useState(false);
@@ -820,16 +1009,24 @@ export function InstrumentsSegmentView({
       const list = await scorecardMeasurablesService.list(organizationId, meetingId);
       if (list.length > 0) {
         setMeasurables(
-          list.map((m) => ({
-            id: m.id,
-            title: m.title,
-            goal: m.goal,
-            average: m.average,
-            total: m.total,
-            trend: m.trend,
-            periodValues: m.periodValues ?? {},
-            groupId: m.groupId ?? undefined,
-          }))
+          list.map((m) => {
+            const pv = (m.periodValues ?? {}) as Record<string, string>;
+            const owner = extractOwnerMeta(pv);
+            return {
+              id: m.id,
+              title: m.title,
+              goal: m.goal,
+              average: m.average,
+              total: m.total,
+              trend: m.trend,
+              periodValues: stripOwnerMeta(pv),
+              groupId: m.groupId ?? undefined,
+              ownerId: owner.ownerId,
+              ownerName: owner.ownerName,
+              ownerEmail: owner.ownerEmail,
+              ownerInitials: owner.ownerInitials,
+            };
+          })
         );
       } else {
         const seed = MOCK_MEASURABLES.map((m) => ({ ...m, groupId: undefined as string | undefined }));
@@ -1638,7 +1835,123 @@ export function InstrumentsSegmentView({
           <div className="fixed inset-y-0 right-0 w-full max-w-md bg-card border-l border-border shadow-xl z-50 flex flex-col">
             <header className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0 bg-muted/20">
               <h3 className="text-lg font-semibold text-foreground">{editingMeasurable ? 'Edit Flight Metric' : 'Create Flight Metric'}</h3>
-              <button type="button" onClick={() => setCreateMeasurableCloseConfirmOpen(true)} className="p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-colors" aria-label="Close"><X className="w-5 h-5" /></button>
+              <div className="flex items-center gap-2 relative">
+                <button
+                  type="button"
+                  onClick={() => setMeasurableMenuOpen((o) => !o)}
+                  className="p-2.5 rounded-md hover:bg-muted text-muted-foreground"
+                  aria-label="More options"
+                >
+                  <MoreHorizontal className="w-5 h-5" />
+                </button>
+                {measurableMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-[60]" onClick={() => setMeasurableMenuOpen(false)} aria-hidden />
+                    <div className="absolute right-20 top-full z-[61] py-2 bg-card border border-border rounded-lg shadow-xl min-w-[220px]">
+                      <div className="px-2 py-1 space-y-0.5">
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md"
+                          onClick={() => {
+                            if (!editingMeasurable || !onOpenCreate) return;
+                            setCreateMeasurableOpen(false);
+                            setEditingMeasurable(null);
+                            setMeasurableMenuOpen(false);
+                            onOpenCreate('todo', {
+                              title: `Clearance: ${editingMeasurable.title}`,
+                              description: `Linked metric: ${editingMeasurable.title}`,
+                              linkedEntity: { type: 'measurable', id: editingMeasurable.id, title: editingMeasurable.title },
+                            });
+                          }}
+                        >
+                          <CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create To-Do
+                        </button>
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md"
+                          onClick={() => {
+                            if (!editingMeasurable || !onOpenCreate) return;
+                            setCreateMeasurableOpen(false);
+                            setEditingMeasurable(null);
+                            setMeasurableMenuOpen(false);
+                            onOpenCreate('issue', {
+                              title: `Turbulence: ${editingMeasurable.title}`,
+                              description: `Linked metric: ${editingMeasurable.title}`,
+                              linkedEntity: { type: 'measurable', id: editingMeasurable.id, title: editingMeasurable.title },
+                            });
+                          }}
+                        >
+                          <AlertTriangle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Issue
+                        </button>
+                        {editingMeasurable?.groupId && (
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md"
+                            onClick={() => {
+                              setMeasurableMenuOpen(false);
+                              handleRemoveFromGroup([editingMeasurable.id]);
+                            }}
+                          >
+                            <MinusCircle className="w-4 h-4 shrink-0 text-muted-foreground" /> Remove from group
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setOwnerPickerOpen((v) => !v)}
+                    className="w-9 h-9 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary hover:bg-primary/20"
+                    title={`Owner: ${ownerName}`}
+                    aria-label="Change owner"
+                  >
+                    {ownerInitials}
+                  </button>
+                  {ownerPickerOpen && (
+                    <>
+                      <div className="fixed inset-0 z-[60]" onClick={() => setOwnerPickerOpen(false)} aria-hidden />
+                      <div className="absolute right-0 top-full mt-2 z-[61] w-[280px] bg-card border border-border rounded-lg shadow-xl p-2">
+                        <input
+                          type="text"
+                          value={ownerSearch}
+                          onChange={(e) => setOwnerSearch(e.target.value)}
+                          placeholder="Search crew member..."
+                          className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm mb-2"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleOwnerSelect('')}
+                          className="w-full text-left px-2.5 py-2 rounded hover:bg-muted text-sm text-muted-foreground"
+                        >
+                          No owner
+                        </button>
+                        <div className="max-h-60 overflow-auto">
+                          {ownerCandidates.map((m) => {
+                            const uid = m.user?.id ?? m.userId;
+                            const label = m.user?.name || m.user?.email || uid;
+                            const initials = getInitials(m.user?.name, m.user?.email);
+                            const isSelected = createMeasurableOwnerId === uid;
+                            return (
+                              <button
+                                key={uid}
+                                type="button"
+                                onClick={() => handleOwnerSelect(uid)}
+                                className={`w-full text-left px-2.5 py-2 rounded flex items-center gap-2 text-sm ${isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'}`}
+                              >
+                                <span className="w-6 h-6 rounded-full bg-muted inline-flex items-center justify-center text-xs">{initials}</span>
+                                <span className="truncate">{label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <button type="button" onClick={() => setCreateMeasurableCloseConfirmOpen(true)} className="p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-colors" aria-label="Close"><X className="w-5 h-5" /></button>
+              </div>
             </header>
             <div className="flex-1 overflow-y-auto p-5 space-y-6">
               <section>
@@ -1670,15 +1983,6 @@ export function InstrumentsSegmentView({
                   placeholder="Select interval"
                 />
               </section>
-              <section>
-                <label className="block text-sm font-medium text-foreground mb-2">Owner</label>
-                <Select
-                  className="w-full"
-                  placeholder="Select crew member"
-                  options={personOptions.filter((o) => o.value !== 'All')}
-                />
-              </section>
-
               <hr className="border-border" />
 
               <section>
@@ -1796,7 +2100,12 @@ export function InstrumentsSegmentView({
                       average: mm.average,
                       total: mm.total,
                       trend: mm.trend,
-                      periodValues: mm.periodValues,
+                      periodValues: withOwnerMeta(mm.periodValues ?? {}, {
+                        ownerId: mm.ownerId,
+                        ownerName: mm.ownerName,
+                        ownerEmail: mm.ownerEmail,
+                        ownerInitials: mm.ownerInitials,
+                      }),
                       order: i,
                     }));
                     const payloadKey = JSON.stringify(payload);
@@ -1808,6 +2117,8 @@ export function InstrumentsSegmentView({
                   };
                   if (editingMeasurable) {
                     pushScorecardHistory();
+                    const effectiveOwnerId = createMeasurableOwnerId || currentUserId || '';
+                    const ownerMeta = resolveOwnerMeta(effectiveOwnerId);
                     const next = measurablesRef.current.map((m) =>
                       m.id === editingMeasurable.id
                         ? {
@@ -1819,6 +2130,10 @@ export function InstrumentsSegmentView({
                             showGoal: createMeasurableShowGoal,
                             showAverage: createMeasurableShowAverage,
                             showTotal: createMeasurableShowTotal,
+                            ownerId: effectiveOwnerId,
+                            ownerName: ownerMeta.ownerName,
+                            ownerEmail: ownerMeta.ownerEmail,
+                            ownerInitials: ownerMeta.ownerInitials,
                           }
                         : m
                     );
@@ -1832,6 +2147,7 @@ export function InstrumentsSegmentView({
                     setCreateMeasurableShowTotal(true);
                     setCreateMeasurableShowAverage(true);
                     setCreateMeasurableShowGoal(true);
+                    setCreateMeasurableOwnerId('');
                     setSavingMeasurable(false);
                     return;
                   }
@@ -1841,6 +2157,8 @@ export function InstrumentsSegmentView({
                   }
                   const newId = `m-${Date.now()}`;
                   const displayGroupId = createMeasurableForGroupId === 'main' ? undefined : createMeasurableForGroupId;
+                  const effectiveOwnerId = createMeasurableOwnerId || currentUserId || '';
+                  const ownerMeta = resolveOwnerMeta(effectiveOwnerId);
                   const newRow: MeasurableRow = {
                     id: newId,
                     title: createMeasurableTitle.trim(),
@@ -1853,6 +2171,10 @@ export function InstrumentsSegmentView({
                     showGoal: createMeasurableShowGoal,
                     showAverage: createMeasurableShowAverage,
                     showTotal: createMeasurableShowTotal,
+                    ownerId: effectiveOwnerId,
+                    ownerName: ownerMeta.ownerName,
+                    ownerEmail: ownerMeta.ownerEmail,
+                    ownerInitials: ownerMeta.ownerInitials,
                   };
                   pushScorecardHistory();
                   const next = [...measurablesRef.current, newRow];
@@ -1865,6 +2187,7 @@ export function InstrumentsSegmentView({
                   setCreateMeasurableShowTotal(true);
                   setCreateMeasurableShowAverage(true);
                   setCreateMeasurableShowGoal(true);
+                  setCreateMeasurableOwnerId('');
                   setCreateMeasurableForGroupId(null);
                   setSavingMeasurable(false);
                 }}
@@ -1888,6 +2211,41 @@ export function InstrumentsSegmentView({
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setCreateMeasurableCloseConfirmOpen(false)} className="px-4 py-2 border border-border rounded-lg hover:bg-muted text-sm font-medium cursor-pointer">Stay</button>
               <button type="button" onClick={() => { setCreateMeasurableCloseConfirmOpen(false); setCreateMeasurableOpen(false); setEditingMeasurable(null); setCreateMeasurableTitle(''); setCreateMeasurableDescription(''); setCreateMeasurableForGroupId(null); }} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 text-sm font-medium cursor-pointer">Close</button>
+            </div>
+          </div>
+        </>
+      )}
+      {confirmOwnerChangeOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/20 z-[70]"
+            onClick={() => {
+              setConfirmOwnerChangeOpen(false);
+              setPendingOwnerId(null);
+            }}
+            aria-hidden
+          />
+          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[71] w-full max-w-sm bg-card border border-border rounded-lg shadow-xl p-5">
+            <h3 className="text-base font-semibold text-foreground mb-2">Change owner?</h3>
+            <p className="text-sm text-muted-foreground mb-4">Only admins can change owner. Confirm this owner update.</p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-3 py-2 border border-border rounded-md text-sm hover:bg-muted"
+                onClick={() => {
+                  setConfirmOwnerChangeOpen(false);
+                  setPendingOwnerId(null);
+                }}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                className="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90"
+                onClick={confirmOwnerChange}
+              >
+                Yes
+              </button>
             </div>
           </div>
         </>

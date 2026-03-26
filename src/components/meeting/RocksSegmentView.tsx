@@ -12,6 +12,7 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Select, Input } from 'antd';
+import { toast } from 'sonner';
 import { issuesService } from '@/lib/api/issues.service';
 import { todosService } from '@/lib/api/todos.service';
 import {
@@ -534,8 +535,6 @@ export function RocksSegmentView({
               if (onOpenCreate) onOpenCreate('rock');
               else addRock({
                 title: 'New rock',
-                ownerName: 'User',
-                ownerInitials: 'U',
                 dueBy: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
                 status: 'on_track',
                 column: 'current',
@@ -885,7 +884,7 @@ function RocksTabContent({
         return (
           <div key={ownerName} className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="flex items-center gap-2 p-4 border-b border-border bg-muted/20">
-              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
+              <div className="w-8 h-8 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary">
                 {initials}
               </div>
               <h3 className="font-semibold text-foreground">
@@ -976,7 +975,7 @@ function linkedDescription(rock: Rock): string {
 }
 
 /**
- * Dropdown menu for a single waypoint's actions (Create linked Waypoint/Clearance/Turbulence/Headline, Archive, Print, Copy Link, Delete).
+ * Dropdown menu for a single waypoint's actions (Create linked Waypoint/Clearance/Turbulence/Announcement, Archive, Print, Copy Link, Delete).
  * Rendered via portal so it appears above the page and is not clipped by table overflow.
  */
 function RockActionsMenu({
@@ -1103,7 +1102,7 @@ function RockActionsMenu({
             role="menuitem"
           >
             <Megaphone className={iconClass} />
-            Create linked Headline
+            Create linked Announcement
           </button>
         </div>
         <div className="border-t border-border my-1" />
@@ -1236,7 +1235,13 @@ function RockDetailPanel({
   const [linkedEditMode, setLinkedEditMode] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [ownerUserId, setOwnerUserId] = useState('');
-  const { updateRock } = useRocks();
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [ownerPickerOpen, setOwnerPickerOpen] = useState(false);
+  const [ownerSearch, setOwnerSearch] = useState('');
+  const [organizationRole, setOrganizationRole] = useState<string | null>(null);
+  const [confirmOwnerChangeOpen, setConfirmOwnerChangeOpen] = useState(false);
+  const [pendingOwnerId, setPendingOwnerId] = useState<string | null>(null);
+  const { updateRock, archiveRock, deleteRock } = useRocks();
 
   useEffect(() => {
     setTitle(rock.title);
@@ -1245,23 +1250,48 @@ function RockDetailPanel({
   }, [rock.id, rock.title, rock.dueBy, initialMilestones]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncRole = () => setOrganizationRole(localStorage.getItem('organizationRole'));
+    syncRole();
+    const onRoleChange = (e: Event) => {
+      const evt = e as CustomEvent<{ role?: string }>;
+      if (evt.detail?.role) setOrganizationRole(evt.detail.role);
+      else syncRole();
+    };
+    window.addEventListener('organizationRoleChanged', onRoleChange as EventListener);
+    return () => window.removeEventListener('organizationRoleChanged', onRoleChange as EventListener);
+  }, []);
+  const isAdmin = organizationRole === 'ADMIN';
+
+  const fetchTeamMembers = useCallback(() => {
     if (!organizationId || !teamId) {
       setTeamMembers([]);
-      return;
+      return Promise.resolve();
     }
-    let cancelled = false;
-    teamsService
-      .getOne(organizationId, teamId)
-      .then((t) => {
-        if (!cancelled) setTeamMembers(t.members ?? []);
+    return Promise.allSettled([
+      teamsService.getOne(organizationId, teamId),
+      teamsService.list(organizationId),
+    ])
+      .then(([singleRes, listRes]) => {
+        const fromSingle =
+          singleRes.status === 'fulfilled' ? singleRes.value.members ?? [] : [];
+        const fromListTeam =
+          listRes.status === 'fulfilled'
+            ? (listRes.value.find((t) => t.id === teamId)?.members ?? [])
+            : [];
+        const mergedByUserId = new Map<string, TeamMember>();
+        [...fromSingle, ...fromListTeam].forEach((m) => {
+          const key = m.user?.id ?? m.userId;
+          if (!mergedByUserId.has(key)) mergedByUserId.set(key, m);
+        });
+        setTeamMembers(Array.from(mergedByUserId.values()));
       })
-      .catch(() => {
-        if (!cancelled) setTeamMembers([]);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .catch(() => setTeamMembers([]));
   }, [organizationId, teamId]);
+
+  useEffect(() => {
+    fetchTeamMembers();
+  }, [fetchTeamMembers]);
 
   useEffect(() => {
     const match = teamMembers.find((m) => {
@@ -1272,6 +1302,49 @@ function RockDetailPanel({
     });
     setOwnerUserId(match?.user?.id ?? '');
   }, [rock.id, rock.ownerName, teamMembers]);
+  useEffect(() => {
+    if (ownerPickerOpen) fetchTeamMembers();
+  }, [ownerPickerOpen, fetchTeamMembers]);
+
+  const ownerCandidates = teamMembers.filter((m) => {
+    const q = ownerSearch.trim().toLowerCase();
+    if (!q) return true;
+    const label = `${m.user?.name ?? ''} ${m.user?.email ?? ''}`.toLowerCase();
+    return label.includes(q);
+  });
+
+  const requestOwnerChange = (nextOwnerId: string) => {
+    if (!isAdmin) {
+      toast.error("You're not admin");
+      return;
+    }
+    setPendingOwnerId(nextOwnerId);
+    setConfirmOwnerChangeOpen(true);
+  };
+
+  const confirmOwnerChange = () => {
+    const nextOwnerId = pendingOwnerId ?? '';
+    setOwnerUserId(nextOwnerId);
+    if (!nextOwnerId) {
+      updateRock(rock.id, {
+        ownerName: teamName,
+        ownerInitials: rockAssigneeInitials(teamName, '').slice(0, 2),
+      });
+    } else {
+      const m = teamMembers.find((x) => (x.user?.id ?? x.userId) === nextOwnerId);
+      const u = m?.user;
+      if (u) {
+        updateRock(rock.id, {
+          ownerName: u.name || u.email || 'User',
+          ownerInitials: rockAssigneeInitials(u.name, u.email).slice(0, 2),
+        });
+      }
+    }
+    setOwnerPickerOpen(false);
+    setOwnerSearch('');
+    setConfirmOwnerChangeOpen(false);
+    setPendingOwnerId(null);
+  };
 
   const loadLinkedItems = useCallback(async () => {
     if (!organizationId || !teamId) {
@@ -1355,21 +1428,129 @@ function RockDetailPanel({
             <ThumbsUp className="w-5 h-5 text-primary shrink-0" />
             <h2 className="text-lg font-semibold text-foreground truncate">Edit Waypoint</h2>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <button type="button" className="p-2 rounded-md hover:bg-muted text-muted-foreground" aria-label="More"><MoreHorizontal className="w-4 h-4" /></button>
-            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">{rock.ownerInitials}</div>
+          <div className="flex items-center gap-1 shrink-0 relative">
+            <button
+              type="button"
+              className="p-2.5 rounded-md hover:bg-muted text-muted-foreground"
+              aria-label="More"
+              onClick={() => setHeaderMenuOpen((v) => !v)}
+            >
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+            {headerMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setHeaderMenuOpen(false)} aria-hidden />
+                <div className="absolute right-20 top-full z-20 py-2 bg-card border border-border rounded-lg shadow-xl min-w-[240px]">
+                  <div className="px-2 py-1">
+                    <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent rounded-md flex items-center gap-3" onClick={() => { onOpenCreate?.('rock', { title: rock.title, description: linkedDescription(rock), linkedEntity: { type: 'rock', id: rock.id, title: rock.title } }); onClose(); }}>
+                      <Mountain className="w-4 h-4 text-muted-foreground shrink-0" /> Create linked Waypoint
+                    </button>
+                    <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent rounded-md flex items-center gap-3" onClick={() => { onOpenCreate?.('todo', { title: `Clearance: ${rock.title}`, description: linkedDescription(rock), linkedEntity: { type: 'rock', id: rock.id, title: rock.title } }); onClose(); }}>
+                      <CheckSquare className="w-4 h-4 text-muted-foreground shrink-0" /> Create linked Clearance
+                    </button>
+                    <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent rounded-md flex items-center gap-3" onClick={() => { onOpenCreate?.('issue', { title: `Turbulence: ${rock.title}`, description: linkedDescription(rock), linkedEntity: { type: 'rock', id: rock.id, title: rock.title } }); onClose(); }}>
+                      <AlertCircle className="w-4 h-4 text-muted-foreground shrink-0" /> Create linked Turbulence
+                    </button>
+                    <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent rounded-md flex items-center gap-3" onClick={() => { onOpenCreate?.('headline', { title: `Announcement: ${rock.title}`, description: linkedDescription(rock), linkedEntity: { type: 'rock', id: rock.id, title: rock.title } }); onClose(); }}>
+                      <Megaphone className="w-4 h-4 text-muted-foreground shrink-0" /> Create linked Announcement
+                    </button>
+                  </div>
+                  <div className="border-t border-border my-1" />
+                  <div className="px-2 py-1">
+                    <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent rounded-md flex items-center gap-3" onClick={() => { archiveRock(rock.id); onClose(); }}>
+                      <Archive className="w-4 h-4 text-muted-foreground shrink-0" /> Archive
+                    </button>
+                    <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent rounded-md flex items-center gap-3" onClick={() => {
+                      const win = typeof window !== 'undefined' ? window.open('', '_blank') : null;
+                      if (win) {
+                        win.document.write(`<!DOCTYPE html><html><head><title>Rock: ${rock.title}</title></head><body style="font-family:system-ui;padding:24px;"><h1>${rock.title}</h1><p><strong>Owner:</strong> ${rock.ownerName}</p><p><strong>Due:</strong> ${rock.dueBy}</p><p><strong>Status:</strong> ${rock.status}</p></body></html>`);
+                        win.document.close();
+                        win.focus();
+                        setTimeout(() => { win.print(); win.close(); }, 250);
+                      }
+                    }}>
+                      <FileDown className="w-4 h-4 text-muted-foreground shrink-0" /> Print to PDF
+                    </button>
+                    <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent rounded-md flex items-center gap-3" onClick={() => {
+                      const url = typeof window !== 'undefined' && meetingId
+                        ? `${window.location.origin}/meeting/${meetingId}#rock-${rock.id}`
+                        : `${window.location?.origin ?? ''}#rock-${rock.id}`;
+                      navigator.clipboard?.writeText(url);
+                    }}>
+                      <Link2 className="w-4 h-4 text-muted-foreground shrink-0" /> Copy Link
+                    </button>
+                  </div>
+                  <div className="border-t border-border my-1" />
+                  <div className="px-2 py-1">
+                    <button type="button" className="w-full text-left px-3 py-2.5 text-sm text-destructive hover:bg-red-50 dark:hover:bg-red-950/30 rounded-md flex items-center gap-3" onClick={() => { deleteRock(rock.id); onClose(); }}>
+                      <Trash2 className="w-4 h-4 shrink-0" /> Delete
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+            <button
+              type="button"
+              className="w-9 h-9 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary"
+              onClick={() => setOwnerPickerOpen((v) => !v)}
+              title="Change owner"
+            >
+              {rock.ownerInitials}
+            </button>
+            {ownerPickerOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setOwnerPickerOpen(false)} aria-hidden />
+                <div className="absolute right-0 top-full mt-2 z-20 w-[280px] bg-card border border-border rounded-lg shadow-xl p-2">
+                  <input
+                    type="text"
+                    value={ownerSearch}
+                    onChange={(e) => setOwnerSearch(e.target.value)}
+                    placeholder="Search crew member..."
+                    className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm mb-2"
+                  />
+                  {ownerCandidates.map((m) => {
+                    const uid = m.user?.id ?? m.userId;
+                    const label = m.user?.name || m.user?.email || uid;
+                    const initials = rockAssigneeInitials(m.user?.name, m.user?.email);
+                    return (
+                      <button
+                        key={uid}
+                        type="button"
+                        onClick={() => requestOwnerChange(uid)}
+                        className="w-full text-left px-2.5 py-2 rounded flex items-center gap-2 text-sm hover:bg-muted text-foreground"
+                      >
+                        <span className="w-6 h-6 rounded-full bg-muted inline-flex items-center justify-center text-xs">{initials}</span>
+                        <span className="truncate">{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
             <button type="button" onClick={onClose} className="p-2 rounded-md hover:bg-muted text-muted-foreground" aria-label="Close"><X className="w-5 h-5" /></button>
           </div>
         </header>
         <div className="flex-1 overflow-y-auto px-5 py-6 space-y-0">
           {/* Rock details block */}
           <section className="pb-10 border-b border-border">
-            {rock.isCompanyRock && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-amber-500/50 bg-amber-500/5 mb-5">
-                <Check className="w-4 h-4 text-amber-600" />
-                <span className="text-sm font-medium text-foreground">Company Rock</span>
-              </div>
-            )}
+            <label className="w-full flex items-center justify-between gap-3 rounded-lg border border-border border-t-2 border-t-primary bg-white px-3 py-3.5 mb-5">
+              <span className="text-sm font-medium text-foreground">Company Waypoint</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={Boolean(rock.isCompanyRock)}
+                onClick={() => updateRock(rock.id, { isCompanyRock: !rock.isCompanyRock })}
+                className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 transition-colors ${
+                  rock.isCompanyRock ? 'bg-primary border-primary' : 'bg-white border-border'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-4 w-4 rounded-full shadow transition-transform ${
+                    rock.isCompanyRock ? 'left-5 bg-white border border-white' : 'left-0.5 bg-muted-foreground/30 border border-border'
+                  }`}
+                />
+              </button>
+            </label>
             <div className="space-y-5">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">Title</label>
@@ -1428,37 +1609,11 @@ function RockDetailPanel({
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1">Owner (optional)</label>
-                  <Select
-                    value={ownerUserId || undefined}
-                    allowClear
-                    placeholder="Assign from crew"
-                    disabled={!organizationId || !teamId}
-                    onChange={(v) => {
-                      setOwnerUserId(v ?? '');
-                      if (!v) {
-                        updateRock(rock.id, {
-                          ownerName: teamName,
-                          ownerInitials: rockAssigneeInitials(teamName, '').slice(0, 2),
-                        });
-                        return;
-                      }
-                      const m = teamMembers.find((x) => (x.user?.id ?? x.userId) === v);
-                      const u = m?.user;
-                      if (u) {
-                        updateRock(rock.id, {
-                          ownerName: u.name || u.email || 'User',
-                          ownerInitials: rockAssigneeInitials(u.name, u.email).slice(0, 2),
-                        });
-                      }
-                    }}
-                    options={teamMembers.map((m) => ({
-                      label: m.user?.name || m.user?.email || m.userId,
-                      value: m.user?.id ?? m.userId,
-                    }))}
-                    className="w-full"
-                  />
+                  <div className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm">
+                    {rock.ownerName || 'No owner'}
+                  </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Assign to a member of this flight crew (optional).
+                    Click the owner avatar in the header to change owner.
                   </p>
                 </div>
               </div>
@@ -1636,6 +1791,23 @@ function RockDetailPanel({
             loadLinkedItems();
           }}
         />
+      )}
+      {confirmOwnerChangeOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/20 z-[80]" onClick={() => { setConfirmOwnerChangeOpen(false); setPendingOwnerId(null); }} aria-hidden />
+          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[81] w-full max-w-sm bg-card border border-border rounded-lg shadow-xl p-5">
+            <h3 className="text-base font-semibold text-foreground mb-2">Change owner?</h3>
+            <p className="text-sm text-muted-foreground mb-4">Only admins can change owner. Confirm this owner update.</p>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="px-3 py-2 border border-border rounded-md text-sm hover:bg-muted" onClick={() => { setConfirmOwnerChangeOpen(false); setPendingOwnerId(null); }}>
+                No
+              </button>
+              <button type="button" className="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90" onClick={confirmOwnerChange}>
+                Yes
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </>
   );
@@ -2335,10 +2507,10 @@ function RockRow({
             </button>
           </td>
         )}
-        <td className="px-4 py-3 align-middle" onClick={(e) => e.stopPropagation()}>
+        <td className="px-4 py-3 align-middle">
           <RockStatusDropdown rock={rock} onStatusChange={(status) => updateRock(rock.id, { status })} />
         </td>
-        <td className="px-4 py-3 font-medium text-foreground align-middle" onClick={(e) => e.stopPropagation()}>
+        <td className="px-4 py-3 font-medium text-foreground align-middle">
           {editingTitle ? (
             <div className="flex items-center gap-1">
               <input
@@ -2386,12 +2558,15 @@ function RockRow({
         </td>
         {showOwnerColumn && (
           <td className="px-4 py-3 align-middle">
-            <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
-              {rock.ownerInitials}
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
+                {rock.ownerInitials}
+              </div>
+              <span className="text-sm text-foreground truncate">{rock.ownerName}</span>
             </div>
           </td>
         )}
-        <td className="px-4 py-3 text-muted-foreground align-middle" onClick={(e) => e.stopPropagation()}>
+        <td className="px-4 py-3 text-muted-foreground align-middle">
           <span className="inline-flex items-center gap-1">
             {rock.dueBy}
             {onOpenDatePicker && (
@@ -2406,7 +2581,7 @@ function RockRow({
             )}
           </span>
         </td>
-        <td className="px-4 py-3 w-12 align-middle text-right" onClick={(e) => e.stopPropagation()}>
+        <td className="px-4 py-3 w-12 align-middle text-right">
           <button
             ref={menuButtonRef}
             type="button"

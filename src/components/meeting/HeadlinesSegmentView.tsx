@@ -130,7 +130,7 @@ export function HeadlinesSegmentView({
   }, [activeCascading, searchQuery]);
 
   const handleSaveNewHeadline = () => {
-    const title = newHeadlineTitle.trim() || 'New headline';
+    const title = newHeadlineTitle.trim() || 'New announcement';
     setIsSavingHeadline(true);
     addHeadline({
       title,
@@ -231,7 +231,7 @@ export function HeadlinesSegmentView({
 
       {/* Content: padding after filter bar — or full-area loader when fetching */}
       {isLoading ? (
-        <ContentAreaLoader label="Loading headlines…" />
+        <ContentAreaLoader label="Loading announcements…" />
       ) : (
       <div className={`flex-1 overflow-auto min-h-0 mt-6 ${contentPad}`}>
         {archiveOn ? (
@@ -239,17 +239,17 @@ export function HeadlinesSegmentView({
             <ArchivedSection
               title="Archived Flight Announcements"
               count={archivedHeadlines.length}
-              subtitle="Customer/Employee Headlines"
+              subtitle="Flight Announcements"
               emptyMessage="Your crew doesn't have any archived flight announcements."
               hint="Flight announcements are a great way to share updates across flight crews."
               learnLink="Learn more about Flight Announcements."
             />
             <ArchivedSection
-              title="Archived Cascading Messages"
+              title="Archived Flight Directives"
               count={archivedCascading.length}
-              emptyMessage="Your crew doesn't have any archived cascading messages."
-              hint="Cascading messages help communicate across the organization."
-              learnLink="Learn more about Cascading Messages."
+              emptyMessage="Your crew doesn't have any archived flight directives."
+              hint="Flight directives help communicate across the organization."
+              learnLink="Learn more about Flight Directives."
               className="mt-6"
             />
           </>
@@ -267,8 +267,8 @@ export function HeadlinesSegmentView({
                     : () => setIsAddingHeadline(true)
                 }
                 sectionTitle="Flight Announcements"
-                sectionSubtitle="Customer/Employee Headlines"
-                createLabel="Create Headline"
+                sectionSubtitle="Flight Announcements"
+                createLabel="Create Announcement"
                 isAdding={isAddingHeadline}
                 newTitle={newHeadlineTitle}
                 onNewTitleChange={setNewHeadlineTitle}
@@ -287,7 +287,7 @@ export function HeadlinesSegmentView({
                     ? () => onOpenCreate('cascading_message')
                     : () =>
                         addCascadingMessage({
-                          title: 'New cascading message',
+                          title: 'New flight directive',
                           from: teamFilter,
                           createdAt: new Date().toLocaleDateString('en-US', {
                             month: 'short',
@@ -413,7 +413,7 @@ function HeadlinesList({
                 <td className="px-4 py-2" colSpan={2}>
                   <input
                     type="text"
-                    placeholder="Type headline title..."
+                    placeholder="Type announcement title..."
                     value={newTitle ?? ''}
                     onChange={(e) => onNewTitleChange?.(e.target.value)}
                     onKeyDown={(e) => {
@@ -583,7 +583,7 @@ function CascadingList({
     <div className="bg-card border border-border rounded-lg overflow-hidden">
       <div className="p-4 border-b border-border">
         <h3 className="font-semibold text-foreground">
-          Cascading Messages {items.length}
+          Flight Directives {items.length}
         </h3>
       </div>
       <div className="overflow-x-auto">
@@ -627,7 +627,7 @@ function CascadingList({
           onClick={onCreateClick}
           className="text-primary hover:underline text-sm font-medium"
         >
-          + Create Cascading Message
+          + Create Flight Directive
         </button>
       </div>
     </div>
@@ -791,7 +791,7 @@ function HeadlineRowMenu({
           </button>
           <button type="button" className={btn} onClick={onClose} role="menuitem">
             <Megaphone className={icon} />
-            Create linked Headline
+            Create linked Announcement
           </button>
         </div>
         <div className="border-t border-border my-1" />

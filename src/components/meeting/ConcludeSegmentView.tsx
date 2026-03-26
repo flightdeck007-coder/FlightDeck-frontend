@@ -759,7 +759,7 @@ function RecapTodoRowMenu({
             <AlertCircle className={icon} /> Create linked Turbulence
           </button>
           <button type="button" className={btn} onClick={onClose} role="menuitem">
-            <Megaphone className={icon} /> Create linked Headline
+            <Megaphone className={icon} /> Create linked Announcement
           </button>
         </div>
         <div className="border-t border-border my-1" />

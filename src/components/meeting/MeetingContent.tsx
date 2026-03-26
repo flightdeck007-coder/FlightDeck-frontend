@@ -152,7 +152,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
           </>
         )}
         {sectionId === 'scorecard' && (
-          <InstrumentsSegmentView embedded teamName={meetingTeamName ?? 'No team found'} meetingId={meetingId} organizationId={organizationId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} isMeetingInFuture={isMeetingInFuture} onOpenCreate={onOpenCreate} onOpenCreateIssue={onOpenCreateIssue} meetingAttendances={meetingAttendances} />
+          <InstrumentsSegmentView embedded teamName={meetingTeamName ?? 'No team found'} teamId={meetingTeamId} meetingId={meetingId} organizationId={organizationId} currentUserId={currentUserId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} isMeetingInFuture={isMeetingInFuture} onOpenCreate={onOpenCreate} onOpenCreateIssue={onOpenCreateIssue} meetingAttendances={meetingAttendances} />
         )}
         {sectionId === 'rocks' && (
           <RocksSegmentView

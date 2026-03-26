@@ -42,6 +42,7 @@ import {
   Check,
 } from 'lucide-react';
 import dayjs, { type Dayjs } from 'dayjs';
+import { toast } from 'sonner';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { MobileDatePicker } from '@mui/x-date-pickers/MobileDatePicker';
@@ -100,8 +101,8 @@ function linkedEntityTypeLabel(type: string | null | undefined): string {
     issue: 'Turbulence',
     rock: 'Waypoint',
     todo: 'Clearance',
-    headline: 'Headline',
-    cascading_message: 'Cascading message',
+    headline: 'Announcement',
+    cascading_message: 'Flight Directive',
   };
   return map[type] ?? type;
 }
@@ -118,7 +119,7 @@ function getLinkedCreateOptions(item: TodoItem, target: CreatePopupType) {
   if (target === 'rock') return { title: `Waypoint: ${item.title}`, description, linkedEntity };
   if (target === 'todo') return { title: `Clearance: ${item.title}`, description, linkedEntity };
   if (target === 'issue') return { title: `Turbulence: ${item.title}`, description, linkedEntity };
-  if (target === 'headline') return { title: `Headline: ${item.title}`, description, linkedEntity };
+  if (target === 'headline') return { title: `Announcement: ${item.title}`, description, linkedEntity };
   return { title: item.title, description, linkedEntity };
 }
 
@@ -395,10 +396,14 @@ export function TodosSegmentView({
             className={`relative w-11 h-6 rounded-full transition-colors border-2 flex items-center ${!canUseFilters ? 'cursor-not-allowed' : ''} ${
               archiveOn
                 ? 'bg-primary border-primary justify-end'
-                : 'bg-muted border-border justify-start hover:bg-muted/80'
+                : 'bg-white border-border justify-start hover:bg-accent'
             }`}
           >
-            <span className="w-4 h-4 rounded-full bg-white shadow border border-border shrink-0 m-0.5" />
+            <span
+              className={`w-4 h-4 rounded-full shadow border shrink-0 m-0.5 ${
+                archiveOn ? 'bg-white border-white' : 'bg-muted-foreground/30 border-border'
+              }`}
+            />
           </button>
         </label>
         <span className="flex-1" />
@@ -810,7 +815,7 @@ function TodoRow({
         </td>
         <td className="px-4 py-2 align-middle">
           {item.assigneeId ? (
-            <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground" title="Owner">
+            <div className="w-7 h-7 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary" title="Owner">
               {item.ownerInitials}
             </div>
           ) : (
@@ -939,7 +944,7 @@ function TodoRowMenu({
           </button>
           <button type="button" className={btn} onClick={() => { onOpenCreate?.('headline', getLinkedCreateOptions(item, 'headline')); onClose(); }} role="menuitem">
             <Megaphone className={icon} />
-            Link Headline
+            Link Announcement
           </button>
         </div>
         <div className="border-t border-border my-1" />
@@ -1021,6 +1026,9 @@ export function EditTodoPanel({
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [ownerPickerOpen, setOwnerPickerOpen] = useState(false);
   const [ownerSearch, setOwnerSearch] = useState('');
+  const [organizationRole, setOrganizationRole] = useState<string | null>(null);
+  const [confirmOwnerChangeOpen, setConfirmOwnerChangeOpen] = useState(false);
+  const [pendingOwnerId, setPendingOwnerId] = useState<string | null>(null);
 
   useEffect(() => {
     setTeamId(todo.teamId ?? currentTeamId ?? teams[0]?.id ?? '');
@@ -1028,11 +1036,25 @@ export function EditTodoPanel({
   }, [todo.id, todo.teamId, todo.assigneeId, currentTeamId, teams]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncRole = () => setOrganizationRole(localStorage.getItem('organizationRole'));
+    syncRole();
+    const onRoleChange = (e: Event) => {
+      const evt = e as CustomEvent<{ role?: string }>;
+      if (evt.detail?.role) setOrganizationRole(evt.detail.role);
+      else syncRole();
+    };
+    window.addEventListener('organizationRoleChanged', onRoleChange as EventListener);
+    return () => window.removeEventListener('organizationRoleChanged', onRoleChange as EventListener);
+  }, []);
+  const isAdmin = organizationRole === 'ADMIN';
+
+  const fetchTeamMembers = useCallback(() => {
     if (!organizationId || !teamId) {
       setTeamMembers([]);
-      return;
+      return Promise.resolve();
     }
-    Promise.allSettled([
+    return Promise.allSettled([
       teamsService.getOne(organizationId, teamId),
       teamsService.list(organizationId),
     ])
@@ -1043,17 +1065,23 @@ export function EditTodoPanel({
           listRes.status === 'fulfilled'
             ? (listRes.value.find((t) => t.id === teamId)?.members ?? [])
             : [];
-
         const mergedByUserId = new Map<string, TeamMember>();
         [...fromSingle, ...fromListTeam].forEach((m) => {
           const key = m.user?.id ?? m.userId;
           if (!mergedByUserId.has(key)) mergedByUserId.set(key, m);
         });
-
         setTeamMembers(Array.from(mergedByUserId.values()));
       })
       .catch(() => setTeamMembers([]));
   }, [organizationId, teamId]);
+
+  useEffect(() => {
+    fetchTeamMembers();
+  }, [fetchTeamMembers]);
+
+  useEffect(() => {
+    if (ownerPickerOpen) fetchTeamMembers();
+  }, [ownerPickerOpen, fetchTeamMembers]);
 
   const selectedOwner = teamMembers.find((m) => (m.user?.id ?? m.userId) === assigneeId);
   const ownerInitials = selectedOwner
@@ -1068,6 +1096,16 @@ export function EditTodoPanel({
   });
 
   const handleOwnerSelect = (nextAssigneeId: string) => {
+    if (!isAdmin) {
+      toast.error("You're not admin");
+      return;
+    }
+    setPendingOwnerId(nextAssigneeId);
+    setConfirmOwnerChangeOpen(true);
+  };
+
+  const confirmOwnerChange = () => {
+    const nextAssigneeId = pendingOwnerId ?? '';
     setAssigneeId(nextAssigneeId);
     const selected = teamMembers.find((m) => (m.user?.id ?? m.userId) === nextAssigneeId);
     onUpdate({
@@ -1076,6 +1114,8 @@ export function EditTodoPanel({
     });
     setOwnerPickerOpen(false);
     setOwnerSearch('');
+    setConfirmOwnerChangeOpen(false);
+    setPendingOwnerId(null);
   };
 
   const handleSave = (andClose = false) => {
@@ -1147,7 +1187,7 @@ export function EditTodoPanel({
                         <AlertCircle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Turbulence
                       </button>
                       <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onClose(); onOpenCreate('headline', getLinkedCreateOptions(todo, 'headline')); }}>
-                        <Megaphone className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Headline
+                        <Megaphone className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Announcement
                       </button>
                     </div>
                     <div className="border-t border-border my-2" />
@@ -1284,29 +1324,31 @@ export function EditTodoPanel({
             className="w-full"
           />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
-            Private Clearance:
-          </label>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={privateTodo}
-              onClick={() => setPrivateTodo((p) => !p)}
-              className={`relative w-10 h-5 rounded-full transition-colors ${
-                privateTodo ? 'bg-primary' : 'bg-muted'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                  privateTodo ? 'left-5' : 'left-0.5'
+        <div className="py-2">
+          <div className="rounded-lg border border-border border-t-2 border-t-primary bg-white px-4 py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-foreground">Private Clearance</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  This clearance is visible to the entire crew.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={privateTodo}
+                onClick={() => setPrivateTodo((p) => !p)}
+                className={`relative w-11 h-6 rounded-full border-2 transition-colors ${
+                  privateTodo ? 'bg-primary border-primary' : 'bg-zinc-500 border-zinc-500'
                 }`}
-              />
-            </button>
-            <span className="text-sm text-muted-foreground">
-              This clearance is visible to the entire crew.
-            </span>
+              >
+                <span
+                  className={`absolute top-0.5 w-4 h-4 rounded-full shadow transition-transform ${
+                    privateTodo ? 'left-5 bg-white border border-white' : 'left-0.5 bg-muted-foreground/30 border border-border'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1439,6 +1481,23 @@ export function EditTodoPanel({
         </p>
       </footer>
     </div>
+      {confirmOwnerChangeOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/20 z-[60]" onClick={() => { setConfirmOwnerChangeOpen(false); setPendingOwnerId(null); }} aria-hidden />
+          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[61] w-full max-w-sm bg-card border border-border rounded-lg shadow-xl p-5">
+            <h3 className="text-base font-semibold text-foreground mb-2">Change owner?</h3>
+            <p className="text-sm text-muted-foreground mb-4">Only admins can change owner. Confirm this owner update.</p>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="px-3 py-2 border border-border rounded-md text-sm hover:bg-muted" onClick={() => { setConfirmOwnerChangeOpen(false); setPendingOwnerId(null); }}>
+                No
+              </button>
+              <button type="button" className="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90" onClick={confirmOwnerChange}>
+                Yes
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

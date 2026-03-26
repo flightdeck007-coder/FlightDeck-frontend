@@ -40,8 +40,8 @@ const CREATE_TYPE_OPTIONS: { value: CreateType; label: string }[] = [
   { value: "issue", label: "Turbulence" },
   { value: "rock", label: "Waypoint" },
   { value: "todo", label: "Clearance" },
-  { value: "headline", label: "Headline" },
-  { value: "cascading_message", label: "Cascading message" },
+  { value: "headline", label: "Announcement" },
+  { value: "cascading_message", label: "Flight Directive" },
 ];
 
 /** Linked entity type for display (measurable = scorecard; rock_milestone = waypoint milestone). */
@@ -58,8 +58,8 @@ function linkedEntityTypeLabel(type: LinkedEntityType): string {
     issue: "Turbulence",
     rock: "Waypoint",
     todo: "Clearance",
-    headline: "Headline",
-    cascading_message: "Cascading message",
+    headline: "Announcement",
+    cascading_message: "Flight Directive",
     measurable: "Flight Metric",
     rock_milestone: "Milestone",
   };
@@ -235,6 +235,8 @@ interface CreatePopupProps {
   initialTitle?: string;
   /** Pre-fill description when opening Create Clearance or Create Turbulence (e.g. "Measurables:\n• Item 1") */
   initialDescription?: string;
+  /** Initial interval for Turbulence create form */
+  initialIssueInterval?: 'short' | 'long';
   /** When creating from a row (e.g. "Link issue" from rock, or create from measurable): pre-set link so the new issue/todo shows "Linking to" (measurable is display-only; backend also supports rock_milestone) */
   initialLinkedEntity?: CreatePopupLinkedEntity;
   /** Meeting attendees for rock owner dropdown (and issue/todo assignees if needed) */
@@ -252,12 +254,14 @@ export function CreatePopup({
   initialType,
   initialTitle,
   initialDescription,
+  initialIssueInterval,
   initialLinkedEntity,
   meetingAttendances = [],
   currentUserId,
 }: CreatePopupProps) {
   const teamsList = Array.isArray(teams) ? teams : [];
   const teamsForSelect = teamsList.length > 0 ? teamsList.map((t) => ({ id: t.id, name: t.name })) : [];
+  const resolvedDefaultTeamId = defaultTeamId || (teamsForSelect[0]?.id ?? "");
   const [createType, setCreateType] = useState<CreateType>("issue");
   const [minimized, setMinimized] = useState(false);
   const [isModal, setIsModal] = useState(false);
@@ -415,6 +419,7 @@ export function CreatePopup({
     control,
     formState: { errors, isSubmitting },
     reset,
+    getValues,
   } = useForm<IssueFormData>({
     resolver: zodResolver(issueSchema),
     defaultValues: {
@@ -542,16 +547,23 @@ export function CreatePopup({
     });
   };
 
+  const wasOpenRef = useRef(open);
   useEffect(() => {
-    if (!open) {
+    if (wasOpenRef.current && !open) {
       resetPopupState();
+      setLinkedEntity(undefined);
     }
-    if (open && initialType) setCreateType(initialType === 'measurable' ? 'todo' : initialType);
-    if (open && (initialTitle != null || initialDescription != null) && initialType) {
+    wasOpenRef.current = open;
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (initialType) setCreateType(initialType === 'measurable' ? 'todo' : initialType);
+    if ((initialTitle != null || initialDescription != null) && initialType) {
       const title = initialTitle ?? "";
       const desc = initialDescription ?? "";
-      if (initialType === "todo") todoForm.reset({ title, description: desc, dueDate: "", repeat: "Don't repeat", teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""), assigneeId: "", private: false });
-      if (initialType === "issue") reset({ title, description: desc, priority: "", who: "", teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""), interval: "short" });
+      if (initialType === "todo") todoForm.reset({ title, description: desc, dueDate: "", repeat: "Don't repeat", teamId: resolvedDefaultTeamId, assigneeId: "", private: false });
+      if (initialType === "issue") reset({ title, description: desc, priority: "", who: "", teamId: resolvedDefaultTeamId, interval: "short" });
       if (initialType === "rock") {
         rockForm.reset({
           title,
@@ -561,7 +573,7 @@ export function CreatePopup({
           status: "on_track",
           isCompanyRock: false,
           ownerId: currentUserId ?? "",
-          teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""),
+          teamId: resolvedDefaultTeamId,
           quarter: "",
           otherTeamId: "",
         });
@@ -570,26 +582,34 @@ export function CreatePopup({
         headlineForm.reset({
           title,
           description: desc,
-          teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""),
+          teamId: resolvedDefaultTeamId,
         });
       }
       if (initialType === "cascading_message") {
         cascadingForm.reset({
           title,
           description: desc,
-          teamId: defaultTeamId || (teamsForSelect[0]?.id ?? ""),
+          teamId: resolvedDefaultTeamId,
         });
       }
     }
-    if (open && initialLinkedEntity) {
+    if (initialLinkedEntity) {
       setLinkedEntity(initialLinkedEntity);
-    } else if (!open) {
-      setLinkedEntity(undefined);
     }
-    if (open && initialType === "rock" && currentUserId) {
+    if (initialType === "rock" && currentUserId) {
       rockForm.setValue("ownerId", currentUserId);
     }
-  }, [open, reset, initialType, initialTitle, initialDescription, initialLinkedEntity, currentUserId]);
+  }, [open, reset, initialType, initialTitle, initialDescription, initialLinkedEntity, currentUserId, resolvedDefaultTeamId, rockForm, todoForm, headlineForm, cascadingForm]);
+
+  useEffect(() => {
+    if (!open || createType !== 'issue') return;
+    if (!initialIssueInterval) return;
+    const current = getValues();
+    reset({
+      ...current,
+      interval: initialIssueInterval,
+    });
+  }, [open, createType, initialIssueInterval, getValues, reset]);
 
   const onIssueSubmit = async (data: IssueFormData) => {
     if (issuesApi) {
@@ -614,18 +634,19 @@ export function CreatePopup({
     const dueBy = data.dueBy?.trim() || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
     const isCompany = Boolean(data.isCompanyRock);
     const selected = rockOwnerOptions.find((o) => o.value === data.ownerId);
-    const ownerName = selected?.name || selected?.label || "User";
-    const ownerInitials = selected ? getInitials(selected.name, selected.email) : "U";
-    rocksApi?.addRock({
+    const ownerName = selected?.name || selected?.label;
+    const ownerInitials = selected ? getInitials(selected.name, selected.email) : undefined;
+    const rockPayload = {
       title: data.title,
-      ownerName: String(ownerName),
-      ownerInitials: ownerInitials.slice(0, 2),
       dueBy,
       status: (data.status as "on_track" | "off_track" | "at_risk" | "done" | "other") || "on_track",
-      column: "current",
+      column: "current" as const,
       achieved: false,
       isCompanyRock: isCompany,
-    });
+      ...(ownerName ? { ownerName: String(ownerName) } : {}),
+      ...(ownerInitials ? { ownerInitials: ownerInitials.slice(0, 2) } : {}),
+    };
+    rocksApi?.addRock(rockPayload);
     resetPopupState();
     onClose();
   };
@@ -1329,14 +1350,14 @@ export function CreatePopup({
             )}
             {createType === "headline" && (
               <form id="create-headline-form" onSubmit={headlineForm.handleSubmit(onHeadlineSubmit)} className="space-y-4">
-                <div className="mt-5 pt-5 border-t border-border">
+                <div>
                   <label className="block text-sm font-medium text-foreground mb-1">Title <span className="text-red-500">*</span></label>
                   <input
                     {...headlineForm.register("title")}
                     className={`w-full px-3 py-2 border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary ${
                       headlineForm.formState.errors.title ? "border-red-500" : "border-border"
                     }`}
-                    placeholder="Add a title for the Headline..."
+                    placeholder="Add a title for the Announcement..."
                   />
                   {headlineForm.formState.errors.title && (
                     <p className="text-sm text-red-600 mt-1">{headlineForm.formState.errors.title.message}</p>
@@ -1370,7 +1391,7 @@ export function CreatePopup({
                       />
                     )}
                   />
-                  <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Changing the team will affect which users the Headline can be owned by.</p>
+                  <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Changing the team will affect which users the Announcement can be owned by.</p>
                 </div>
                 {linkedEntity && <LinkingToSection linkedEntity={linkedEntity} />}
                 <div>
@@ -1417,7 +1438,7 @@ export function CreatePopup({
                     className={`w-full px-3 py-2 border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary ${
                       cascadingForm.formState.errors.title ? "border-red-500" : "border-border"
                     }`}
-                    placeholder="Add a title for the Cascading Message..."
+                    placeholder="Add a title for the Flight Directive..."
                   />
                   {cascadingForm.formState.errors.title && (
                     <p className="text-sm text-red-600 mt-1">{cascadingForm.formState.errors.title.message}</p>
@@ -1451,7 +1472,7 @@ export function CreatePopup({
                       />
                     )}
                   />
-                  <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Changing the team will affect which users can own the Cascading Message.</p>
+                  <p className="mt-1.5 ml-1 text-[12px] font-medium text-foreground/65">Changing the team will affect which users can own the Flight Directive.</p>
                 </div>
                 {linkedEntity && <LinkingToSection linkedEntity={linkedEntity} />}
                 <div>
@@ -1549,7 +1570,7 @@ export function CreatePopup({
                 disabled={headlineForm.formState.isSubmitting}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 text-sm font-medium"
               >
-                Create Headline
+                Create Announcement
               </button>
               <button type="button" onClick={onClose} className="px-4 py-2 border border-border rounded-md hover:bg-accent text-foreground text-sm font-medium">
                 Cancel
@@ -1564,7 +1585,7 @@ export function CreatePopup({
                 disabled={cascadingForm.formState.isSubmitting}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 text-sm font-medium"
               >
-                Create Cascading Message
+                Create Flight Directive
               </button>
               <button type="button" onClick={onClose} className="px-4 py-2 border border-border rounded-md hover:bg-accent text-foreground text-sm font-medium">
                 Cancel

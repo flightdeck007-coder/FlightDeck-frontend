@@ -22,6 +22,7 @@ export type RockColumnId =
 
 export interface Rock {
   id: string;
+  meetingId?: string;
   title: string;
   ownerName: string;
   ownerInitials: string;
@@ -44,6 +45,7 @@ const COLUMN_ORDER: RockColumnId[] = [
 
 function apiToRock(r: {
   id: string;
+  meetingId?: string;
   title: string;
   ownerName: string;
   ownerInitials: string;
@@ -57,6 +59,7 @@ function apiToRock(r: {
 }): Rock {
   return {
     id: r.id,
+    meetingId: r.meetingId,
     title: r.title,
     ownerName: r.ownerName,
     ownerInitials: r.ownerInitials,
@@ -72,7 +75,7 @@ function apiToRock(r: {
 
 interface RocksContextValue {
   rocks: Rock[];
-  addRock: (rock: Omit<Rock, 'id'> & { id?: string }) => void;
+  addRock: (rock: Omit<Rock, 'id' | 'ownerName' | 'ownerInitials'> & { id?: string; ownerName?: string; ownerInitials?: string }) => void;
   updateRock: (id: string, updates: Partial<Rock>) => void;
   moveRockToColumn: (rockId: string, column: RockColumnId) => void;
   archiveRock: (id: string) => void;
@@ -91,53 +94,56 @@ export function RocksProvider({
   children,
   meetingId,
   organizationId,
-}: { children: ReactNode; meetingId?: string; organizationId?: string }) {
+  teamId,
+  fallbackMeetingId,
+}: { children: ReactNode; meetingId?: string; organizationId?: string; teamId?: string; fallbackMeetingId?: string }) {
   const { socket } = useMeetingSocket();
   const [rocks, setRocks] = useState<Rock[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchRocks = useCallback(async () => {
-    if (!organizationId || !meetingId || typeof window === 'undefined') {
+    if (!organizationId || typeof window === 'undefined') {
       setRocks([]);
       return;
     }
     setIsLoading(true);
     try {
-      const list = await meetingsService.getRocks(organizationId, meetingId);
+      const list = meetingId
+        ? await meetingsService.getRocks(organizationId, meetingId)
+        : await meetingsService.getRocksAll(organizationId, teamId);
       setRocks(list.map(apiToRock));
     } catch {
       setRocks([]);
     } finally {
       setIsLoading(false);
     }
-  }, [organizationId, meetingId]);
+  }, [organizationId, meetingId, teamId]);
 
   useEffect(() => {
     fetchRocks();
   }, [fetchRocks]);
 
   useEffect(() => {
-    if (!meetingId) setRocks([]);
-  }, [meetingId]);
-
-  useEffect(() => {
     if (!socket || !meetingId) return;
     const onRockCreated = (payload: { meetingId: string; rock: Rock }) => {
-      if (payload.meetingId !== meetingId || !payload.rock?.id) return;
+      if (!payload.rock?.id) return;
+      if (meetingId && payload.meetingId !== meetingId) return;
       const rock = apiToRock(payload.rock as Parameters<typeof apiToRock>[0]);
       setRocks((prev) =>
         prev.some((r) => r.id === rock.id) ? prev : [...prev, rock]
       );
     };
     const onRockUpdated = (payload: { meetingId: string; rock: Rock }) => {
-      if (payload.meetingId !== meetingId || !payload.rock?.id) return;
+      if (!payload.rock?.id) return;
+      if (meetingId && payload.meetingId !== meetingId) return;
       const rock = apiToRock(payload.rock as Parameters<typeof apiToRock>[0]);
       setRocks((prev) =>
         prev.map((r) => (r.id === rock.id ? rock : r))
       );
     };
     const onRockDeleted = (payload: { meetingId: string; rockId: string }) => {
-      if (payload.meetingId !== meetingId || !payload.rockId) return;
+      if (!payload.rockId) return;
+      if (meetingId && payload.meetingId !== meetingId) return;
       setRocks((prev) => prev.filter((r) => r.id !== payload.rockId));
     };
     socket.on('rock_created', onRockCreated);
@@ -151,13 +157,14 @@ export function RocksProvider({
   }, [socket, meetingId]);
 
   const addRock = useCallback(
-    async (rock: Omit<Rock, 'id'> & { id?: string }) => {
-      if (!organizationId || !meetingId) return;
+    async (rock: Omit<Rock, 'id' | 'ownerName' | 'ownerInitials'> & { id?: string; ownerName?: string; ownerInitials?: string }) => {
+      const targetMeetingId = meetingId ?? fallbackMeetingId;
+      if (!organizationId || !targetMeetingId) return;
       try {
-        const created = await meetingsService.createRock(organizationId, meetingId, {
+        const created = await meetingsService.createRock(organizationId, targetMeetingId, {
           title: rock.title,
-          ownerName: rock.ownerName,
-          ownerInitials: rock.ownerInitials,
+          ...(rock.ownerName ? { ownerName: rock.ownerName } : {}),
+          ...(rock.ownerInitials ? { ownerInitials: rock.ownerInitials } : {}),
           dueBy: rock.dueBy,
           status: rock.status,
           column: rock.column,
@@ -174,22 +181,24 @@ export function RocksProvider({
         // keep UI unchanged on error
       }
     },
-    [organizationId, meetingId]
+    [organizationId, meetingId, fallbackMeetingId]
   );
 
   const updateRock = useCallback(
     async (id: string, updates: Partial<Rock>) => {
-      if (!organizationId || !meetingId) return;
+      if (!organizationId) return;
+      const targetMeetingId = meetingId ?? rocks.find((r) => r.id === id)?.meetingId;
+      if (!targetMeetingId) return;
       setRocks((prev) =>
         prev.map((r) => (r.id === id ? { ...r, ...updates } : r))
       );
       try {
-        await meetingsService.updateRock(organizationId, meetingId, id, updates);
+        await meetingsService.updateRock(organizationId, targetMeetingId, id, updates);
       } catch {
         fetchRocks();
       }
     },
-    [organizationId, meetingId, fetchRocks]
+    [organizationId, meetingId, rocks, fetchRocks]
   );
 
   const moveRockToColumn = useCallback(
@@ -215,15 +224,17 @@ export function RocksProvider({
 
   const deleteRock = useCallback(
     async (id: string) => {
-      if (!organizationId || !meetingId) return;
+      if (!organizationId) return;
+      const targetMeetingId = meetingId ?? rocks.find((r) => r.id === id)?.meetingId;
+      if (!targetMeetingId) return;
       setRocks((prev) => prev.filter((r) => r.id !== id));
       try {
-        await meetingsService.deleteRock(organizationId, meetingId, id);
+        await meetingsService.deleteRock(organizationId, targetMeetingId, id);
       } catch {
         fetchRocks();
       }
     },
-    [organizationId, meetingId, fetchRocks]
+    [organizationId, meetingId, rocks, fetchRocks]
   );
 
   const getRocksByColumn = useCallback(
