@@ -415,7 +415,7 @@ function ScorecardTableCard({
                         )}
                       </div>
                       <div className="border-t border-border my-2" role="separator" />
-                      {/* Create Clearance / Create Turbulence (with linking to metric) */}
+                      {/* Create Clearance / Create Turbulence (prefills link to flight metric) */}
                       <div className="px-2 py-1 space-y-0.5">
                         {onCreateTodo && selectedMeasurables.length > 0 && (
                           <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 cursor-pointer rounded-md" onClick={() => { setSelectActionOpen(false); onCreateTodo(selectedMeasurables); setSelectedIds(new Set()); }}>
@@ -1289,7 +1289,7 @@ export function InstrumentsSegmentView({
       n === 1 && first
         ? `Clearance: ${first.title}`
         : `Clearance: ${n} Flight Metric${n === 1 ? '' : 's'}`;
-    const description = 'Flight Metrics:\n' + measurables.map((m) => '• ' + m.title).join('\n');
+    const description = 'Flight metrics:\n' + measurables.map((m) => '• ' + m.title).join('\n');
     onOpenCreate?.('todo', { title, description, linkedEntity: first ? { type: 'measurable', id: first.id, title: first.title } : undefined });
   }, [onOpenCreate]);
   const handleCreateIssueFromMeasurable = useCallback((measurables: MeasurableRow[]) => {
@@ -1299,7 +1299,7 @@ export function InstrumentsSegmentView({
       n === 1 && first
         ? `Turbulence: ${first.title}`
         : `Turbulence: ${n} Flight Metric${n === 1 ? '' : 's'}`;
-    const description = 'Flight Metrics:\n' + measurables.map((m) => '• ' + m.title).join('\n');
+    const description = 'Flight metrics:\n' + measurables.map((m) => '• ' + m.title).join('\n');
     onOpenCreate?.('issue', { title, description, linkedEntity: first ? { type: 'measurable', id: first.id, title: first.title } : undefined });
   }, [onOpenCreate]);
   const handleMoveToGroup = useCallback(
@@ -1859,12 +1859,12 @@ export function InstrumentsSegmentView({
                             setMeasurableMenuOpen(false);
                             onOpenCreate('todo', {
                               title: `Clearance: ${editingMeasurable.title}`,
-                              description: `Linked metric: ${editingMeasurable.title}`,
+                              description: `Flight metric: ${editingMeasurable.title}`,
                               linkedEntity: { type: 'measurable', id: editingMeasurable.id, title: editingMeasurable.title },
                             });
                           }}
                         >
-                          <CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create To-Do
+                          <CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Clearance
                         </button>
                         <button
                           type="button"
@@ -1876,12 +1876,12 @@ export function InstrumentsSegmentView({
                             setMeasurableMenuOpen(false);
                             onOpenCreate('issue', {
                               title: `Turbulence: ${editingMeasurable.title}`,
-                              description: `Linked metric: ${editingMeasurable.title}`,
+                              description: `Flight metric: ${editingMeasurable.title}`,
                               linkedEntity: { type: 'measurable', id: editingMeasurable.id, title: editingMeasurable.title },
                             });
                           }}
                         >
-                          <AlertTriangle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Issue
+                          <AlertTriangle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Turbulence
                         </button>
                         {editingMeasurable?.groupId && (
                           <button

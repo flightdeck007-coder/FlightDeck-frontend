@@ -256,7 +256,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
     setRowMenuId(null);
     const n = selectedMeasurablesForActions.length;
     const title = `Review ${n} Flight Metric${n === 1 ? '' : 's'}`;
-    const description = 'Measurables:\n' + selectedMeasurablesForActions.map((m) => '• ' + m.title).join('\n');
+    const description = 'Flight metrics:\n' + selectedMeasurablesForActions.map((m) => '• ' + m.title).join('\n');
     const first = selectedMeasurablesForActions[0];
     setCreatePopupInitialType('todo');
     setCreatePopupInitialTitle(title);
@@ -269,7 +269,7 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
     setRowMenuId(null);
     const n = selectedMeasurablesForActions.length;
     const title = `Review ${n} Flight Metric${n === 1 ? '' : 's'}`;
-    const description = 'Measurables:\n' + selectedMeasurablesForActions.map((m) => '• ' + m.title).join('\n');
+    const description = 'Flight metrics:\n' + selectedMeasurablesForActions.map((m) => '• ' + m.title).join('\n');
     const first = selectedMeasurablesForActions[0];
     setCreatePopupInitialType('issue');
     setCreatePopupInitialTitle(title);
@@ -513,8 +513,8 @@ export function MeasurableManagerView({ meetingId, organizationId, meeting }: Me
                             </div>
                             <div className="border-t border-border my-2" role="separator" />
                             <div className="px-2 py-1 space-y-0.5">
-                              <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { setCreatePopupInitialType('todo'); setCreatePopupInitialTitle(`Clearance: ${row.title}`); setCreatePopupInitialDescription('Flight Metrics:\n• ' + row.title); setCreatePopupInitialLinkedEntity({ type: 'measurable', id: row.id, title: row.title }); setCreatePopupOpen(true); setRowMenuId(null); setRowMenuAnchor(null); }}><CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Clearance</button>
-                              <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { setCreatePopupInitialType('issue'); setCreatePopupInitialTitle(`Turbulence: ${row.title}`); setCreatePopupInitialDescription('Flight Metrics:\n• ' + row.title); setCreatePopupInitialLinkedEntity({ type: 'measurable', id: row.id, title: row.title }); setCreatePopupOpen(true); setRowMenuId(null); setRowMenuAnchor(null); }}><AlertTriangle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Turbulence</button>
+                              <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { setCreatePopupInitialType('todo'); setCreatePopupInitialTitle(`Clearance: ${row.title}`); setCreatePopupInitialDescription('Flight metrics:\n• ' + row.title); setCreatePopupInitialLinkedEntity({ type: 'measurable', id: row.id, title: row.title }); setCreatePopupOpen(true); setRowMenuId(null); setRowMenuAnchor(null); }}><CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Clearance</button>
+                              <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { setCreatePopupInitialType('issue'); setCreatePopupInitialTitle(`Turbulence: ${row.title}`); setCreatePopupInitialDescription('Flight metrics:\n• ' + row.title); setCreatePopupInitialLinkedEntity({ type: 'measurable', id: row.id, title: row.title }); setCreatePopupOpen(true); setRowMenuId(null); setRowMenuAnchor(null); }}><AlertTriangle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create Turbulence</button>
                             </div>
                             <div className="border-t border-border my-2" role="separator" />
                             <div className="px-2 py-1">

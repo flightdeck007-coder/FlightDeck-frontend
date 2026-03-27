@@ -44,7 +44,7 @@ const CREATE_TYPE_OPTIONS: { value: CreateType; label: string }[] = [
   { value: "cascading_message", label: "Flight Directive" },
 ];
 
-/** Linked entity type for display (measurable = scorecard; rock_milestone = waypoint milestone). */
+/** Linked entity type for display (measurable = flight metric; rock_milestone = waypoint milestone). */
 type LinkedEntityType = CreateType | "measurable" | "rock_milestone";
 
 export type CreatePopupLinkedEntity = {
@@ -61,12 +61,12 @@ function linkedEntityTypeLabel(type: LinkedEntityType): string {
     headline: "Announcement",
     cascading_message: "Flight Directive",
     measurable: "Flight Metric",
-    rock_milestone: "Milestone",
+    rock_milestone: "Waypoint milestone",
   };
   return map[type] ?? type;
 }
 
-/** Card section shown when creating from a "Link" action or from measurable: shows what we're linking from (above attachments). */
+/** Card section when creating from a link action: shows the source item (above attachments). */
 function LinkingToSection({
   linkedEntity,
 }: {
@@ -75,7 +75,7 @@ function LinkingToSection({
   return (
     <div className="border-t border-b border-border py-5 my-5">
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-        Linking to
+        Source
       </p>
       <div className="rounded-lg border border-border border-t-2 border-t-primary bg-white p-4 shadow-sm">
         <div className="flex items-start gap-3">
@@ -91,7 +91,7 @@ function LinkingToSection({
         </div>
       </div>
       <p className="mt-2.5 ml-1 text-[12px] font-medium text-foreground/65">
-        The form below creates the new item linked to the one above.
+        The new item you create below will be connected to this source.
       </p>
     </div>
   );
@@ -231,13 +231,13 @@ interface CreatePopupProps {
   organizationId?: string;
   /** When 'measurable', popup opens on Clearance tab with linked measurable (no measurable tab in popup). */
   initialType?: CreateType | 'measurable';
-  /** Pre-fill title when opening Create Clearance or Create Turbulence (e.g. "Review 3 Measurables") */
+  /** Pre-fill title when opening Create Clearance or Create Turbulence (e.g. "Review 3 Flight Metrics") */
   initialTitle?: string;
-  /** Pre-fill description when opening Create Clearance or Create Turbulence (e.g. "Measurables:\n• Item 1") */
+  /** Pre-fill description when opening Create Clearance or Create Turbulence (e.g. "Flight metrics:\n• Item 1") */
   initialDescription?: string;
   /** Initial interval for Turbulence create form */
   initialIssueInterval?: 'short' | 'long';
-  /** When creating from a row (e.g. "Link issue" from rock, or create from measurable): pre-set link so the new issue/todo shows "Linking to" (measurable is display-only; backend also supports rock_milestone) */
+  /** When creating from a row or flight metric: pre-set link so the new item shows the Source card (measurable is display-only; backend also supports rock_milestone) */
   initialLinkedEntity?: CreatePopupLinkedEntity;
   /** Meeting attendees for rock owner dropdown (and issue/todo assignees if needed) */
   meetingAttendances?: Array<{ id: string; user: { id: string; name?: string | null; email: string } }>;
@@ -281,6 +281,7 @@ export function CreatePopup({
   const cascadingFileInputRef = useRef<HTMLInputElement>(null);
   const [cascadingAttachmentFiles, setCascadingAttachmentFiles] = useState<File[]>([]);
   const [cascadingAttachmentError, setCascadingAttachmentError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const rocksApi = useRocksOptional();
   const issuesApi = useIssuesOptional();
   const todosApi = useTodosOptional();
@@ -506,6 +507,7 @@ export function CreatePopup({
     setHeadlineAttachmentError(null);
     setCascadingAttachmentFiles([]);
     setCascadingAttachmentError(null);
+    setSubmitError(null);
     reset({
       title: "",
       description: "",
@@ -612,8 +614,13 @@ export function CreatePopup({
   }, [open, createType, initialIssueInterval, getValues, reset]);
 
   const onIssueSubmit = async (data: IssueFormData) => {
-    if (issuesApi) {
-      await issuesApi.addIssue({
+    setSubmitError(null);
+    try {
+      if (!issuesApi) {
+        setSubmitError("Turbulence service is not available right now.");
+        return;
+      }
+      const createdId = await issuesApi.addIssue({
         title: data.title,
         description: data.description || undefined,
         priority: data.priority ? parseInt(data.priority, 10) : 0,
@@ -625,34 +632,54 @@ export function CreatePopup({
           linkedEntityTitle: linkedEntity.title,
         }),
       });
+      if (!createdId) {
+        setSubmitError("Couldn't create Turbulence. Please check your input and try again.");
+        return;
+      }
+      resetPopupState();
+      onClose();
+    } catch {
+      setSubmitError("Couldn't create Turbulence. Please try again.");
     }
-    resetPopupState();
-    onClose();
   };
 
   const onRockSubmit = (data: RockFormData) => {
-    const dueBy = data.dueBy?.trim() || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    const isCompany = Boolean(data.isCompanyRock);
-    const selected = rockOwnerOptions.find((o) => o.value === data.ownerId);
-    const ownerName = selected?.name || selected?.label;
-    const ownerInitials = selected ? getInitials(selected.name, selected.email) : undefined;
-    const rockPayload = {
-      title: data.title,
-      dueBy,
-      status: (data.status as "on_track" | "off_track" | "at_risk" | "done" | "other") || "on_track",
-      column: "current" as const,
-      achieved: false,
-      isCompanyRock: isCompany,
-      ...(ownerName ? { ownerName: String(ownerName) } : {}),
-      ...(ownerInitials ? { ownerInitials: ownerInitials.slice(0, 2) } : {}),
-    };
-    rocksApi?.addRock(rockPayload);
-    resetPopupState();
-    onClose();
+    setSubmitError(null);
+    try {
+      if (!rocksApi) {
+        setSubmitError("Waypoint service is not available right now.");
+        return;
+      }
+      const dueBy = data.dueBy?.trim() || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const isCompany = Boolean(data.isCompanyRock);
+      const selected = rockOwnerOptions.find((o) => o.value === data.ownerId);
+      const ownerName = selected?.name || selected?.label;
+      const ownerInitials = selected ? getInitials(selected.name, selected.email) : undefined;
+      const rockPayload = {
+        title: data.title,
+        dueBy,
+        status: (data.status as "on_track" | "off_track" | "at_risk" | "done" | "other") || "on_track",
+        column: "current" as const,
+        achieved: false,
+        isCompanyRock: isCompany,
+        ...(ownerName ? { ownerName: String(ownerName) } : {}),
+        ...(ownerInitials ? { ownerInitials: ownerInitials.slice(0, 2) } : {}),
+      };
+      rocksApi.addRock(rockPayload);
+      resetPopupState();
+      onClose();
+    } catch {
+      setSubmitError("Couldn't create Waypoint. Please try again.");
+    }
   };
 
   const onTodoSubmit = async (data: TodoFormData) => {
-    if (todosApi) {
+    setSubmitError(null);
+    try {
+      if (!todosApi) {
+        setSubmitError("Clearance service is not available right now.");
+        return;
+      }
       const selectedTeam = (teamsList as Team[]).find((t) => t.id === data.teamId);
       await todosApi.addTodo({
         title: data.title,
@@ -669,36 +696,56 @@ export function CreatePopup({
           linkedEntityTitle: linkedEntity.title,
         }),
       });
+      resetPopupState();
+      onClose();
+    } catch {
+      setSubmitError("Couldn't create Clearance. Please try again.");
     }
-    resetPopupState();
-    onClose();
   };
 
   const onHeadlineSubmit = (data: HeadlineFormData) => {
-    const now = new Date().toISOString();
-    headlinesApi?.addHeadline({
-      title: data.title,
-      createdAt: now,
-      createdAgo: "Just now",
-      ownerInitials: "U",
-      archived: false,
-    });
-    resetPopupState();
-    onClose();
+    setSubmitError(null);
+    try {
+      if (!headlinesApi) {
+        setSubmitError("Announcement service is not available right now.");
+        return;
+      }
+      const now = new Date().toISOString();
+      headlinesApi.addHeadline({
+        title: data.title,
+        createdAt: now,
+        createdAgo: "Just now",
+        ownerInitials: "U",
+        archived: false,
+      });
+      resetPopupState();
+      onClose();
+    } catch {
+      setSubmitError("Couldn't create Announcement. Please try again.");
+    }
   };
 
   const onCascadingSubmit = (data: CascadingFormData) => {
-    const now = new Date().toISOString();
-    headlinesApi?.addCascadingMessage({
-      title: data.title,
-      from: teamName || "Flight Crew",
-      createdAt: now,
-      createdAgo: "Just now",
-      ownerInitials: "U",
-      archived: false,
-    });
-    resetPopupState();
-    onClose();
+    setSubmitError(null);
+    try {
+      if (!headlinesApi) {
+        setSubmitError("Flight Directive service is not available right now.");
+        return;
+      }
+      const now = new Date().toISOString();
+      headlinesApi.addCascadingMessage({
+        title: data.title,
+        from: teamName || "Flight Crew",
+        createdAt: now,
+        createdAgo: "Just now",
+        ownerInitials: "U",
+        archived: false,
+      });
+      resetPopupState();
+      onClose();
+    } catch {
+      setSubmitError("Couldn't create Flight Directive. Please try again.");
+    }
   };
 
   if (!open) return null;
@@ -1513,6 +1560,11 @@ export function CreatePopup({
           </div>
 
           {/* Footer: Create [Type] | Cancel */}
+          {submitError && (
+            <div className="px-4 pt-3 text-sm text-red-600 bg-card border-t border-border">
+              {submitError}
+            </div>
+          )}
           {createType === "issue" && (
             <div className="flex items-center justify-between gap-3 p-4 border-t border-border bg-card shrink-0">
               <button

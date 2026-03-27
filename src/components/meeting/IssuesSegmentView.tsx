@@ -51,6 +51,8 @@ function linkedEntityTypeLabel(type: string | null | undefined): string {
     todo: 'Clearance',
     headline: 'Announcement',
     cascading_message: 'Flight Directive',
+    measurable: 'Flight Metric',
+    rock_milestone: 'Waypoint milestone',
   };
   return map[type] ?? type;
 }
@@ -58,7 +60,7 @@ function linkedEntityTypeLabel(type: string | null | undefined): string {
 function getLinkedCreateOptions(item: IssueItem, target: CreatePopupType) {
   const linkedEntity = { type: 'issue' as const, id: item.id, title: item.title };
   const details = [
-    `Linked turbulence: ${item.title}`,
+    `Turbulence: ${item.title}`,
     item.priority ? `Priority: ${item.priority}` : null,
   ].filter(Boolean);
   const description = details.join('\n');
@@ -66,6 +68,7 @@ function getLinkedCreateOptions(item: IssueItem, target: CreatePopupType) {
   if (target === 'todo') return { title: `Clearance: ${item.title}`, description, linkedEntity };
   if (target === 'issue') return { title: `Turbulence: ${item.title}`, description, linkedEntity };
   if (target === 'headline') return { title: `Announcement: ${item.title}`, description, linkedEntity };
+  if (target === 'cascading_message') return { title: `Flight Directive: ${item.title}`, description, linkedEntity };
   return { title: item.title, description, linkedEntity };
 }
 
@@ -769,7 +772,11 @@ function IssueCard({
           )}
         </div>
         {item.linkedEntityTitle && (
-          <span className="text-xs text-muted-foreground">Linked to: {item.linkedEntityTitle}</span>
+          <span className="text-xs text-muted-foreground">
+            {item.linkedEntityType
+              ? `${linkedEntityTypeLabel(item.linkedEntityType)}: ${item.linkedEntityTitle}`
+              : item.linkedEntityTitle}
+          </span>
         )}
         {resolved && item.resolvedByName && (
           <span className="text-xs text-muted-foreground">Resolved by {item.resolvedByName}</span>
@@ -896,7 +903,11 @@ function IssueRow({
               )}
             </div>
             {item.linkedEntityTitle && (
-              <span className="text-xs text-muted-foreground">Linked to: {item.linkedEntityTitle}</span>
+              <span className="text-xs text-muted-foreground">
+                {item.linkedEntityType
+                  ? `${linkedEntityTypeLabel(item.linkedEntityType)}: ${item.linkedEntityTitle}`
+                  : item.linkedEntityTitle}
+              </span>
             )}
             {resolved && item.resolvedByName && (
               <span className="text-xs text-muted-foreground">Resolved by {item.resolvedByName}</span>

@@ -49,6 +49,8 @@ const sectionTitleToId: Record<string, string> = {
   'PRE-FLIGHT': 'segue', 'SEGUE': 'segue',
   'INSTRUMENTS': 'scorecard', 'DATA': 'scorecard', 'SCORECARD': 'scorecard',
   'WAYPOINT REVIEW': 'rocks', 'ROCK REVIEW': 'rocks', 'ROCKS': 'rocks',
+  'FLIGHT ANNOUNCEMENTS': 'headlines',
+  'FLIGHT ANNOUCEMENTS': 'headlines',
   'CLEARANCES': 'todos', 'TO-DO LIST': 'todos', 'TO-DOS': 'todos',
   'TURBULENCE': 'issues', 'IDS™': 'issues', 'ISSUES': 'issues',
   'DEBRIEF': 'conclude', 'CONCLUDE': 'conclude',

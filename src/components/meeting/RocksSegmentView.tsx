@@ -969,9 +969,9 @@ function RocksTabContent({
   );
 }
 
-/** Build description for linked items from a rock */
+/** Build description for linked items from a waypoint */
 function linkedDescription(rock: Rock): string {
-  return `Linked to rock: ${rock.title}\nOwner: ${rock.ownerName}${rock.dueBy ? ` · Due: ${rock.dueBy}` : ''}`;
+  return `Waypoint: ${rock.title}\nOwner: ${rock.ownerName}${rock.dueBy ? ` · Due: ${rock.dueBy}` : ''}`;
 }
 
 /**
@@ -1098,7 +1098,7 @@ function RockActionsMenu({
           <button
             type="button"
             className={buttonClass}
-            onClick={() => { onOpenCreate?.('headline', { title: rock.title, description: linkedDescription(rock), linkedEntity: linkedRock }); onClose(); }}
+            onClick={() => { onOpenCreate?.('headline', { title: `Announcement: ${rock.title}`, description: linkedDescription(rock), linkedEntity: linkedRock }); onClose(); }}
             role="menuitem"
           >
             <Megaphone className={iconClass} />
@@ -2821,13 +2821,48 @@ function RockRow({
                   >
                     Edit milestone
                   </button>
-                  <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent" onClick={() => { onOpenCreate?.('rock', { title: milestoneMenuAnchor.milestone.title, description: `Linked to milestone: ${milestoneMenuAnchor.milestone.title}` }); setMilestoneMenuAnchor(null); }}>
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                    onClick={() => {
+                      const m = milestoneMenuAnchor.milestone;
+                      const desc = [`Waypoint milestone: ${m.title}`, m.dueDate ? `Due: ${m.dueDate}` : null].filter(Boolean).join('\n');
+                      onOpenCreate?.('rock', { title: m.title, description: desc });
+                      setMilestoneMenuAnchor(null);
+                    }}
+                  >
                     Create linked Waypoint
                   </button>
-                  <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent" onClick={() => { onOpenCreate?.('todo', { title: `Clearance: ${milestoneMenuAnchor.milestone.title}`, description: `Linked to milestone: ${milestoneMenuAnchor.milestone.title}`, linkedEntity: { type: 'rock_milestone', id: milestoneMenuAnchor.milestone.id, title: milestoneMenuAnchor.milestone.title } }); setMilestoneMenuAnchor(null); }}>
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                    onClick={() => {
+                      const m = milestoneMenuAnchor.milestone;
+                      const desc = [`Waypoint milestone: ${m.title}`, m.dueDate ? `Due: ${m.dueDate}` : null].filter(Boolean).join('\n');
+                      onOpenCreate?.('todo', {
+                        title: `Clearance: ${m.title}`,
+                        description: desc,
+                        linkedEntity: { type: 'rock_milestone', id: m.id, title: m.title },
+                      });
+                      setMilestoneMenuAnchor(null);
+                    }}
+                  >
                     Create linked Clearance
                   </button>
-                  <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent" onClick={() => { onOpenCreate?.('issue', { title: `Turbulence: ${milestoneMenuAnchor.milestone.title}`, description: `Linked to milestone: ${milestoneMenuAnchor.milestone.title}`, linkedEntity: { type: 'rock_milestone', id: milestoneMenuAnchor.milestone.id, title: milestoneMenuAnchor.milestone.title } }); setMilestoneMenuAnchor(null); }}>
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                    onClick={() => {
+                      const m = milestoneMenuAnchor.milestone;
+                      const desc = [`Waypoint milestone: ${m.title}`, m.dueDate ? `Due: ${m.dueDate}` : null].filter(Boolean).join('\n');
+                      onOpenCreate?.('issue', {
+                        title: `Turbulence: ${m.title}`,
+                        description: desc,
+                        linkedEntity: { type: 'rock_milestone', id: m.id, title: m.title },
+                      });
+                      setMilestoneMenuAnchor(null);
+                    }}
+                  >
                     Create linked Turbulence
                   </button>
                   <button

@@ -103,6 +103,8 @@ function linkedEntityTypeLabel(type: string | null | undefined): string {
     todo: 'Clearance',
     headline: 'Announcement',
     cascading_message: 'Flight Directive',
+    measurable: 'Flight Metric',
+    rock_milestone: 'Waypoint milestone',
   };
   return map[type] ?? type;
 }
@@ -111,7 +113,7 @@ function getLinkedCreateOptions(item: TodoItem, target: CreatePopupType) {
   const linkedEntity = { type: 'todo' as const, id: item.id, title: item.title };
   const sourceDue = item.dueDate ? formatDueDate(item.dueDate) : null;
   const details = [
-    `Linked clearance: ${item.title}`,
+    `Clearance: ${item.title}`,
     sourceDue ? `Due date: ${sourceDue}` : null,
     item.assigneeId ? `Owner: ${item.ownerInitials}` : null,
   ].filter(Boolean);
@@ -120,6 +122,7 @@ function getLinkedCreateOptions(item: TodoItem, target: CreatePopupType) {
   if (target === 'todo') return { title: `Clearance: ${item.title}`, description, linkedEntity };
   if (target === 'issue') return { title: `Turbulence: ${item.title}`, description, linkedEntity };
   if (target === 'headline') return { title: `Announcement: ${item.title}`, description, linkedEntity };
+  if (target === 'cascading_message') return { title: `Flight Directive: ${item.title}`, description, linkedEntity };
   return { title: item.title, description, linkedEntity };
 }
 
@@ -773,7 +776,11 @@ function TodoRow({
               )}
             </div>
             {item.linkedEntityTitle && (
-              <span className="text-xs text-muted-foreground">Linked to: {item.linkedEntityTitle}</span>
+              <span className="text-xs text-muted-foreground">
+                {item.linkedEntityType
+                  ? `${linkedEntityTypeLabel(item.linkedEntityType)}: ${item.linkedEntityTitle}`
+                  : item.linkedEntityTitle}
+              </span>
             )}
           </div>
         </td>
