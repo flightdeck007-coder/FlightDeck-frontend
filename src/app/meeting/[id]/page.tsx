@@ -88,6 +88,7 @@ export default function MeetingPage() {
   const [loadedSections, setLoadedSections] = useState(meetingSections);
   const [organizationId, setOrganizationId] = useState<string>('');
   const [teamId, setTeamId] = useState<string>('');
+  const [scorecardMeetingId, setScorecardMeetingId] = useState<string>('');
   const [orgRole, setOrgRole] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [userInitials, setUserInitials] = useState('U');
@@ -203,6 +204,28 @@ export default function MeetingPage() {
     }
     teamsService.list(organizationId).then(setTeams).catch(() => setTeams([]));
   }, [organizationId]);
+
+  useEffect(() => {
+    if (!organizationId || !teamId) {
+      setScorecardMeetingId(meetingId);
+      return;
+    }
+    meetingsService
+      .findAll(organizationId, teamId)
+      .then((list) => {
+        if (!Array.isArray(list) || list.length === 0) {
+          setScorecardMeetingId(meetingId);
+          return;
+        }
+        const canonical = [...list].sort((a, b) => {
+          const aTs = new Date(a.scheduledAt || 0).getTime();
+          const bTs = new Date(b.scheduledAt || 0).getTime();
+          return aTs - bTs;
+        })[0];
+        setScorecardMeetingId(canonical?.id || meetingId);
+      })
+      .catch(() => setScorecardMeetingId(meetingId));
+  }, [organizationId, teamId, meetingId]);
 
   // When landing on a suspended meeting with resume intent: restore position and resume
   useEffect(() => {
@@ -469,9 +492,9 @@ export default function MeetingPage() {
       if (orgId && teamId) {
         try {
           const [shortActive, shortResolved, longResolved] = await Promise.all([
-            issuesService.findAll(orgId, teamId, 'short_term', false, meetingId),
-            issuesService.findAll(orgId, teamId, 'short_term', true, meetingId),
-            issuesService.findAll(orgId, teamId, 'long_term', true, meetingId),
+            issuesService.findAll(orgId, teamId, 'short_term', false),
+            issuesService.findAll(orgId, teamId, 'short_term', true),
+            issuesService.findAll(orgId, teamId, 'long_term', true),
           ]);
           const totalTracked = shortActive.length + shortResolved.length;
           const solvedInMeeting = shortResolved.length + longResolved.length;
@@ -496,16 +519,16 @@ export default function MeetingPage() {
         }
       }
 
-      // Todos: fetch all todos created in this meeting (active + archived) so recap shows created list with checked state
+      // Todos: fetch all team clearances (active + archived) so recap reflects centralized data
       let todosCreated: Array<{ id: string; title: string; assigneeInitials?: string; completed: boolean }> = [];
       if (orgId && teamId) {
         try {
           const [activeTodos, archivedTodos] = await Promise.all([
-            todosService.findAll(orgId, teamId, false, meetingId),
-            todosService.findAll(orgId, teamId, true, meetingId),
+            todosService.findAll(orgId, teamId, false),
+            todosService.findAll(orgId, teamId, true),
           ]);
-          const allFromMeeting = [...activeTodos, ...archivedTodos];
-          todosCreated = allFromMeeting.map((t) => ({
+          const allTeamTodos = [...activeTodos, ...archivedTodos];
+          todosCreated = allTeamTodos.map((t) => ({
             id: t.id,
             title: t.title,
             assigneeInitials: t.ownerInitials,
@@ -673,10 +696,10 @@ export default function MeetingPage() {
         lastTimerSyncRef.current = { segment, total, ts: Date.now() };
       }}
     />
-    <RocksProvider meetingId={meetingId} organizationId={organizationId}>
-    <HeadlinesProvider meetingId={meetingId} organizationId={organizationId}>
-    <TodosProvider meetingId={meetingId} organizationId={organizationId} teamId={teamId}>
-    <IssuesProvider organizationId={organizationId} teamId={teamId} meetingId={meetingId}>
+    <RocksProvider meetingId={undefined} organizationId={organizationId} teamId={teamId} fallbackMeetingId={meetingId}>
+    <HeadlinesProvider meetingId={undefined} organizationId={organizationId} teamId={teamId} fallbackMeetingId={meetingId}>
+    <TodosProvider meetingId={undefined} organizationId={organizationId} teamId={teamId}>
+    <IssuesProvider organizationId={organizationId} teamId={teamId} meetingId={undefined}>
     <MeetingLayout>
       {/* Full-screen loader when suspending (save & redirect) */}
       {suspendInProgress && (
@@ -827,6 +850,7 @@ export default function MeetingPage() {
                 teamName={meeting?.team?.name}
                 teamId={meeting?.teamId}
                 teams={teams}
+                scorecardMeetingId={scorecardMeetingId || meetingId}
                 facilitatorId={meeting?.facilitatorId}
                 currentUserId={currentUserId}
                 onOpenCreateIssue={() => {

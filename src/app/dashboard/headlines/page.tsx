@@ -5,7 +5,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MeetingSocketProvider } from '@/contexts/MeetingSocketContext';
 import { HeadlinesProvider } from '@/contexts/HeadlinesContext';
 import { HeadlinesSegmentView } from '@/components/meeting/HeadlinesSegmentView';
-import { CreatePopup } from '@/components/meeting/CreatePopup';
+import { CreatePopup, type CreatePopupLinkedEntity } from '@/components/meeting/CreatePopup';
 import { useMeetingsData } from '@/hooks/useMeetingsData';
 import { meetingsService } from '@/lib/api/meetings.service';
 
@@ -21,6 +21,9 @@ export default function HeadlinesPage() {
   const [selectedMeeting, setSelectedMeeting] = useState<Awaited<ReturnType<typeof meetingsService.findOne>> | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createType, setCreateType] = useState<'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | undefined>(undefined);
+  const [createTitle, setCreateTitle] = useState<string | undefined>(undefined);
+  const [createDescription, setCreateDescription] = useState<string | undefined>(undefined);
+  const [createLinkedEntity, setCreateLinkedEntity] = useState<CreatePopupLinkedEntity | undefined>(undefined);
 
   const teamName = selectedTeam?.name ?? 'No team found';
   const fallbackMeetingId = useMemo(
@@ -74,10 +77,18 @@ export default function HeadlinesPage() {
               <div className="flex-1 min-h-0 flex flex-col">
                 <HeadlinesSegmentView
                   teamName={teamName}
+                  owners={(selectedTeam?.members ?? []).map((m) => ({
+                    id: m.user.id,
+                    name: m.user.name ?? undefined,
+                    email: m.user.email,
+                  }))}
                   meetingId={undefined}
                   canRecord
-                  onOpenCreate={(type) => {
+                  onOpenCreate={(type, options) => {
                     setCreateType(type);
+                    setCreateTitle(options?.title);
+                    setCreateDescription(options?.description);
+                    setCreateLinkedEntity(options?.linkedEntity as CreatePopupLinkedEntity | undefined);
                     setCreateOpen(true);
                   }}
                 />
@@ -88,12 +99,18 @@ export default function HeadlinesPage() {
                 onClose={() => {
                   setCreateOpen(false);
                   setCreateType(undefined);
+                  setCreateTitle(undefined);
+                  setCreateDescription(undefined);
+                  setCreateLinkedEntity(undefined);
                 }}
                 teamName={teamName}
                 teamId={selectedTeamId || undefined}
                 teams={teams}
                 organizationId={organizationId}
                 initialType={createType}
+                initialTitle={createTitle}
+                initialDescription={createDescription}
+                initialLinkedEntity={createLinkedEntity}
                 meetingAttendances={selectedMeeting?.attendances ?? meetingAttendances}
               />
             </HeadlinesProvider>

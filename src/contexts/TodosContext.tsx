@@ -41,6 +41,7 @@ function apiToItem(t: TodoApiItem): TodoItem {
     assigneeId: t.assigneeId ?? undefined,
     completed: t.status === 'done',
     description: t.description ?? undefined,
+    private: t.private ?? false,
     archived: t.archived,
     order: t.order,
     linkedEntityType: t.linkedEntityType ?? null,
@@ -183,6 +184,7 @@ export function TodosProvider({
             linkedEntityType: item.linkedEntityType ?? undefined,
             linkedEntityId: item.linkedEntityId ?? undefined,
             linkedEntityTitle: item.linkedEntityTitle ?? undefined,
+            private: item.private ?? false,
           },
           meetingId
         );
@@ -223,6 +225,7 @@ export function TodosProvider({
             linkedEntityType: patch.linkedEntityType,
             linkedEntityId: patch.linkedEntityId,
             linkedEntityTitle: patch.linkedEntityTitle,
+            private: patch.private,
             ...(patch.teamId != null && { teamId: patch.teamId }),
             ...(patch.assigneeId !== undefined && { assigneeId: patch.assigneeId ?? undefined }),
           },

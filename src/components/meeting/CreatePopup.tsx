@@ -713,6 +713,12 @@ export function CreatePopup({
       const now = new Date().toISOString();
       headlinesApi.addHeadline({
         title: data.title,
+        description: data.description || undefined,
+        ...(linkedEntity && {
+          linkedEntityType: linkedEntity.type,
+          linkedEntityId: linkedEntity.id,
+          linkedEntityTitle: linkedEntity.title,
+        }),
         createdAt: now,
         createdAgo: "Just now",
         ownerInitials: "U",
@@ -735,7 +741,13 @@ export function CreatePopup({
       const now = new Date().toISOString();
       headlinesApi.addCascadingMessage({
         title: data.title,
+        description: data.description || undefined,
         from: teamName || "Flight Crew",
+        ...(linkedEntity && {
+          linkedEntityType: linkedEntity.type,
+          linkedEntityId: linkedEntity.id,
+          linkedEntityTitle: linkedEntity.title,
+        }),
         createdAt: now,
         createdAgo: "Just now",
         ownerInitials: "U",

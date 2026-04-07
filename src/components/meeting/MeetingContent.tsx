@@ -39,6 +39,7 @@ interface MeetingContentProps {
   teamId?: string | null;
   /** All teams for edit-todo team dropdown (meeting and dashboard) */
   teams?: Array<{ id: string; name: string }>;
+  scorecardMeetingId?: string;
 }
 
 // Demo data for different sections (L10-style; flight wording in UI)
@@ -94,8 +95,9 @@ const demoData: Record<string, any> = {
   },
 };
 
-export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onOpenCreate, onFinishMeeting, finishLoading, meetingId, organizationId, isFacilitator, canRecord, facilitatorId, currentUserId, meetingAttendances, isMeetingInFuture, teamName: meetingTeamName, teamId: meetingTeamId, teams: meetingTeams = [] }: MeetingContentProps) {
+export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onOpenCreate, onFinishMeeting, finishLoading, meetingId, organizationId, isFacilitator, canRecord, facilitatorId, currentUserId, meetingAttendances, isMeetingInFuture, teamName: meetingTeamName, teamId: meetingTeamId, teams: meetingTeams = [], scorecardMeetingId }: MeetingContentProps) {
   const canRecordOrFacilitator = canRecord ?? isFacilitator;
+  const attendances = meetingAttendances ?? [];
   const data = demoData[sectionId.toLowerCase()] || demoData.segue;
   const isMinimalPrompt = data.type === 'prompt' && data.empty; // Segue, Headlines: prompt + empty only
   const hasFilterBar = ['scorecard', 'rocks', 'headlines', 'todos', 'issues', 'conclude'].includes(sectionId);
@@ -152,13 +154,13 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
           </>
         )}
         {sectionId === 'scorecard' && (
-          <InstrumentsSegmentView embedded teamName={meetingTeamName ?? 'No team found'} teamId={meetingTeamId} meetingId={meetingId} organizationId={organizationId} currentUserId={currentUserId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} isMeetingInFuture={isMeetingInFuture} onOpenCreate={onOpenCreate} onOpenCreateIssue={onOpenCreateIssue} meetingAttendances={meetingAttendances} />
+          <InstrumentsSegmentView embedded teamName={meetingTeamName ?? 'No team found'} teamId={meetingTeamId} meetingId={scorecardMeetingId ?? meetingId} organizationId={organizationId} currentUserId={currentUserId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} isMeetingInFuture={isMeetingInFuture} onOpenCreate={onOpenCreate} onOpenCreateIssue={onOpenCreateIssue} meetingAttendances={meetingAttendances} />
         )}
         {sectionId === 'rocks' && (
           <RocksSegmentView
             embedded
             sectionTitle={sectionTitle}
-            meetingId={meetingId}
+            meetingId={undefined}
             organizationId={organizationId}
             teamId={meetingTeamId}
             teamName={meetingTeamName ?? 'No team found'}
@@ -168,7 +170,19 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
           />
         )}
         {sectionId === 'headlines' && (
-          <HeadlinesSegmentView embedded teamName={meetingTeamName ?? 'No team found'} meetingId={meetingId} isFacilitator={isFacilitator} canRecord={canRecordOrFacilitator} onOpenCreate={onOpenCreate} />
+          <HeadlinesSegmentView
+            embedded
+            teamName={meetingTeamName ?? 'No team found'}
+            owners={attendances.map((a) => ({
+              id: a.user.id,
+              name: a.user.name ?? undefined,
+              email: a.user.email,
+            }))}
+            meetingId={undefined}
+            isFacilitator={isFacilitator}
+            canRecord={canRecordOrFacilitator}
+            onOpenCreate={onOpenCreate}
+          />
         )}
         {sectionId === 'todos' && (
           <TodosSegmentView
@@ -177,7 +191,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
             teamId={meetingTeamId}
             teams={meetingTeams}
             organizationId={organizationId}
-            meetingId={meetingId}
+            meetingId={undefined}
             isFacilitator={isFacilitator}
             canRecord={canRecordOrFacilitator}
             onOpenCreate={onOpenCreate}
@@ -190,7 +204,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
             teamId={meetingTeamId}
             teams={meetingTeams}
             organizationId={organizationId}
-            meetingId={meetingId}
+            meetingId={undefined}
             isFacilitator={isFacilitator}
             canRecord={canRecordOrFacilitator}
             onOpenCreate={onOpenCreate}

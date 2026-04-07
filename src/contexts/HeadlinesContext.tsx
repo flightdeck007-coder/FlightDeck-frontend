@@ -17,6 +17,12 @@ export interface HeadlineItem {
   id: string;
   meetingId?: string;
   title: string;
+  description?: string;
+  linkedEntityType?: string | null;
+  linkedEntityId?: string | null;
+  linkedEntityTitle?: string | null;
+  comments?: Array<{ id: string; text: string; authorInitials?: string; authorName?: string; createdAt: string }>;
+  attachments?: Array<{ id: string; name: string; uploadedAt: string }>;
   createdAt: string;
   createdAgo: string;
   ownerInitials: string;
@@ -28,6 +34,12 @@ export interface CascadingMessageItem {
   meetingId?: string;
   title: string;
   from: string;
+  description?: string;
+  linkedEntityType?: string | null;
+  linkedEntityId?: string | null;
+  linkedEntityTitle?: string | null;
+  comments?: Array<{ id: string; text: string; authorInitials?: string; authorName?: string; createdAt: string }>;
+  attachments?: Array<{ id: string; name: string; uploadedAt: string }>;
   createdAt: string;
   createdAgo: string;
   ownerInitials: string;
@@ -43,12 +55,54 @@ interface HeadlinesContextValue {
   reorderCascadingMessages: (fromIndex: number, toIndex: number) => void;
   archiveHeadline: (id: string) => void;
   archiveCascadingMessage: (id: string) => void;
+  updateHeadline: (id: string, patch: { title?: string; description?: string; ownerInitials?: string; linkedEntityType?: string | null; linkedEntityId?: string | null; linkedEntityTitle?: string | null; comments?: Array<{ id: string; text: string; authorInitials?: string; authorName?: string; createdAt: string }>; attachments?: Array<{ id: string; name: string; uploadedAt: string }>; archived?: boolean }) => void;
+  updateCascadingMessage: (id: string, patch: { title?: string; description?: string; from?: string; ownerInitials?: string; linkedEntityType?: string | null; linkedEntityId?: string | null; linkedEntityTitle?: string | null; comments?: Array<{ id: string; text: string; authorInitials?: string; authorName?: string; createdAt: string }>; attachments?: Array<{ id: string; name: string; uploadedAt: string }>; archived?: boolean }) => void;
   deleteHeadline: (id: string) => void;
   deleteCascadingMessage: (id: string) => void;
   isLoading: boolean;
 }
 
 const HeadlinesContext = createContext<HeadlinesContextValue | null>(null);
+
+function normalizeComments(
+  value: unknown
+): Array<{ id: string; text: string; authorInitials?: string; authorName?: string; createdAt: string }> {
+  if (!Array.isArray(value)) return [];
+  const normalized: Array<{ id: string; text: string; authorInitials?: string; authorName?: string; createdAt: string }> = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const obj = item as Record<string, unknown>;
+    const id = typeof obj.id === 'string' ? obj.id : `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const text = typeof obj.text === 'string' ? obj.text : '';
+    if (!text.trim()) continue;
+    const createdAt = typeof obj.createdAt === 'string' ? obj.createdAt : new Date().toISOString();
+    normalized.push({
+      id,
+      text,
+      createdAt,
+      authorInitials: typeof obj.authorInitials === 'string' ? obj.authorInitials : undefined,
+      authorName: typeof obj.authorName === 'string' ? obj.authorName : undefined,
+    });
+  }
+  return normalized;
+}
+
+function normalizeAttachments(
+  value: unknown
+): Array<{ id: string; name: string; uploadedAt: string }> {
+  if (!Array.isArray(value)) return [];
+  const normalized: Array<{ id: string; name: string; uploadedAt: string }> = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const obj = item as Record<string, unknown>;
+    const id = typeof obj.id === 'string' ? obj.id : `a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const name = typeof obj.name === 'string' ? obj.name : '';
+    if (!name.trim()) continue;
+    const uploadedAt = typeof obj.uploadedAt === 'string' ? obj.uploadedAt : new Date().toISOString();
+    normalized.push({ id, name, uploadedAt });
+  }
+  return normalized;
+}
 
 export function HeadlinesProvider({
   children,
@@ -85,8 +139,20 @@ export function HeadlinesProvider({
             meetingsService.getHeadlinesAll(organizationId, teamId),
             meetingsService.getCascadingMessagesAll(organizationId, teamId),
           ]);
-      setHeadlines(hList);
-      setCascadingMessages(cList);
+      setHeadlines(
+        hList.map((h) => ({
+          ...h,
+          comments: normalizeComments(h.comments),
+          attachments: normalizeAttachments(h.attachments),
+        }))
+      );
+      setCascadingMessages(
+        cList.map((c) => ({
+          ...c,
+          comments: normalizeComments(c.comments),
+          attachments: normalizeAttachments(c.attachments),
+        }))
+      );
     } catch {
       setHeadlines([]);
       setCascadingMessages([]);
@@ -170,11 +236,19 @@ export function HeadlinesProvider({
         const created = meetingId
           ? await meetingsService.createHeadline(organizationId, targetMeetingId, {
               title: item.title,
+              description: item.description,
               ownerInitials: item.ownerInitials,
+              linkedEntityType: item.linkedEntityType ?? undefined,
+              linkedEntityId: item.linkedEntityId ?? undefined,
+              linkedEntityTitle: item.linkedEntityTitle ?? undefined,
             })
           : await meetingsService.createHeadlineAll(organizationId, targetMeetingId, {
               title: item.title,
+              description: item.description,
               ownerInitials: item.ownerInitials,
+              linkedEntityType: item.linkedEntityType ?? undefined,
+              linkedEntityId: item.linkedEntityId ?? undefined,
+              linkedEntityTitle: item.linkedEntityTitle ?? undefined,
             });
         setHeadlines((prev) =>
           prev.some((h) => h.id === created.id) ? prev : [...prev, created]
@@ -196,12 +270,28 @@ export function HeadlinesProvider({
           ? await meetingsService.createCascadingMessage(
               organizationId,
               targetMeetingId,
-              { title: item.title, from: item.from, ownerInitials: item.ownerInitials }
+              {
+                title: item.title,
+                description: item.description,
+                from: item.from,
+                ownerInitials: item.ownerInitials,
+                linkedEntityType: item.linkedEntityType ?? undefined,
+                linkedEntityId: item.linkedEntityId ?? undefined,
+                linkedEntityTitle: item.linkedEntityTitle ?? undefined,
+              }
             )
           : await meetingsService.createCascadingMessageAll(
               organizationId,
               targetMeetingId,
-              { title: item.title, from: item.from, ownerInitials: item.ownerInitials }
+              {
+                title: item.title,
+                description: item.description,
+                from: item.from,
+                ownerInitials: item.ownerInitials,
+                linkedEntityType: item.linkedEntityType ?? undefined,
+                linkedEntityId: item.linkedEntityId ?? undefined,
+                linkedEntityTitle: item.linkedEntityTitle ?? undefined,
+              }
             );
         setCascadingMessages((prev) =>
           prev.some((c) => c.id === created.id) ? prev : [...prev, created]
@@ -300,6 +390,48 @@ export function HeadlinesProvider({
     [organizationId, meetingId, fetchAll]
   );
 
+  const updateHeadline = useCallback(
+    async (id: string, patch: { title?: string; description?: string; ownerInitials?: string; linkedEntityType?: string | null; linkedEntityId?: string | null; linkedEntityTitle?: string | null; comments?: Array<{ id: string; text: string; authorInitials?: string; authorName?: string; createdAt: string }>; attachments?: Array<{ id: string; name: string; uploadedAt: string }>; archived?: boolean }) => {
+      if (!organizationId) return;
+      const prev = headlines;
+      setHeadlines((list) =>
+        list.map((h) => (h.id === id ? { ...h, ...patch } : h))
+      );
+      try {
+        if (meetingId) {
+          await meetingsService.updateHeadline(organizationId, meetingId, id, patch);
+        } else {
+          await meetingsService.updateHeadlineById(organizationId, id, patch);
+        }
+      } catch {
+        setHeadlines(prev);
+        fetchAll();
+      }
+    },
+    [organizationId, meetingId, headlines, fetchAll]
+  );
+
+  const updateCascadingMessage = useCallback(
+    async (id: string, patch: { title?: string; description?: string; from?: string; ownerInitials?: string; linkedEntityType?: string | null; linkedEntityId?: string | null; linkedEntityTitle?: string | null; comments?: Array<{ id: string; text: string; authorInitials?: string; authorName?: string; createdAt: string }>; attachments?: Array<{ id: string; name: string; uploadedAt: string }>; archived?: boolean }) => {
+      if (!organizationId) return;
+      const prev = cascadingMessages;
+      setCascadingMessages((list) =>
+        list.map((c) => (c.id === id ? { ...c, ...patch } : c))
+      );
+      try {
+        if (meetingId) {
+          await meetingsService.updateCascadingMessage(organizationId, meetingId, id, patch);
+        } else {
+          await meetingsService.updateCascadingMessageById(organizationId, id, patch);
+        }
+      } catch {
+        setCascadingMessages(prev);
+        fetchAll();
+      }
+    },
+    [organizationId, meetingId, cascadingMessages, fetchAll]
+  );
+
   const deleteHeadline = useCallback(
     async (id: string) => {
       if (!organizationId) return;
@@ -344,6 +476,8 @@ export function HeadlinesProvider({
       reorderCascadingMessages,
       archiveHeadline,
       archiveCascadingMessage,
+      updateHeadline,
+      updateCascadingMessage,
       deleteHeadline,
       deleteCascadingMessage,
       isLoading,
@@ -357,6 +491,8 @@ export function HeadlinesProvider({
       reorderCascadingMessages,
       archiveHeadline,
       archiveCascadingMessage,
+      updateHeadline,
+      updateCascadingMessage,
       deleteHeadline,
       deleteCascadingMessage,
       isLoading,

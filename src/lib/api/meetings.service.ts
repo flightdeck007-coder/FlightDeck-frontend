@@ -309,6 +309,12 @@ export const meetingsService = {
       id: string;
       meetingId?: string;
       title: string;
+      description?: string;
+      linkedEntityType?: string | null;
+      linkedEntityId?: string | null;
+      linkedEntityTitle?: string | null;
+      comments?: unknown[];
+      attachments?: unknown[];
       createdAt: string;
       createdAgo: string;
       ownerInitials: string;
@@ -325,6 +331,12 @@ export const meetingsService = {
       id: string;
       meetingId: string;
       title: string;
+      description?: string;
+      linkedEntityType?: string | null;
+      linkedEntityId?: string | null;
+      linkedEntityTitle?: string | null;
+      comments?: unknown[];
+      attachments?: unknown[];
       createdAt: string;
       createdAgo: string;
       ownerInitials: string;
@@ -334,7 +346,7 @@ export const meetingsService = {
   createHeadline: async (
     organizationId: string,
     meetingId: string,
-    data: { title: string; ownerInitials?: string },
+    data: { title: string; description?: string; ownerInitials?: string; linkedEntityType?: string; linkedEntityId?: string; linkedEntityTitle?: string },
   ) => {
     const response = await apiClient.post(
       `/meetings/${meetingId}/headlines?organizationId=${organizationId}`,
@@ -346,7 +358,7 @@ export const meetingsService = {
     organizationId: string,
     meetingId: string,
     headlineId: string,
-    data: { archived?: boolean; order?: number },
+    data: { title?: string; description?: string; ownerInitials?: string; linkedEntityType?: string | null; linkedEntityId?: string | null; linkedEntityTitle?: string | null; comments?: unknown[]; attachments?: unknown[]; archived?: boolean; order?: number },
   ) => {
     const response = await apiClient.put(
       `/meetings/${meetingId}/headlines/${headlineId}?organizationId=${organizationId}`,
@@ -357,7 +369,7 @@ export const meetingsService = {
   updateHeadlineById: async (
     organizationId: string,
     headlineId: string,
-    data: { archived?: boolean; order?: number },
+    data: { title?: string; description?: string; ownerInitials?: string; linkedEntityType?: string | null; linkedEntityId?: string | null; linkedEntityTitle?: string | null; comments?: unknown[]; attachments?: unknown[]; archived?: boolean; order?: number },
   ) => {
     const response = await apiClient.put(
       `/meetings/headlines/${headlineId}?organizationId=${organizationId}`,
@@ -396,7 +408,7 @@ export const meetingsService = {
   createHeadlineAll: async (
     organizationId: string,
     meetingId: string,
-    data: { title: string; ownerInitials?: string },
+    data: { title: string; description?: string; ownerInitials?: string; linkedEntityType?: string; linkedEntityId?: string; linkedEntityTitle?: string },
   ) => {
     const response = await apiClient.post(
       `/meetings/headlines?organizationId=${organizationId}&meetingId=${meetingId}`,
@@ -414,6 +426,12 @@ export const meetingsService = {
       meetingId?: string;
       title: string;
       from: string;
+      description?: string;
+      linkedEntityType?: string | null;
+      linkedEntityId?: string | null;
+      linkedEntityTitle?: string | null;
+      comments?: unknown[];
+      attachments?: unknown[];
       createdAt: string;
       createdAgo: string;
       ownerInitials: string;
@@ -431,6 +449,12 @@ export const meetingsService = {
       meetingId: string;
       title: string;
       from: string;
+      description?: string;
+      linkedEntityType?: string | null;
+      linkedEntityId?: string | null;
+      linkedEntityTitle?: string | null;
+      comments?: unknown[];
+      attachments?: unknown[];
       createdAt: string;
       createdAgo: string;
       ownerInitials: string;
@@ -440,7 +464,7 @@ export const meetingsService = {
   createCascadingMessage: async (
     organizationId: string,
     meetingId: string,
-    data: { title: string; from: string; ownerInitials?: string },
+    data: { title: string; description?: string; from: string; ownerInitials?: string; linkedEntityType?: string; linkedEntityId?: string; linkedEntityTitle?: string },
   ) => {
     const response = await apiClient.post(
       `/meetings/${meetingId}/flight-directives?organizationId=${organizationId}`,
@@ -452,7 +476,7 @@ export const meetingsService = {
     organizationId: string,
     meetingId: string,
     messageId: string,
-    data: { archived?: boolean; order?: number },
+    data: { title?: string; description?: string; from?: string; ownerInitials?: string; linkedEntityType?: string | null; linkedEntityId?: string | null; linkedEntityTitle?: string | null; comments?: unknown[]; attachments?: unknown[]; archived?: boolean; order?: number },
   ) => {
     const response = await apiClient.put(
       `/meetings/${meetingId}/flight-directives/${messageId}?organizationId=${organizationId}`,
@@ -463,7 +487,7 @@ export const meetingsService = {
   updateCascadingMessageById: async (
     organizationId: string,
     messageId: string,
-    data: { archived?: boolean; order?: number },
+    data: { title?: string; description?: string; from?: string; ownerInitials?: string; linkedEntityType?: string | null; linkedEntityId?: string | null; linkedEntityTitle?: string | null; comments?: unknown[]; attachments?: unknown[]; archived?: boolean; order?: number },
   ) => {
     const response = await apiClient.put(
       `/meetings/flight-directives/${messageId}?organizationId=${organizationId}`,
@@ -502,7 +526,7 @@ export const meetingsService = {
   createCascadingMessageAll: async (
     organizationId: string,
     meetingId: string,
-    data: { title: string; from: string; ownerInitials?: string },
+    data: { title: string; description?: string; from: string; ownerInitials?: string; linkedEntityType?: string; linkedEntityId?: string; linkedEntityTitle?: string },
   ) => {
     const response = await apiClient.post(
       `/meetings/flight-directives?organizationId=${organizationId}&meetingId=${meetingId}`,

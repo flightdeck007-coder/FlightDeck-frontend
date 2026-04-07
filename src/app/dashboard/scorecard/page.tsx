@@ -28,17 +28,26 @@ export default function ScorecardPage() {
     () => meetings.find((m) => m.teamId === selectedTeamId)?.id,
     [meetings, selectedTeamId]
   );
+  const scorecardMeetingId = useMemo(() => {
+    const teamMeetings = meetings.filter((m) => m.teamId === selectedTeamId);
+    if (teamMeetings.length === 0) return fallbackMeetingId;
+    return [...teamMeetings].sort((a, b) => {
+      const aTs = new Date(a.scheduledAt || 0).getTime();
+      const bTs = new Date(b.scheduledAt || 0).getTime();
+      return aTs - bTs;
+    })[0]?.id;
+  }, [meetings, selectedTeamId, fallbackMeetingId]);
 
   useEffect(() => {
-    if (!organizationId || !fallbackMeetingId) {
+    if (!organizationId || !scorecardMeetingId) {
       setSelectedMeeting(null);
       return;
     }
     meetingsService
-      .findOne(organizationId, fallbackMeetingId)
+      .findOne(organizationId, scorecardMeetingId)
       .then(setSelectedMeeting)
       .catch(() => setSelectedMeeting(null));
-  }, [organizationId, fallbackMeetingId]);
+  }, [organizationId, scorecardMeetingId]);
 
   if (!organizationId || teamsLoading) {
     return (
@@ -65,17 +74,17 @@ export default function ScorecardPage() {
         </div>
         </div>
 
-        {!fallbackMeetingId ? (
+        {!scorecardMeetingId ? (
           <div className="flex-1 flex items-center justify-center rounded-xl border border-border bg-muted/20">
             <p className="text-muted-foreground">No flight review found for this crew yet.</p>
           </div>
         ) : (
-          <MeetingSocketProvider meetingId={fallbackMeetingId} organizationId={organizationId}>
+          <MeetingSocketProvider meetingId={scorecardMeetingId} organizationId={organizationId}>
             <div className="flex-1 min-h-0 flex flex-col">
               <InstrumentsSegmentView
                 teamName={teamName}
                 teamId={selectedTeamId || undefined}
-                meetingId={fallbackMeetingId}
+                meetingId={scorecardMeetingId}
                 organizationId={organizationId}
                 currentUserId={currentUserId}
                 canRecord
