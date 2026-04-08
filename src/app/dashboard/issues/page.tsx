@@ -18,6 +18,7 @@ export default function IssuesPage() {
     setSelectedTeamId,
     isLoading: teamsLoading,
     selectedTeam,
+    fileStorageMeetingId,
   } = useMeetingsData();
   const [createOpen, setCreateOpen] = useState(false);
   const [createType, setCreateType] = useState<'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | undefined>(undefined);
@@ -89,6 +90,7 @@ export default function IssuesPage() {
                   teams={teams.map((t) => ({ id: t.id, name: t.name }))}
                   organizationId={organizationId}
                   meetingId={undefined}
+                  fileStorageMeetingId={fileStorageMeetingId}
                   canRecord
                   onOpenCreate={(type, options) => {
                     setCreateType(type);
@@ -130,6 +132,7 @@ export default function IssuesPage() {
               initialIssueInterval={createIssueInterval}
               initialLinkedEntity={createLinkedEntity}
               meetingAttendances={meetingAttendances}
+              attachmentMeetingId={fileStorageMeetingId}
             />
           </TodosProvider>
         </IssuesProvider>

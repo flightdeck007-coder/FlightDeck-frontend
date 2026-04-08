@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
 import { Select, Input } from 'antd';
@@ -34,9 +34,11 @@ import { useIssues, type IssueItem } from '@/contexts/IssuesContext';
 import { ContentAreaLoader } from '@/components/ui/loaders';
 import { formatDate } from '@/lib/formatDate';
 import { RichTextEditor } from '@/components/meeting/RichTextEditor';
+import { OwnerInitialsAvatar } from '@/components/meeting/OwnerInitialsAvatar';
 import { teamsService } from '@/lib/api/teams.service';
 import type { TeamMember } from '@/lib/api/teams.service';
 import { issuesService } from '@/lib/api/issues.service';
+import { meetingsService } from '@/lib/api/meetings.service';
 import { toast } from 'sonner';
 
 const MENU_WIDTH = 248;
@@ -55,6 +57,10 @@ function linkedEntityTypeLabel(type: string | null | undefined): string {
     rock_milestone: 'Waypoint milestone',
   };
   return map[type] ?? type;
+}
+
+function isPersistedAttachmentId(id: string): boolean {
+  return /^[a-z][a-z0-9]{20,}$/i.test(id);
 }
 
 function getLinkedCreateOptions(item: IssueItem, target: CreatePopupType) {
@@ -88,6 +94,8 @@ interface IssuesSegmentViewProps {
   canRecord?: boolean;
   onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; issueInterval?: 'short' | 'long'; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
   onOpenCreateIssue?: () => void;
+  /** Meeting used for attachment storage (scheduled review id). */
+  fileStorageMeetingId?: string;
 }
 
 function FilterIconButton({
@@ -122,6 +130,7 @@ export function IssuesSegmentView({
   canRecord,
   onOpenCreate,
   onOpenCreateIssue,
+  fileStorageMeetingId,
 }: IssuesSegmentViewProps) {
   const canUseFilters = canRecord ?? isFacilitator;
   const [teamFilter, setTeamFilter] = useState(teamName);
@@ -660,6 +669,7 @@ export function IssuesSegmentView({
               setActiveTab(targetTermType);
               setSelectedIssueId(null);
             }}
+            fileStorageMeetingId={fileStorageMeetingId}
           />
         ) : null;
       })()}
@@ -791,9 +801,7 @@ function IssueCard({
           className="w-[60px]"
         />
         <span className="text-xs text-muted-foreground">{formatDate(item.createdAt)}</span>
-        <div className="w-7 h-7 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
-          {item.ownerInitials}
-        </div>
+        <OwnerInitialsAvatar initials={item.ownerInitials} size="sm" />
       </div>
       {menuOpen && anchorRect && typeof document !== 'undefined' && (
         <IssueRowMenu
@@ -927,9 +935,7 @@ function IssueRow({
           {formatDate(item.createdAt)}
         </td>
         <td className="px-4 py-2 align-middle">
-          <div className="w-7 h-7 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary">
-            {item.ownerInitials}
-          </div>
+          <OwnerInitialsAvatar initials={item.ownerInitials} size="sm" />
         </td>
         <td className="px-4 py-2 align-middle text-right">
           <button
@@ -988,11 +994,13 @@ function IssueDetailPanel({
   onOpenCreate,
   onToggleResolved,
   onMergeIntoAnother,
+  fileStorageMeetingId,
 }: {
   issue: IssueItem;
   teamName: string;
   organizationId?: string | null;
   teamId?: string | null;
+  fileStorageMeetingId?: string;
   onClose: () => void;
   onUpdate: (patch: Partial<IssueItem>) => void;
   onArchive: () => void;
@@ -1015,6 +1023,67 @@ function IssueDetailPanel({
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [headerMenuRect, setHeaderMenuRect] = useState<DOMRect | null>(null);
   const headerMenuBtnRef = useRef<HTMLButtonElement>(null);
+  const attachmentMeetingId = fileStorageMeetingId;
+  const [issueAttachments, setIssueAttachments] = useState<Array<{ id: string; name: string; uploadedAt: string }>>([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [issueAttachDragOver, setIssueAttachDragOver] = useState(false);
+
+  const loadIssueAttachments = useCallback(async () => {
+    if (!organizationId || !attachmentMeetingId || !issue.id) {
+      setIssueAttachments([]);
+      return;
+    }
+    setAttachmentsLoading(true);
+    try {
+      const list = await meetingsService.getAttachments(organizationId, attachmentMeetingId, {
+        linkedEntityType: 'issue',
+        linkedEntityId: issue.id,
+      });
+      setIssueAttachments(
+        list.map((a) => ({
+          id: a.id,
+          name: a.fileName,
+          uploadedAt:
+            a.createdAt != null
+              ? typeof a.createdAt === 'string'
+                ? a.createdAt
+                : new Date(a.createdAt as Date).toISOString()
+              : new Date().toISOString(),
+        })),
+      );
+    } catch {
+      setIssueAttachments([]);
+      toast.error("Couldn't load attachments.");
+    } finally {
+      setAttachmentsLoading(false);
+    }
+  }, [organizationId, attachmentMeetingId, issue.id]);
+
+  const uploadIssueFiles = useCallback(
+    async (files: File[]) => {
+      if (!files.length) return;
+      if (!organizationId || !attachmentMeetingId) {
+        toast.message('Open a scheduled flight review to upload files to the server.');
+        return;
+      }
+      for (const f of files) {
+        try {
+          await meetingsService.uploadAttachment(organizationId, attachmentMeetingId, f, {
+            linkedEntityType: 'issue',
+            linkedEntityId: issue.id,
+          });
+        } catch {
+          toast.error(`Couldn't upload ${f.name}`);
+        }
+      }
+      await loadIssueAttachments();
+    },
+    [organizationId, attachmentMeetingId, issue.id, loadIssueAttachments],
+  );
+
+  useEffect(() => {
+    void loadIssueAttachments();
+  }, [loadIssueAttachments]);
 
   useEffect(() => {
     setTitle(issue.title);
@@ -1174,7 +1243,14 @@ function IssueDetailPanel({
                   onDelete();
                 }}
                 onMakeLongTerm={onMakeLongTerm}
-                onOpenCreate={onOpenCreate}
+                onOpenCreate={
+                  onOpenCreate
+                    ? (type, options) => {
+                        onOpenCreate(type, options);
+                        onClose();
+                      }
+                    : undefined
+                }
                 showMoveActions={false}
                 overlayZIndex={55}
                 menuZIndex={56}
@@ -1185,11 +1261,11 @@ function IssueDetailPanel({
               <button
                 type="button"
                 onClick={() => setOwnerPickerOpen((v) => !v)}
-                className="w-9 h-9 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary hover:bg-primary/20"
+                className="p-0 rounded-full border-0 bg-transparent hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background"
                 title={`Owner: ${ownerName}`}
                 aria-label="Change owner"
               >
-                {headerInitials}
+                <OwnerInitialsAvatar initials={headerInitials} size="lg" title={`Owner: ${ownerName}`} />
               </button>
               {ownerPickerOpen && (
                 <>
@@ -1222,7 +1298,7 @@ function IssueDetailPanel({
                             onClick={() => handleOwnerSelect(uid)}
                             className={`w-full text-left px-2.5 py-2 rounded flex items-center gap-2 text-sm ${isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'}`}
                           >
-                            <span className="w-6 h-6 rounded-full bg-muted inline-flex items-center justify-center text-xs">{initials}</span>
+                            <OwnerInitialsAvatar initials={initials} size="xs" />
                             <span className="truncate">{label}</span>
                           </button>
                         );
@@ -1231,9 +1307,6 @@ function IssueDetailPanel({
                   </div>
                 </>
               )}
-            </div>
-            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground hidden">
-              {headerInitials}
             </div>
             <button
               type="button"
@@ -1333,20 +1406,73 @@ function IssueDetailPanel({
             )}
           </section>
           <section className="pt-6 mt-6 border-t border-border">
-            <h4 className="font-medium text-foreground mb-3">Attachments 0</h4>
-            <div className="border-2 border-dashed border-border rounded-lg p-8 text-center text-sm text-muted-foreground">
+            <h4 className="font-medium text-foreground mb-3">
+              Attachments {attachmentsLoading ? '…' : issueAttachments.length}
+            </h4>
+            <div
+              className={`border-2 border-dashed rounded-lg p-8 text-center text-sm text-muted-foreground transition-colors ${
+                issueAttachDragOver ? 'border-primary bg-primary/5' : 'border-border'
+              }`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIssueAttachDragOver(true);
+              }}
+              onDragLeave={() => setIssueAttachDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIssueAttachDragOver(false);
+                void uploadIssueFiles(Array.from(e.dataTransfer.files ?? []));
+              }}
+            >
               Drag and drop files to attach, or{' '}
-              <button type="button" className="text-primary hover:underline">
+              <label className="text-primary hover:underline cursor-pointer">
                 browse
-              </button>
+                <input
+                  type="file"
+                  className="hidden"
+                  multiple
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={(e) => {
+                    const input = e.currentTarget;
+                    const files = Array.from(input.files ?? []);
+                    input.value = '';
+                    void uploadIssueFiles(files);
+                  }}
+                />
+              </label>
             </div>
+            {issueAttachments.length > 0 && (
+              <div className="mt-3 space-y-1">
+                {issueAttachments.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="truncate min-w-0" title={a.name}>
+                      {a.name}
+                    </span>
+                    {organizationId && attachmentMeetingId && isPersistedAttachmentId(a.id) && (
+                      <button
+                        type="button"
+                        className="text-xs text-primary hover:underline inline-flex items-center gap-1 shrink-0"
+                        onClick={() =>
+                          meetingsService.downloadAttachment(organizationId, attachmentMeetingId, a.id, a.name)
+                        }
+                      >
+                        <Download className="w-3.5 h-3.5" /> Download
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {!attachmentMeetingId && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Open a scheduled flight review to upload files to the server.
+              </p>
+            )}
           </section>
           <section className="pt-6 mt-6 border-t border-border">
             <h4 className="font-medium text-foreground mb-3">Comments 0</h4>
             <div className="flex gap-3">
-              <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground shrink-0">
-                {headerInitials}
-              </div>
+              <OwnerInitialsAvatar initials={headerInitials} size="lg" />
               <input
                 type="text"
                 placeholder="Add a comment..."

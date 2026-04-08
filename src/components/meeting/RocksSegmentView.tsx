@@ -57,8 +57,10 @@ import { useTodosOptional } from '@/contexts/TodosContext';
 import { FLIGHT_TERMS } from '@/lib/constants/flightTerminology';
 import { ContentAreaLoader } from '@/components/ui/loaders';
 import { RichTextEditor } from './RichTextEditor';
+import { OwnerInitialsAvatar } from './OwnerInitialsAvatar';
 import { teamsService } from '@/lib/api/teams.service';
 import type { TeamMember } from '@/lib/api/teams.service';
+import { meetingsService } from '@/lib/api/meetings.service';
 
 const COLUMN_LABELS: Record<RockColumnId, string> = {
   current: 'Current',
@@ -106,6 +108,10 @@ const DROPDOWN_OPTION_HEIGHT = 44;
 const DROPDOWN_PADDING = 12;
 const DROPDOWN_GAP = 4;
 const DROPDOWN_EST_HEIGHT = STATUS_OPTIONS.length * DROPDOWN_OPTION_HEIGHT + DROPDOWN_PADDING * 2;
+
+function isPersistedAttachmentId(id: string): boolean {
+  return /^[a-z][a-z0-9]{20,}$/i.test(id);
+}
 
 function RockStatusDropdown({ rock, onStatusChange }: { rock: Rock; onStatusChange: (status: Rock['status']) => void }) {
   const [open, setOpen] = useState(false);
@@ -230,6 +236,8 @@ interface RocksSegmentViewProps {
   /** Scribe or facilitator can change filters and create (recording) */
   canRecord?: boolean;
   onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: LinkedEntityOption }) => void;
+  /** Meeting id for entity file uploads (same as flight review storage). */
+  fileStorageMeetingId?: string;
 }
 
 export function RocksSegmentView({
@@ -242,6 +250,7 @@ export function RocksSegmentView({
   isFacilitator = true,
   canRecord,
   onOpenCreate,
+  fileStorageMeetingId,
 }: RocksSegmentViewProps) {
   const canUseFilters = canRecord ?? isFacilitator;
   const resolvedTeamName = teamName ?? 'No team found';
@@ -526,6 +535,7 @@ export function RocksSegmentView({
             onVtoToggle={() => setVtoExpanded((e) => !e)}
             onOpenCreate={onOpenCreate}
             meetingId={meetingId}
+            fileStorageMeetingId={fileStorageMeetingId}
             organizationId={organizationId}
             teamId={teamId}
             teamName={resolvedTeamName}
@@ -561,6 +571,7 @@ export function RocksSegmentView({
             milestonesByRock={milestonesByRock}
             onOpenCreate={onOpenCreate}
             meetingId={meetingId}
+            fileStorageMeetingId={fileStorageMeetingId}
             organizationId={organizationId}
             teamId={teamId}
             teamName={resolvedTeamName}
@@ -591,6 +602,7 @@ export function RocksSegmentView({
             }}
             onClose={() => setSelectedRockId(null)}
             onOpenCreate={onOpenCreate}
+            fileStorageMeetingId={fileStorageMeetingId}
           />
         ) : null;
       })()}
@@ -623,6 +635,7 @@ function RocksTabContent({
   onAddRock,
   onOpenCreate,
   meetingId,
+  fileStorageMeetingId,
   organizationId,
   teamId,
   teamName,
@@ -638,6 +651,7 @@ function RocksTabContent({
   onAddRock: () => void;
   onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: LinkedEntityOption }) => void;
   meetingId?: string;
+  fileStorageMeetingId?: string;
   organizationId?: string;
   teamId?: string | null;
   teamName: string;
@@ -864,6 +878,7 @@ function RocksTabContent({
                     showOwnerColumn
                     onOpenCreate={onOpenCreate}
                     meetingId={meetingId}
+                    fileStorageMeetingId={fileStorageMeetingId}
                     organizationId={organizationId}
                     teamId={teamId}
                     teamName={teamName}
@@ -884,9 +899,7 @@ function RocksTabContent({
         return (
           <div key={ownerName} className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="flex items-center gap-2 p-4 border-b border-border bg-muted/20">
-              <div className="w-8 h-8 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary">
-                {initials}
-              </div>
+              <OwnerInitialsAvatar initials={initials} size="md" title={ownerName} />
               <h3 className="font-semibold text-foreground">
                 {ownerName} {rocks.length}
               </h3>
@@ -925,6 +938,7 @@ function RocksTabContent({
                       showOwnerColumn={false}
                       onOpenCreate={onOpenCreate}
                       meetingId={meetingId}
+                      fileStorageMeetingId={fileStorageMeetingId}
                       organizationId={organizationId}
                       teamId={teamId}
                       teamName={teamName}
@@ -1205,6 +1219,7 @@ function rockAssigneeInitials(name?: string | null, email?: string): string {
 function RockDetailPanel({
   rock,
   meetingId,
+  fileStorageMeetingId,
   organizationId,
   teamId,
   teamName,
@@ -1215,6 +1230,7 @@ function RockDetailPanel({
 }: {
   rock: Rock;
   meetingId?: string;
+  fileStorageMeetingId?: string;
   organizationId?: string;
   teamId?: string | null;
   teamName: string;
@@ -1228,6 +1244,9 @@ function RockDetailPanel({
   const [linkExistingOpen, setLinkExistingOpen] = useState(false);
   const [description, setDescription] = useState('');
   const [attachDragOver, setAttachDragOver] = useState(false);
+  const attachmentMeetingId = fileStorageMeetingId ?? meetingId;
+  const [rockAttachments, setRockAttachments] = useState<Array<{ id: string; name: string; uploadedAt: string }>>([]);
+  const [rockAttachmentsLoading, setRockAttachmentsLoading] = useState(false);
   const [title, setTitle] = useState(rock.title);
   const [dueBy, setDueBy] = useState(rock.dueBy);
   const [milestones, setMilestones] = useState<RockMilestone[]>(initialMilestones ?? []);
@@ -1242,6 +1261,63 @@ function RockDetailPanel({
   const [confirmOwnerChangeOpen, setConfirmOwnerChangeOpen] = useState(false);
   const [pendingOwnerId, setPendingOwnerId] = useState<string | null>(null);
   const { updateRock, archiveRock, deleteRock } = useRocks();
+
+  const loadRockAttachments = useCallback(async () => {
+    if (!organizationId || !attachmentMeetingId || !rock.id) {
+      setRockAttachments([]);
+      return;
+    }
+    setRockAttachmentsLoading(true);
+    try {
+      const list = await meetingsService.getAttachments(organizationId, attachmentMeetingId, {
+        linkedEntityType: 'rock',
+        linkedEntityId: rock.id,
+      });
+      setRockAttachments(
+        list.map((a) => ({
+          id: a.id,
+          name: a.fileName,
+          uploadedAt:
+            a.createdAt != null
+              ? typeof a.createdAt === 'string'
+                ? a.createdAt
+                : new Date(a.createdAt as unknown as string).toISOString()
+              : new Date().toISOString(),
+        })),
+      );
+    } catch {
+      setRockAttachments([]);
+      toast.error("Couldn't load attachments.");
+    } finally {
+      setRockAttachmentsLoading(false);
+    }
+  }, [organizationId, attachmentMeetingId, rock.id]);
+
+  const uploadRockFiles = useCallback(
+    async (files: File[]) => {
+      if (!files.length) return;
+      if (!organizationId || !attachmentMeetingId) {
+        toast.message('Open a scheduled flight review to upload files to the server.');
+        return;
+      }
+      for (const f of files) {
+        try {
+          await meetingsService.uploadAttachment(organizationId, attachmentMeetingId, f, {
+            linkedEntityType: 'rock',
+            linkedEntityId: rock.id,
+          });
+        } catch {
+          toast.error(`Couldn't upload ${f.name}`);
+        }
+      }
+      await loadRockAttachments();
+    },
+    [organizationId, attachmentMeetingId, rock.id, loadRockAttachments],
+  );
+
+  useEffect(() => {
+    void loadRockAttachments();
+  }, [loadRockAttachments]);
 
   useEffect(() => {
     setTitle(rock.title);
@@ -1491,11 +1567,11 @@ function RockDetailPanel({
             )}
             <button
               type="button"
-              className="w-9 h-9 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary"
+              className="p-0 rounded-full border-0 bg-transparent hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background"
               onClick={() => setOwnerPickerOpen((v) => !v)}
               title="Change owner"
             >
-              {rock.ownerInitials}
+              <OwnerInitialsAvatar initials={rock.ownerInitials} size="lg" title="Change owner" />
             </button>
             {ownerPickerOpen && (
               <>
@@ -1519,7 +1595,7 @@ function RockDetailPanel({
                         onClick={() => requestOwnerChange(uid)}
                         className="w-full text-left px-2.5 py-2 rounded flex items-center gap-2 text-sm hover:bg-muted text-foreground"
                       >
-                        <span className="w-6 h-6 rounded-full bg-muted inline-flex items-center justify-center text-xs">{initials}</span>
+                        <OwnerInitialsAvatar initials={initials} size="xs" />
                         <span className="truncate">{label}</span>
                       </button>
                     );
@@ -1704,7 +1780,7 @@ function RockDetailPanel({
                     </div>
                     <div className="shrink-0 flex items-center gap-3">
                       <span className="text-xs text-muted-foreground">{rock.dueBy}</span>
-                      <span className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">{rock.ownerInitials}</span>
+                      <OwnerInitialsAvatar initials={rock.ownerInitials} size="md" />
                       {linkedEditMode && (
                         <button
                           type="button"
@@ -1723,22 +1799,73 @@ function RockDetailPanel({
 
           {/* Attachments — drag and drop */}
           <section className="py-6 border-b border-border">
-            <h4 className="font-medium text-foreground mb-3">Attachments 0</h4>
+            <h4 className="font-medium text-foreground mb-3">
+              Attachments {rockAttachmentsLoading ? '…' : rockAttachments.length}
+            </h4>
             <div
               className={`border-2 border-dashed rounded-lg p-8 text-center text-sm text-muted-foreground transition-colors ${attachDragOver ? 'border-primary bg-primary/5' : 'border-border'}`}
-              onDragOver={(e) => { e.preventDefault(); setAttachDragOver(true); }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setAttachDragOver(true);
+              }}
               onDragLeave={() => setAttachDragOver(false)}
-              onDrop={(e) => { e.preventDefault(); setAttachDragOver(false); /* TODO: upload files */ }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setAttachDragOver(false);
+                void uploadRockFiles(Array.from(e.dataTransfer.files ?? []));
+              }}
             >
-              Drag and drop files to attach, or <button type="button" className="text-primary hover:underline">browse</button>
+              Drag and drop files to attach, or{' '}
+              <label className="text-primary hover:underline cursor-pointer">
+                browse
+                <input
+                  type="file"
+                  className="hidden"
+                  multiple
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={(e) => {
+                    const input = e.currentTarget;
+                    const files = Array.from(input.files ?? []);
+                    input.value = '';
+                    void uploadRockFiles(files);
+                  }}
+                />
+              </label>
             </div>
+            {rockAttachments.length > 0 && (
+              <div className="mt-3 space-y-1">
+                {rockAttachments.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="truncate min-w-0" title={a.name}>
+                      {a.name}
+                    </span>
+                    {organizationId && attachmentMeetingId && isPersistedAttachmentId(a.id) && (
+                      <button
+                        type="button"
+                        className="text-xs text-primary hover:underline inline-flex items-center gap-1 shrink-0"
+                        onClick={() =>
+                          meetingsService.downloadAttachment(organizationId, attachmentMeetingId, a.id, a.name)
+                        }
+                      >
+                        <Download className="w-3.5 h-3.5" /> Download
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {!attachmentMeetingId && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Open a scheduled flight review to upload files to the server.
+              </p>
+            )}
           </section>
 
           {/* Comments */}
           <section className="py-6">
             <h4 className="font-medium text-foreground mb-3">Comments 0</h4>
             <div className="flex gap-2">
-              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground shrink-0">{rock.ownerInitials}</div>
+              <OwnerInitialsAvatar initials={rock.ownerInitials} size="md" />
               <input type="text" placeholder="Add a comment..." className="flex-1 min-w-0 px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm" />
             </div>
             <p className="text-xs text-muted-foreground mt-1 text-right">0/10000</p>
@@ -1753,6 +1880,7 @@ function RockDetailPanel({
       {addMilestoneOpen && (
         <AddMilestoneModal
           title="Add Milestone"
+          ownerInitials={rock.ownerInitials}
           onClose={() => setAddMilestoneOpen(false)}
           onAdd={(milestone) => {
             applyMilestones([...milestones, milestone]);
@@ -1765,6 +1893,7 @@ function RockDetailPanel({
           rock={rock}
           milestone={editingMilestone}
           meetingId={meetingId}
+          fileStorageMeetingId={attachmentMeetingId}
           organizationId={organizationId}
           teamId={teamId}
           teamName={teamName}
@@ -1816,11 +1945,13 @@ function RockDetailPanel({
 function AddMilestoneModal({
   title: modalTitle,
   initialMilestone,
+  ownerInitials,
   onClose,
   onAdd,
 }: {
   title?: string;
   initialMilestone?: RockMilestone;
+  ownerInitials?: string | null;
   onClose: () => void;
   onAdd: (m: RockMilestone) => void;
 }) {
@@ -1839,7 +1970,7 @@ function AddMilestoneModal({
       <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[61] w-full max-w-md bg-card border border-border rounded-lg shadow-xl p-5">
         <h3 className="text-lg font-semibold text-foreground mb-4">{modalTitle ?? 'Add a Milestone'}</h3>
         <div className="flex gap-2 mb-4">
-          <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-xs text-muted-foreground shrink-0">GS</div>
+          <OwnerInitialsAvatar initials={ownerInitials} size="lg" title="Waypoint owner" />
           <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="flex-1 min-w-0 px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm" />
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm w-[140px]" />
         </div>
@@ -1875,6 +2006,7 @@ function MilestoneDetailPanel({
   rock,
   milestone,
   meetingId,
+  fileStorageMeetingId,
   organizationId,
   teamId,
   teamName,
@@ -1886,6 +2018,7 @@ function MilestoneDetailPanel({
   rock: Rock;
   milestone: RockMilestone;
   meetingId?: string;
+  fileStorageMeetingId?: string;
   organizationId?: string;
   teamId?: string | null;
   teamName: string;
@@ -1894,6 +2027,8 @@ function MilestoneDetailPanel({
   onClose: () => void;
   onSave: (m: RockMilestone) => void;
 }) {
+  const attachmentMeetingId = fileStorageMeetingId;
+  const [msAttachDragOver, setMsAttachDragOver] = useState(false);
   const [title, setTitle] = useState(milestone.title);
   const [description, setDescription] = useState(milestone.description ?? '');
   const [completed, setCompleted] = useState(Boolean(milestone.completed));
@@ -1905,6 +2040,8 @@ function MilestoneDetailPanel({
   const [linkExistingOpen, setLinkExistingOpen] = useState(false);
   const [linkedItems, setLinkedItems] = useState<LinkedRockItem[]>([]);
   const [linkedEditMode, setLinkedEditMode] = useState(false);
+  const [milestoneAttachments, setMilestoneAttachments] = useState<Array<{ id: string; name: string; uploadedAt: string }>>([]);
+  const [milestoneAttachmentsLoading, setMilestoneAttachmentsLoading] = useState(false);
 
   useEffect(() => {
     setTitle(milestone.title);
@@ -1946,6 +2083,63 @@ function MilestoneDetailPanel({
   useEffect(() => {
     loadLinkedItems();
   }, [loadLinkedItems]);
+
+  const loadMilestoneAttachments = useCallback(async () => {
+    if (!organizationId || !attachmentMeetingId || !milestone.id) {
+      setMilestoneAttachments([]);
+      return;
+    }
+    setMilestoneAttachmentsLoading(true);
+    try {
+      const list = await meetingsService.getAttachments(organizationId, attachmentMeetingId, {
+        linkedEntityType: 'rock_milestone',
+        linkedEntityId: milestone.id,
+      });
+      setMilestoneAttachments(
+        list.map((a) => ({
+          id: a.id,
+          name: a.fileName,
+          uploadedAt:
+            a.createdAt != null
+              ? typeof a.createdAt === 'string'
+                ? a.createdAt
+                : new Date(a.createdAt as unknown as string).toISOString()
+              : new Date().toISOString(),
+        })),
+      );
+    } catch {
+      setMilestoneAttachments([]);
+      toast.error("Couldn't load attachments.");
+    } finally {
+      setMilestoneAttachmentsLoading(false);
+    }
+  }, [organizationId, attachmentMeetingId, milestone.id]);
+
+  const uploadMilestoneFiles = useCallback(
+    async (files: File[]) => {
+      if (!files.length) return;
+      if (!organizationId || !attachmentMeetingId) {
+        toast.message('Open a scheduled flight review to upload files to the server.');
+        return;
+      }
+      for (const f of files) {
+        try {
+          await meetingsService.uploadAttachment(organizationId, attachmentMeetingId, f, {
+            linkedEntityType: 'rock_milestone',
+            linkedEntityId: milestone.id,
+          });
+        } catch {
+          toast.error(`Couldn't upload ${f.name}`);
+        }
+      }
+      await loadMilestoneAttachments();
+    },
+    [organizationId, attachmentMeetingId, milestone.id, loadMilestoneAttachments],
+  );
+
+  useEffect(() => {
+    void loadMilestoneAttachments();
+  }, [loadMilestoneAttachments]);
 
   const unlinkItem = async (item: LinkedRockItem) => {
     if (!organizationId) return;
@@ -1992,7 +2186,7 @@ function MilestoneDetailPanel({
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button type="button" className="p-2 rounded-md hover:bg-muted text-muted-foreground" aria-label="More"><MoreHorizontal className="w-4 h-4" /></button>
-            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">{rock.ownerInitials}</div>
+            <OwnerInitialsAvatar initials={rock.ownerInitials} size="md" />
             <button type="button" onClick={onClose} className="p-2 rounded-md hover:bg-muted text-muted-foreground" aria-label="Close"><X className="w-5 h-5" /></button>
           </div>
         </header>
@@ -2055,7 +2249,7 @@ function MilestoneDetailPanel({
                     </div>
                     <div className="shrink-0 flex items-center gap-3">
                       <span className="text-xs text-muted-foreground">{milestone.dueDate}</span>
-                      <span className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">{rock.ownerInitials}</span>
+                      <OwnerInitialsAvatar initials={rock.ownerInitials} size="md" />
                       {linkedEditMode && (
                         <button
                           type="button"
@@ -2073,16 +2267,79 @@ function MilestoneDetailPanel({
           </section>
 
           <section className="py-6 border-b border-border">
-            <h4 className="font-medium text-foreground mb-3">Attachments <span className="px-1.5 py-0.5 rounded bg-muted text-xs">0</span></h4>
-            <div className="border-2 border-dashed rounded-lg p-8 text-center text-sm text-muted-foreground border-border">
-              Drag and drop files to attach, or <button type="button" className="text-primary hover:underline">browse</button>
+            <h4 className="font-medium text-foreground mb-3 flex flex-wrap items-center gap-1.5">
+              <span>Attachments</span>
+              {milestoneAttachmentsLoading ? (
+                <span className="px-1.5 py-0.5 rounded bg-muted text-xs">…</span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded bg-muted text-xs">{milestoneAttachments.length}</span>
+              )}
+            </h4>
+            <div
+              className={`border-2 border-dashed rounded-lg p-8 text-center text-sm text-muted-foreground transition-colors ${
+                msAttachDragOver ? 'border-primary bg-primary/5' : 'border-border'
+              }`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setMsAttachDragOver(true);
+              }}
+              onDragLeave={() => setMsAttachDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setMsAttachDragOver(false);
+                void uploadMilestoneFiles(Array.from(e.dataTransfer.files ?? []));
+              }}
+            >
+              Drag and drop files to attach, or{' '}
+              <label className="text-primary hover:underline cursor-pointer">
+                browse
+                <input
+                  type="file"
+                  className="hidden"
+                  multiple
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={(e) => {
+                    const input = e.currentTarget;
+                    const files = Array.from(input.files ?? []);
+                    input.value = '';
+                    void uploadMilestoneFiles(files);
+                  }}
+                />
+              </label>
             </div>
+            {milestoneAttachments.length > 0 && (
+              <div className="mt-3 space-y-1">
+                {milestoneAttachments.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="truncate min-w-0" title={a.name}>
+                      {a.name}
+                    </span>
+                    {organizationId && attachmentMeetingId && isPersistedAttachmentId(a.id) && (
+                      <button
+                        type="button"
+                        className="text-xs text-primary hover:underline inline-flex items-center gap-1 shrink-0"
+                        onClick={() =>
+                          meetingsService.downloadAttachment(organizationId, attachmentMeetingId, a.id, a.name)
+                        }
+                      >
+                        <Download className="w-3.5 h-3.5" /> Download
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {!attachmentMeetingId && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Open a scheduled flight review to upload files to the server.
+              </p>
+            )}
           </section>
 
           <section className="py-6">
             <h4 className="font-medium text-foreground mb-3">Comments <span className="px-1.5 py-0.5 rounded bg-muted text-xs">0</span></h4>
             <div className="flex gap-2">
-              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground shrink-0">{rock.ownerInitials}</div>
+              <OwnerInitialsAvatar initials={rock.ownerInitials} size="md" />
               <input type="text" placeholder="Add a comment..." className="flex-1 min-w-0 px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm" />
             </div>
             <p className="text-xs text-muted-foreground mt-1 text-right">0/10000</p>
@@ -2359,6 +2616,7 @@ function RockRow({
   showOwnerColumn = !showMilestone,
   onOpenCreate,
   meetingId,
+  fileStorageMeetingId,
   organizationId,
   teamId,
   teamName,
@@ -2375,6 +2633,7 @@ function RockRow({
   showOwnerColumn?: boolean;
   onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: LinkedEntityOption }) => void;
   meetingId?: string;
+  fileStorageMeetingId?: string;
   organizationId?: string;
   teamId?: string | null;
   teamName?: string;
@@ -2559,9 +2818,7 @@ function RockRow({
         {showOwnerColumn && (
           <td className="px-4 py-3 align-middle">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
-                {rock.ownerInitials}
-              </div>
+              <OwnerInitialsAvatar initials={rock.ownerInitials} size="sm" title={rock.ownerName ? `Owner: ${rock.ownerName}` : undefined} />
               <span className="text-sm text-foreground truncate">{rock.ownerName}</span>
             </div>
           </td>
@@ -2701,9 +2958,7 @@ function RockRow({
 
                 {showOwnerColumn && (
                   <td className="px-4 py-3 align-middle" onClick={(e) => e.stopPropagation()}>
-                    <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
-                      {rock.ownerInitials}
-                    </div>
+                    <OwnerInitialsAvatar initials={rock.ownerInitials} size="sm" />
                   </td>
                 )}
 
@@ -2886,6 +3141,7 @@ function RockRow({
           rock={rock}
           milestone={editingMilestoneModal}
           meetingId={meetingId}
+          fileStorageMeetingId={fileStorageMeetingId ?? meetingId}
           organizationId={organizationId}
           teamId={teamId}
           teamName={teamName ?? rock.ownerName}
@@ -3037,9 +3293,7 @@ function DraggableRockCard({ rock }: { rock: Rock }) {
         >
           <Link2 className="w-3 h-3" /> Link Goal
         </button>
-        <div className="w-7 h-7 rounded-full border border-border bg-muted flex items-center justify-center text-xs font-medium text-foreground">
-          {rock.ownerInitials}
-        </div>
+        <OwnerInitialsAvatar initials={rock.ownerInitials} size="sm" />
       </div>
     </div>
   );
@@ -3050,6 +3304,7 @@ function ArchiveTabContent({
   milestonesByRock,
   onOpenCreate,
   meetingId,
+  fileStorageMeetingId,
   organizationId,
   teamId,
   teamName,
@@ -3061,6 +3316,7 @@ function ArchiveTabContent({
   milestonesByRock: Record<string, RockMilestone[]>;
   onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: LinkedEntityOption }) => void;
   meetingId?: string;
+  fileStorageMeetingId?: string;
   organizationId?: string;
   teamId?: string | null;
   teamName: string;
@@ -3122,6 +3378,7 @@ function ArchiveTabContent({
                     showOwnerColumn
                     onOpenCreate={onOpenCreate}
                     meetingId={meetingId}
+                    fileStorageMeetingId={fileStorageMeetingId}
                     organizationId={organizationId}
                     teamId={teamId}
                     teamName={teamName}

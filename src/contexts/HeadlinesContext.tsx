@@ -49,8 +49,8 @@ export interface CascadingMessageItem {
 interface HeadlinesContextValue {
   headlines: HeadlineItem[];
   cascadingMessages: CascadingMessageItem[];
-  addHeadline: (item: Omit<HeadlineItem, 'id'>) => void;
-  addCascadingMessage: (item: Omit<CascadingMessageItem, 'id'>) => void;
+  addHeadline: (item: Omit<HeadlineItem, 'id'>) => Promise<string | undefined>;
+  addCascadingMessage: (item: Omit<CascadingMessageItem, 'id'>) => Promise<string | undefined>;
   reorderHeadlines: (fromIndex: number, toIndex: number) => void;
   reorderCascadingMessages: (fromIndex: number, toIndex: number) => void;
   archiveHeadline: (id: string) => void;
@@ -96,9 +96,19 @@ function normalizeAttachments(
     if (!item || typeof item !== 'object') continue;
     const obj = item as Record<string, unknown>;
     const id = typeof obj.id === 'string' ? obj.id : `a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const name = typeof obj.name === 'string' ? obj.name : '';
+    const name =
+      typeof obj.name === 'string'
+        ? obj.name
+        : typeof obj.fileName === 'string'
+          ? obj.fileName
+          : '';
     if (!name.trim()) continue;
-    const uploadedAt = typeof obj.uploadedAt === 'string' ? obj.uploadedAt : new Date().toISOString();
+    const uploadedAt =
+      typeof obj.uploadedAt === 'string'
+        ? obj.uploadedAt
+        : typeof obj.createdAt === 'string'
+          ? obj.createdAt
+          : new Date().toISOString();
     normalized.push({ id, name, uploadedAt });
   }
   return normalized;
@@ -229,9 +239,9 @@ export function HeadlinesProvider({
 
   const addHeadline = useCallback(
     async (item: Omit<HeadlineItem, 'id'>) => {
-      if (!organizationId) return;
+      if (!organizationId) return undefined;
       const targetMeetingId = meetingId ?? fallbackMeetingId;
-      if (!targetMeetingId) return;
+      if (!targetMeetingId) return undefined;
       try {
         const created = meetingId
           ? await meetingsService.createHeadline(organizationId, targetMeetingId, {
@@ -253,8 +263,9 @@ export function HeadlinesProvider({
         setHeadlines((prev) =>
           prev.some((h) => h.id === created.id) ? prev : [...prev, created]
         );
+        return created.id as string;
       } catch {
-        // keep UI unchanged on error
+        return undefined;
       }
     },
     [organizationId, meetingId, fallbackMeetingId]
@@ -262,9 +273,9 @@ export function HeadlinesProvider({
 
   const addCascadingMessage = useCallback(
     async (item: Omit<CascadingMessageItem, 'id'>) => {
-      if (!organizationId) return;
+      if (!organizationId) return undefined;
       const targetMeetingId = meetingId ?? fallbackMeetingId;
-      if (!targetMeetingId) return;
+      if (!targetMeetingId) return undefined;
       try {
         const created = meetingId
           ? await meetingsService.createCascadingMessage(
@@ -296,8 +307,9 @@ export function HeadlinesProvider({
         setCascadingMessages((prev) =>
           prev.some((c) => c.id === created.id) ? prev : [...prev, created]
         );
+        return created.id as string;
       } catch {
-        // keep UI unchanged on error
+        return undefined;
       }
     },
     [organizationId, meetingId, fallbackMeetingId]

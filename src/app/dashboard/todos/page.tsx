@@ -18,6 +18,7 @@ export default function TodosPage() {
     setSelectedTeamId,
     isLoading: teamsLoading,
     selectedTeam,
+    fileStorageMeetingId,
   } = useMeetingsData();
   const [createOpen, setCreateOpen] = useState(false);
   const [createType, setCreateType] = useState<'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | undefined>(undefined);
@@ -87,6 +88,7 @@ export default function TodosPage() {
                   teams={teams.map((t) => ({ id: t.id, name: t.name }))}
                   organizationId={organizationId}
                   meetingId={undefined}
+                  fileStorageMeetingId={fileStorageMeetingId}
                   canRecord
                   meetingAttendances={meetingAttendances}
                   onOpenCreate={(type, options) => {
@@ -118,6 +120,7 @@ export default function TodosPage() {
               initialDescription={createDescription}
               initialLinkedEntity={createLinkedEntity}
               meetingAttendances={meetingAttendances}
+              attachmentMeetingId={fileStorageMeetingId}
             />
           </IssuesProvider>
         </TodosProvider>

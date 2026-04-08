@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { meetingsService, type Meeting } from '@/lib/api/meetings.service';
 import { teamsService, type Team } from '@/lib/api/teams.service';
 
@@ -17,6 +17,8 @@ export interface UseMeetingsDataResult {
   selectedTeam: Team | null;
   /** Members of the selected team (for schedule/edit modals). */
   members: Array<{ teamId: string; userId: string; user: { id: string; email: string; name?: string } }>;
+  /** Earliest team meeting — used for file uploads when not in a specific flight review. */
+  fileStorageMeetingId: string | undefined;
 }
 
 export function useMeetingsData(): UseMeetingsDataResult {
@@ -77,6 +79,15 @@ export function useMeetingsData(): UseMeetingsDataResult {
   const selectedTeam = teams.find((t) => t.id === selectedTeamId) ?? null;
   const members = selectedTeam?.members ?? [];
 
+  const fileStorageMeetingId = useMemo(() => {
+    const teamMeetings = meetings.filter((m) => m.teamId === selectedTeamId);
+    if (teamMeetings.length === 0) return undefined;
+    const sorted = [...teamMeetings].sort(
+      (a, b) => new Date(a.scheduledAt || 0).getTime() - new Date(b.scheduledAt || 0).getTime(),
+    );
+    return sorted[0]?.id;
+  }, [meetings, selectedTeamId]);
+
   return {
     organizationId,
     teams,
@@ -89,5 +100,6 @@ export function useMeetingsData(): UseMeetingsDataResult {
     currentUserId,
     selectedTeam,
     members,
+    fileStorageMeetingId,
   };
 }

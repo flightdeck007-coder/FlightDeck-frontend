@@ -37,6 +37,7 @@ import {
   MinusCircle,
 } from 'lucide-react';
 import { RichTextEditor } from './RichTextEditor';
+import { OwnerInitialsAvatar } from './OwnerInitialsAvatar';
 import {
   scorecardGroupsService,
   scorecardMainGroupService,
@@ -90,6 +91,10 @@ function getMonthLabels(count: number): string[] {
   return labels.reverse();
 }
 
+/** Flight desk measurable unit — immutable after the measurable is first saved. */
+export type MeasurableUnitType = 'Currency' | 'Percentage' | 'Number' | 'Yes/No' | 'Time';
+export type MeasurableCurrencyCode = 'USD' | 'GBP' | 'EUR';
+
 export interface MeasurableRow {
   id: string;
   title: string;
@@ -108,10 +113,480 @@ export interface MeasurableRow {
   ownerName?: string;
   ownerEmail?: string;
   ownerInitials?: string;
+  /** Persisted in periodValues as __sc_* — cannot change after create */
+  unitType?: MeasurableUnitType;
+  currencyCode?: MeasurableCurrencyCode;
+  orientationRule?: string;
+  rollup?: 'total' | 'average';
+}
+
+const ORIENTATION_RULE_OPTIONS = [
+  'Inside min and max',
+  'Outside min and max',
+  'Greater than or equal to goal',
+  'Greater than goal',
+  'Equal to goal',
+  'Less than goal',
+  'Less than or equal to goal',
+] as const;
+
+const CURRENCY_OPTIONS: Array<{ value: MeasurableCurrencyCode; label: string }> = [
+  { value: 'USD', label: '$ USD — US Dollar' },
+  { value: 'GBP', label: '£ GBP — British Pound' },
+  { value: 'EUR', label: '€ EUR — Euro' },
+];
+
+const SC_PREFIX = '__sc_';
+
+function extractScorecardMeta(periodValues: Record<string, string> | undefined): Pick<
+  MeasurableRow,
+  'unitType' | 'currencyCode' | 'orientationRule' | 'rollup'
+> {
+  const pv = periodValues ?? {};
+  const unitType = pv[`${SC_PREFIX}unitType`] as MeasurableUnitType | undefined;
+  const rawCur = pv[`${SC_PREFIX}currency`] as MeasurableCurrencyCode | undefined;
+  const currencyCode =
+    rawCur === 'USD' || rawCur === 'GBP' || rawCur === 'EUR' ? rawCur : undefined;
+  const orientationRule = pv[`${SC_PREFIX}orientation`];
+  const rollupRaw = pv[`${SC_PREFIX}rollup`];
+  const rollup = rollupRaw === 'average' ? 'average' : rollupRaw === 'total' ? 'total' : undefined;
+  return { unitType, currencyCode, orientationRule, rollup };
+}
+
+function stripScorecardMetaFromPeriodValues(periodValues: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(periodValues).filter(([k]) => !k.startsWith(SC_PREFIX)));
+}
+
+function mergeScorecardMetaIntoPeriodValues(
+  periodValues: Record<string, string>,
+  meta: Pick<MeasurableRow, 'unitType' | 'currencyCode' | 'orientationRule' | 'rollup'>
+): Record<string, string> {
+  const next = { ...periodValues };
+  if (meta.unitType) next[`${SC_PREFIX}unitType`] = meta.unitType;
+  else delete next[`${SC_PREFIX}unitType`];
+  if (meta.currencyCode) next[`${SC_PREFIX}currency`] = meta.currencyCode;
+  else delete next[`${SC_PREFIX}currency`];
+  if (meta.orientationRule) next[`${SC_PREFIX}orientation`] = meta.orientationRule;
+  else delete next[`${SC_PREFIX}orientation`];
+  if (meta.rollup) next[`${SC_PREFIX}rollup`] = meta.rollup;
+  else delete next[`${SC_PREFIX}rollup`];
+  return next;
+}
+
+function measurableRowToUpsertEntry(m: MeasurableRow, order: number) {
+  const ownerPv = withOwnerMeta(m.periodValues ?? {}, {
+    ownerId: m.ownerId,
+    ownerName: m.ownerName,
+    ownerEmail: m.ownerEmail,
+    ownerInitials: m.ownerInitials,
+  });
+  const periodValues = mergeScorecardMetaIntoPeriodValues(ownerPv, {
+    unitType: m.unitType,
+    currencyCode: m.currencyCode,
+    orientationRule: m.orientationRule,
+    rollup: m.rollup,
+  });
+  return {
+    id: m.id,
+    scorecardGroupId: m.groupId === undefined || m.groupId === 'main' ? null : m.groupId,
+    title: m.title,
+    goal: m.goal,
+    average: m.average,
+    total: m.total,
+    trend: m.trend,
+    periodValues,
+    order,
+  };
+}
+
+function padTimeUnit(n: number, max: number) {
+  return String(Math.max(0, Math.min(max, Math.floor(n)))).padStart(2, '0');
+}
+
+function buildGoalFromTargetForm(params: {
+  unitType: MeasurableUnitType;
+  orientation: string;
+  value: number;
+  valueMax: number;
+  yesNo: 'Yes' | 'No';
+  time: { h: number; m: number; s: number };
+}): string {
+  if (params.unitType === 'Yes/No') return params.yesNo;
+  if (params.unitType === 'Time') {
+    const h = Math.max(0, Math.min(999, Math.floor(params.time.h)));
+    const m = Math.max(0, Math.min(59, Math.floor(params.time.m)));
+    const s = Math.max(0, Math.min(59, Math.floor(params.time.s)));
+    return `${String(h).padStart(2, '0')}:${padTimeUnit(m, 59)}:${padTimeUnit(s, 59)}`;
+  }
+  if (params.orientation === 'Inside min and max') {
+    return `in ${params.value} ${params.valueMax}`;
+  }
+  if (params.orientation === 'Outside min and max') {
+    return `out ${params.value} ${params.valueMax}`;
+  }
+  const v = params.value;
+  if (params.orientation === 'Greater than or equal to goal') return `>= ${v}`;
+  if (params.orientation === 'Greater than goal') return `> ${v}`;
+  if (params.orientation === 'Equal to goal') return `= ${v}`;
+  if (params.orientation === 'Less than goal') return `< ${v}`;
+  if (params.orientation === 'Less than or equal to goal') return `<= ${v}`;
+  return `>= ${v}`;
+}
+
+function parseGoalForEditForm(
+  goal: string,
+  unitType: MeasurableUnitType | undefined
+): {
+  orientation: (typeof ORIENTATION_RULE_OPTIONS)[number];
+  value: number;
+  valueMax: number;
+  yesNo: 'Yes' | 'No';
+  time: { h: number; m: number; s: number };
+} {
+  const g = goal.trim();
+  const fallback: (typeof ORIENTATION_RULE_OPTIONS)[number] = 'Greater than or equal to goal';
+  if (unitType === 'Yes/No') {
+    return { orientation: fallback, value: 0, valueMax: 0, yesNo: g === 'No' ? 'No' : 'Yes', time: { h: 0, m: 0, s: 0 } };
+  }
+  if (unitType === 'Time') {
+    const parts = g.split(':');
+    return {
+      orientation: fallback,
+      value: 0,
+      valueMax: 0,
+      yesNo: 'Yes',
+      time: {
+        h: parseInt(parts[0] ?? '0', 10) || 0,
+        m: parseInt(parts[1] ?? '0', 10) || 0,
+        s: parseInt(parts[2] ?? '0', 10) || 0,
+      },
+    };
+  }
+  const inMatch = /^in\s+(-?\d*\.?\d+)\s+(-?\d*\.?\d+)\s*$/.exec(g);
+  if (inMatch) {
+    return {
+      orientation: 'Inside min and max',
+      value: parseFloat(inMatch[1]) || 0,
+      valueMax: parseFloat(inMatch[2]) || 0,
+      yesNo: 'Yes',
+      time: { h: 0, m: 0, s: 0 },
+    };
+  }
+  const outMatch = /^out\s+(-?\d*\.?\d+)\s+(-?\d*\.?\d+)\s*$/.exec(g);
+  if (outMatch) {
+    return {
+      orientation: 'Outside min and max',
+      value: parseFloat(outMatch[1]) || 0,
+      valueMax: parseFloat(outMatch[2]) || 0,
+      yesNo: 'Yes',
+      time: { h: 0, m: 0, s: 0 },
+    };
+  }
+  if (/^>=\s*-?\d/.test(g)) {
+    return { orientation: 'Greater than or equal to goal', value: parseFloat(g.replace(/^>=\s*/, '')) || 0, valueMax: 0, yesNo: 'Yes', time: { h: 0, m: 0, s: 0 } };
+  }
+  if (/^>\s*-?\d/.test(g) && !/^>=/.test(g)) {
+    return { orientation: 'Greater than goal', value: parseFloat(g.replace(/^>\s*/, '')) || 0, valueMax: 0, yesNo: 'Yes', time: { h: 0, m: 0, s: 0 } };
+  }
+  if (/^<=\s*-?\d/.test(g)) {
+    return { orientation: 'Less than or equal to goal', value: parseFloat(g.replace(/^<=\s*/, '')) || 0, valueMax: 0, yesNo: 'Yes', time: { h: 0, m: 0, s: 0 } };
+  }
+  if (/^<\s*-?\d/.test(g) && !/^<=/.test(g)) {
+    return { orientation: 'Less than goal', value: parseFloat(g.replace(/^<\s*/, '')) || 0, valueMax: 0, yesNo: 'Yes', time: { h: 0, m: 0, s: 0 } };
+  }
+  if (/^=\s*-?\d/.test(g)) {
+    return { orientation: 'Equal to goal', value: parseFloat(g.replace(/^=\s*/, '')) || 0, valueMax: 0, yesNo: 'Yes', time: { h: 0, m: 0, s: 0 } };
+  }
+  return { orientation: fallback, value: 0, valueMax: 0, yesNo: 'Yes', time: { h: 0, m: 0, s: 0 } };
+}
+
+function currencySymbol(code: MeasurableCurrencyCode | undefined): string {
+  if (code === 'GBP') return '£';
+  if (code === 'EUR') return '€';
+  return '$';
+}
+
+function inferUnitTypeFromRow(r: MeasurableRow): MeasurableUnitType {
+  if (r.unitType) return r.unitType;
+  return inferUnitTypeFromGoalString(r.goal);
+}
+
+function inferUnitTypeFromGoalString(goal: string | undefined): MeasurableUnitType {
+  const g = goal?.trim() ?? '';
+  if (g === 'Yes' || g === 'No') return 'Yes/No';
+  if (/^\d{1,3}:\d{2}:\d{2}$/.test(g)) return 'Time';
+  return 'Number';
+}
+
+function formatGoalNumberToken(n: number): string {
+  if (!Number.isFinite(n)) return String(n);
+  if (Number.isInteger(n)) return String(Math.trunc(n));
+  return String(n);
+}
+
+function orientationRuleToTextPrefix(orient: string | undefined): string {
+  switch (orient) {
+    case 'Greater than or equal to goal':
+      return '>=';
+    case 'Greater than goal':
+      return '>';
+    case 'Equal to goal':
+      return '=';
+    case 'Less than or equal to goal':
+      return '<=';
+    case 'Less than goal':
+      return '<';
+    default:
+      return '>=';
+  }
+}
+
+/** Human-readable Target column: units ($, %, time), ranges (“>= $1 and <= $10”), not raw storage tokens. */
+function formatGoalDisplay(r: MeasurableRow): string {
+  const unit = inferUnitTypeFromRow(r);
+  const g = r.goal?.trim() ?? '';
+  if (!g) return '—';
+
+  if (unit === 'Yes/No') return g;
+
+  const sym = currencySymbol(r.currencyCode);
+
+  if (unit === 'Time') {
+    const prefix = orientationRuleToTextPrefix(r.orientationRule);
+    return `${prefix} ${g}`;
+  }
+
+  if (g.startsWith('in ')) {
+    const m = /^in\s+(-?\d*\.?\d+)\s+(-?\d*\.?\d+)\s*$/.exec(g);
+    if (m) {
+      const v1 = parseFloat(m[1]);
+      const v2 = parseFloat(m[2]);
+      const lo = Math.min(v1, v2);
+      const hi = Math.max(v1, v2);
+      const loS = formatGoalNumberToken(lo);
+      const hiS = formatGoalNumberToken(hi);
+      if (unit === 'Currency') return `>= ${sym}${loS} and <= ${sym}${hiS}`;
+      if (unit === 'Percentage') return `>= ${loS}% and <= ${hiS}%`;
+      return `>= ${loS} and <= ${hiS}`;
+    }
+  }
+  if (g.startsWith('out ')) {
+    const m = /^out\s+(-?\d*\.?\d+)\s+(-?\d*\.?\d+)\s*$/.exec(g);
+    if (m) {
+      const v1 = parseFloat(m[1]);
+      const v2 = parseFloat(m[2]);
+      const lo = Math.min(v1, v2);
+      const hi = Math.max(v1, v2);
+      const loS = formatGoalNumberToken(lo);
+      const hiS = formatGoalNumberToken(hi);
+      if (unit === 'Currency') return `< ${sym}${loS} or > ${sym}${hiS}`;
+      if (unit === 'Percentage') return `< ${loS}% or > ${hiS}%`;
+      return `< ${loS} or > ${hiS}`;
+    }
+  }
+
+  const single = /^(>=|>|=|<=|<)\s*(-?\d*\.?\d+)\s*$/.exec(g);
+  if (single) {
+    const op = single[1];
+    const n = single[2];
+    if (unit === 'Currency') return `${op} ${sym}${n}`;
+    if (unit === 'Percentage') return `${op} ${n}%`;
+    return `${op} ${n}`;
+  }
+
+  return g;
+}
+
+function timeStringToSeconds(hms: string): number | null {
+  const p = hms.trim().split(':').map((x) => parseInt(x, 10));
+  if (p.length !== 3 || p.some((n) => Number.isNaN(n))) return null;
+  return p[0] * 3600 + p[1] * 60 + p[2];
+}
+
+function parseNumericCell(raw: string): number | null {
+  const t = raw.trim().replace(/,/g, '');
+  if (!t) return null;
+  const stripped = t.replace(/[^0-9.-]/g, '');
+  if (stripped === '' || stripped === '-') return null;
+  const n = parseFloat(stripped);
+  return Number.isNaN(n) ? null : n;
+}
+
+function secondsToRollupTimeDisplay(totalSeconds: number): string {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) totalSeconds = 0;
+  const sec = Math.floor(Math.round(totalSeconds));
+  const h = Math.min(999, Math.floor(sec / 3600));
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  return `${String(h).padStart(2, '0')}:${padTimeUnit(m, 59)}:${padTimeUnit(s, 59)}`;
+}
+
+function formatCurrencyRollup(n: number, sym: string): string {
+  if (!Number.isFinite(n)) return `${sym}0`;
+  const rounded = Math.round(n * 100) / 100;
+  if (Number.isInteger(rounded) || Math.abs(rounded - Math.trunc(rounded)) < 1e-9) {
+    return `${sym}${Math.trunc(rounded)}`;
+  }
+  return `${sym}${rounded.toFixed(2)}`;
+}
+
+function formatPercentageRollup(n: number, kind: 'average' | 'total'): string {
+  if (!Number.isFinite(n)) return '0%';
+  if (kind === 'average') {
+    return `${(Math.round(n * 100) / 100).toFixed(2)}%`;
+  }
+  const rounded = Math.round(n * 100) / 100;
+  if (Number.isInteger(rounded) || Math.abs(rounded - Math.trunc(rounded)) < 1e-9) {
+    return `${Math.trunc(rounded)}%`;
+  }
+  return `${rounded.toFixed(2)}%`;
+}
+
+/** Average / Total column: apply unit suffix/prefix like period cells ($, %, HH:MM:SS). */
+function formatRollupCellDisplay(r: MeasurableRow, raw: string | undefined, kind: 'average' | 'total'): string {
+  const t = (raw ?? '').trim();
+  if (t === '') return '—';
+  const unit = inferUnitTypeFromRow(r);
+
+  if (unit === 'Yes/No') {
+    return t;
+  }
+
+  if (unit === 'Time') {
+    if (/^\d{1,3}:\d{2}:\d{2}$/.test(t)) return t;
+    const n = parseFloat(t);
+    if (!Number.isNaN(n)) return secondsToRollupTimeDisplay(n);
+    return t;
+  }
+
+  const n = parseNumericCell(t);
+  if (n === null) return t;
+
+  if (unit === 'Currency') {
+    return formatCurrencyRollup(n, currencySymbol(r.currencyCode));
+  }
+  if (unit === 'Percentage') {
+    return formatPercentageRollup(n, kind);
+  }
+  return formatGoalNumberToken(n);
+}
+
+/** Whether a period cell satisfies the row goal (green/red heatmap). */
+function evaluatePeriodCellAgainstGoal(r: MeasurableRow, rawCell: string): 'pass' | 'fail' | 'empty' {
+  const cell = rawCell.trim();
+  if (!cell) return 'empty';
+  const unit = inferUnitTypeFromRow(r);
+  const g = r.goal?.trim() ?? '';
+  if (!g) return 'empty';
+
+  if (unit === 'Yes/No') {
+    return cell === g ? 'pass' : 'fail';
+  }
+
+  if (unit === 'Time') {
+    const cSec = timeStringToSeconds(cell);
+    const gSec = timeStringToSeconds(g);
+    if (cSec == null || gSec == null) return 'empty';
+    const orient = r.orientationRule ?? 'Greater than or equal to goal';
+    switch (orient) {
+      case 'Greater than or equal to goal':
+        return cSec >= gSec ? 'pass' : 'fail';
+      case 'Greater than goal':
+        return cSec > gSec ? 'pass' : 'fail';
+      case 'Equal to goal':
+        return cSec === gSec ? 'pass' : 'fail';
+      case 'Less than or equal to goal':
+        return cSec <= gSec ? 'pass' : 'fail';
+      case 'Less than goal':
+        return cSec < gSec ? 'pass' : 'fail';
+      default:
+        return cSec >= gSec ? 'pass' : 'fail';
+    }
+  }
+
+  const n = parseNumericCell(cell);
+  if (n === null) return 'empty';
+
+  const inM = /^in\s+(-?\d*\.?\d+)\s+(-?\d*\.?\d+)\s*$/.exec(g);
+  if (inM) {
+    const a = parseFloat(inM[1]);
+    const b = parseFloat(inM[2]);
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    return n >= lo && n <= hi ? 'pass' : 'fail';
+  }
+
+  const outM = /^out\s+(-?\d*\.?\d+)\s+(-?\d*\.?\d+)\s*$/.exec(g);
+  if (outM) {
+    const a = parseFloat(outM[1]);
+    const b = parseFloat(outM[2]);
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    return n < lo || n > hi ? 'pass' : 'fail';
+  }
+
+  const single = /^(>=|>|=|<=|<)\s*(-?\d*\.?\d+)\s*$/.exec(g);
+  if (single) {
+    const op = single[1];
+    const gv = parseFloat(single[2]);
+    if (Number.isNaN(gv)) return 'empty';
+    const eqEps = 1e-9;
+    switch (op) {
+      case '>=':
+        return n >= gv ? 'pass' : 'fail';
+      case '>':
+        return n > gv ? 'pass' : 'fail';
+      case '=':
+        return Math.abs(n - gv) < eqEps ? 'pass' : 'fail';
+      case '<=':
+        return n <= gv ? 'pass' : 'fail';
+      case '<':
+        return n < gv ? 'pass' : 'fail';
+      default:
+        return 'empty';
+    }
+  }
+
+  return 'empty';
+}
+
+function periodCellHeatmapClasses(status: 'pass' | 'fail' | 'empty'): string {
+  if (status === 'pass') {
+    return 'bg-emerald-950/35 text-emerald-100 border-emerald-700/50 dark:bg-emerald-950/55 dark:text-emerald-200 dark:border-emerald-600/50';
+  }
+  if (status === 'fail') {
+    return 'bg-red-950/35 text-red-100 border-red-700/50 dark:bg-red-950/55 dark:text-red-200 dark:border-red-600/50';
+  }
+  return 'bg-background text-foreground border-border';
+}
+
+/** $ / % strips — match pass|fail cell so they don’t stay neutral grey on heatmap. */
+function periodCellAffixClasses(status: 'pass' | 'fail' | 'empty'): string {
+  if (status === 'pass') {
+    return 'border-emerald-700/45 bg-emerald-950/40 text-emerald-200';
+  }
+  if (status === 'fail') {
+    return 'border-red-700/45 bg-red-950/40 text-red-200';
+  }
+  return 'border-border/60 bg-muted/30 text-muted-foreground';
 }
 
 const MOCK_MEASURABLES: MeasurableRow[] = [
-  { id: '1', title: 'measurable', goal: '>= 0', average: '0', total: '0', trend: 'down', periodValues: {}, ownerId: '', ownerName: '', ownerEmail: '', ownerInitials: '' },
+  {
+    id: '1',
+    title: 'measurable',
+    goal: '>= 0',
+    average: '0',
+    total: '0',
+    trend: 'down',
+    periodValues: {},
+    ownerId: '',
+    ownerName: '',
+    ownerEmail: '',
+    ownerInitials: '',
+    unitType: 'Number',
+    rollup: 'total',
+  },
 ];
 
 function getInitials(name?: string | null, email?: string): string {
@@ -155,6 +630,65 @@ function withOwnerMeta(periodValues: Record<string, string>, owner: {
   if (owner.ownerEmail) next.__ownerEmail = owner.ownerEmail;
   if (owner.ownerInitials) next.__ownerInitials = owner.ownerInitials;
   return next;
+}
+
+function TimePeriodInputs({
+  value,
+  onCommit,
+  disabled,
+  className = '',
+}: {
+  value: string;
+  onCommit: (next: string) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const parts = value.trim().split(':');
+  const h = Math.min(999, Math.max(0, parseInt(parts[0] || '0', 10) || 0));
+  const m = Math.min(59, Math.max(0, parseInt(parts[1] || '0', 10) || 0));
+  const sec = Math.min(59, Math.max(0, parseInt(parts[2] || '0', 10) || 0));
+  const emit = (nh: number, nm: number, ns: number) => {
+    onCommit(
+      `${String(Math.max(0, Math.min(999, nh))).padStart(2, '0')}:${padTimeUnit(Math.max(0, Math.min(59, nm)), 59)}:${padTimeUnit(Math.max(0, Math.min(59, ns)), 59)}`
+    );
+  };
+  const inputCls =
+    'w-9 min-w-0 px-1 py-[3px] text-xs text-center tabular-nums rounded border border-border bg-background disabled:opacity-60';
+  return (
+    <div className={`flex items-center justify-center gap-0.5 ${className}`}>
+      <input
+        type="number"
+        min={0}
+        disabled={disabled}
+        className={inputCls}
+        value={h}
+        onChange={(e) => emit(Number(e.target.value), m, sec)}
+        aria-label="Hours"
+      />
+      <span className="text-muted-foreground text-xs leading-none">:</span>
+      <input
+        type="number"
+        min={0}
+        max={59}
+        disabled={disabled}
+        className={inputCls}
+        value={m}
+        onChange={(e) => emit(h, Number(e.target.value), sec)}
+        aria-label="Minutes"
+      />
+      <span className="text-muted-foreground text-xs leading-none">:</span>
+      <input
+        type="number"
+        min={0}
+        max={59}
+        disabled={disabled}
+        className={inputCls}
+        value={sec}
+        onChange={(e) => emit(h, m, Number(e.target.value))}
+        aria-label="Seconds"
+      />
+    </div>
+  );
 }
 
 function ScorecardTableCard({
@@ -296,42 +830,190 @@ function ScorecardTableCard({
           const tooltip = r.ownerName || r.ownerEmail ? `${r.ownerName ?? 'No name'}\n${r.ownerEmail ?? ''}`.trim() : 'No owner';
           return (
             <div className="flex items-center">
-              <button
-                type="button"
-                className="w-7 h-7 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-[11px] font-semibold text-primary cursor-default"
+              <OwnerInitialsAvatar
+                initials={initials || undefined}
+                size="sm"
                 title={tooltip}
-                aria-label={`Owner: ${label}`}
-              >
-                {initials || '?'}
-              </button>
+                className="cursor-default"
+              />
             </div>
           );
         },
         size: 82,
       });
     }
-    if (visibility.showGoalColumn) cols.push({ id: 'goal', header: () => <span className="font-medium text-foreground">Target</span>, cell: ({ row }) => { const r = row.original; if (r.showGoal === false) return ''; const v = r.goal; return (v != null && v !== '' ? v : '—'); }, size: 100 });
-    if (visibility.showAverageColumn) cols.push({ id: 'average', header: () => <span className="font-medium text-foreground">Average</span>, cell: ({ row }) => { const r = row.original; if (r.showAverage === false) return ''; const v = r.average; return (v != null && v !== '' ? v : '—'); }, size: 90 });
-    if (visibility.showTotalColumn) cols.push({ id: 'total', header: () => <span className="font-medium text-foreground">Total</span>, cell: ({ row }) => { const r = row.original; if (r.showTotal === false) return ''; const v = r.total; return (v != null && v !== '' ? v : '—'); }, size: 80 });
+    if (visibility.showGoalColumn)
+      cols.push({
+        id: 'goal',
+        header: () => <span className="font-medium text-foreground">Target</span>,
+        cell: ({ row }) => {
+          const r = row.original;
+          if (r.showGoal === false) return '';
+          const v = formatGoalDisplay(r);
+          return (
+            <span className="text-left text-foreground tabular-nums whitespace-normal text-sm">{v}</span>
+          );
+        },
+        size: 140,
+      });
+    if (visibility.showAverageColumn)
+      cols.push({
+        id: 'average',
+        header: () => <span className="font-medium text-foreground">Average</span>,
+        cell: ({ row }) => {
+          const r = row.original;
+          if (r.showAverage === false) return '';
+          return formatRollupCellDisplay(r, r.average, 'average');
+        },
+        size: 90,
+      });
+    if (visibility.showTotalColumn)
+      cols.push({
+        id: 'total',
+        header: () => <span className="font-medium text-foreground">Total</span>,
+        cell: ({ row }) => {
+          const r = row.original;
+          if (r.showTotal === false) return '';
+          return formatRollupCellDisplay(r, r.total, 'total');
+        },
+        size: 80,
+      });
     const periodCols = (displayDirection === 'rtl' ? [...periodColumns].reverse() : periodColumns).map((label, i) => ({
       id: `period-${i}`,
-      header: () => <span className="font-medium text-foreground text-xs whitespace-nowrap">{label}</span>,
-      cell: ({ row }: { row: { original: MeasurableRow } }) =>
-        onPeriodValueChange ? (
+      header: () => (
+        <span className="font-medium text-foreground text-sm leading-snug whitespace-nowrap">{label}</span>
+      ),
+      cell: ({ row }: { row: { original: MeasurableRow } }) => {
+        const r = row.original;
+        const pv = r.periodValues[label] ?? '';
+        const unit = inferUnitTypeFromRow(r);
+        const status = evaluatePeriodCellAgainstGoal(r, pv);
+        const heat = periodCellHeatmapClasses(status);
+        const ringFocus = 'focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary';
+
+        if (!onPeriodValueChange) {
+          const show = pv || '—';
+          if (status === 'empty') return show;
+          return <span className={`inline-flex min-w-[3rem] justify-center rounded border px-2 py-[3px] text-sm ${heat}`}>{show}</span>;
+        }
+
+        if (unit === 'Yes/No') {
+          const selectTone =
+            status === 'pass'
+              ? '[&_.ant-select-selection-item]:!text-emerald-100 [&_.ant-select-selection-placeholder]:!text-emerald-300/70'
+              : status === 'fail'
+                ? '[&_.ant-select-selection-item]:!text-red-100 [&_.ant-select-selection-placeholder]:!text-red-300/70'
+                : '';
+          return (
+            <div className={`rounded-md border ${heat}`}>
+              <Select
+                value={pv || undefined}
+                onChange={(v) => {
+                  onPeriodValueChange(r.id, label, typeof v === 'string' ? v : '');
+                }}
+                allowClear
+                placeholder="—"
+                options={[
+                  { value: 'Yes', label: 'Yes' },
+                  { value: 'No', label: 'No' },
+                ]}
+                className={`w-full min-w-[88px] [&_.ant-select-selector]:border-0 [&_.ant-select-selector]:shadow-none ${selectTone}`}
+              />
+            </div>
+          );
+        }
+
+        if (unit === 'Time') {
+          return (
+            <div className={`rounded-md border p-0.5 ${heat}`}>
+              <TimePeriodInputs
+                value={pv}
+                onCommit={(next) => onPeriodValueChange(r.id, label, next)}
+                className=""
+              />
+            </div>
+          );
+        }
+
+        if (unit === 'Currency') {
+          const sym = currencySymbol(r.currencyCode);
+          const inputTone =
+            status === 'pass'
+              ? 'text-emerald-100 placeholder:text-emerald-400/50'
+              : status === 'fail'
+                ? 'text-red-100 placeholder:text-red-400/50'
+                : '';
+          return (
+            <div className={`flex items-stretch rounded-md border overflow-hidden ${heat}`}>
+              <span
+                className={`flex items-center shrink-0 border-r px-1.5 text-xs ${periodCellAffixClasses(status)}`}
+              >
+                {sym}
+              </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={pv}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === '' || /^-?\d*\.?\d*$/.test(v)) onPeriodValueChange(r.id, label, v);
+                }}
+                className={`min-w-0 flex-1 bg-transparent px-2 py-[3px] text-sm ${ringFocus} ${inputTone}`}
+                placeholder="0"
+              />
+            </div>
+          );
+        }
+
+        if (unit === 'Percentage') {
+          const inputTone =
+            status === 'pass'
+              ? 'text-emerald-100 placeholder:text-emerald-400/50'
+              : status === 'fail'
+                ? 'text-red-100 placeholder:text-red-400/50'
+                : '';
+          return (
+            <div className={`flex items-stretch rounded-md border overflow-hidden ${heat}`}>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={pv}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === '' || /^-?\d*\.?\d*%?$/.test(v)) onPeriodValueChange(r.id, label, v);
+                }}
+                className={`min-w-0 flex-1 bg-transparent px-2 py-[3px] text-sm ${ringFocus} ${inputTone}`}
+                placeholder="0"
+              />
+              <span
+                className={`flex shrink-0 items-center border-l px-1.5 text-xs ${periodCellAffixClasses(status)}`}
+              >
+                %
+              </span>
+            </div>
+          );
+        }
+
+        const numInputTone =
+          status === 'pass'
+            ? 'text-emerald-100 placeholder:text-emerald-400/50'
+            : status === 'fail'
+              ? 'text-red-100 placeholder:text-red-400/50'
+              : '';
+        return (
           <input
             type="text"
             inputMode="decimal"
-            value={row.original.periodValues[label] ?? ''}
+            value={pv}
             onChange={(e) => {
               const v = e.target.value;
-              if (v === '' || /^-?\d*\.?\d*$/.test(v)) onPeriodValueChange(row.original.id, label, v);
+              if (v === '' || /^-?\d*\.?\d*$/.test(v)) onPeriodValueChange(r.id, label, v);
             }}
-            className="w-full min-w-0 px-2 py-1 text-sm border border-border rounded bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+            className={`w-full min-w-0 rounded-md border px-2 py-[3px] text-sm ${heat} ${ringFocus} ${numInputTone}`}
             placeholder="—"
           />
-        ) : (
-          (row.original.periodValues[label] ?? '—')
-        ),
+        );
+      },
       size: 100,
     }));
     cols.push(...periodCols);
@@ -511,14 +1193,20 @@ function ScorecardTableCard({
       </div>
       {!isCollapsed && (
       <div className="flex flex-1 min-h-0 overflow-hidden" dir={displayDirection}>
-        {/* Left section: fixed columns (through Total), no scroll */}
+        {/* Left section: fixed columns (through Total), no scroll — body cell metrics match period table below */}
         <div className="shrink-0 overflow-hidden bg-card" style={{ width: fixedWidth }}>
-          <table className="w-full border-collapse text-sm table-fixed">
+          <table className="w-full border-collapse text-sm table-fixed leading-normal">
             <thead>
               <tr>
                 {fixedHeaders.map((h) => (
-                  <th key={h.id} className="text-left font-medium text-foreground border-b border-border px-3 py-2 whitespace-nowrap bg-muted/30 relative group" style={{ width: h.column.getSize(), minWidth: h.column.getSize() }}>
-                    {typeof h.column.columnDef.header === 'function' ? flexRender(h.column.columnDef.header, h.getContext()) : h.column.columnDef.header}
+                  <th
+                    key={h.id}
+                    className={`group relative min-h-12 align-middle border-b border-border bg-muted/30 px-3 py-3 text-sm font-medium text-foreground whitespace-nowrap ${h.column.id === 'average' || h.column.id === 'total' ? 'text-right' : 'text-left'}`}
+                    style={{ width: h.column.getSize(), minWidth: h.column.getSize() }}
+                  >
+                    <span className="inline-flex min-h-8 items-center">
+                      {typeof h.column.columnDef.header === 'function' ? flexRender(h.column.columnDef.header, h.getContext()) : h.column.columnDef.header}
+                    </span>
                     <div
                       onMouseDown={h.getResizeHandler()}
                       onTouchStart={h.getResizeHandler()}
@@ -537,7 +1225,11 @@ function ScorecardTableCard({
                 table.getRowModel().rows.map((row) => (
                   <tr key={row.id} className="border-b border-border hover:bg-muted/20">
                     {row.getVisibleCells().filter((cell) => FIXED_COLUMN_IDS.includes(cell.column.id)).map((cell) => (
-                      <td key={cell.id} className="px-3 py-2 text-foreground whitespace-nowrap" style={{ width: cell.column.getSize(), minWidth: cell.column.getSize() }}>
+                      <td
+                        key={cell.id}
+                        className={`min-h-16 align-middle px-3 py-2.5 text-foreground whitespace-nowrap ${cell.column.id === 'average' || cell.column.id === 'total' ? 'text-right tabular-nums' : ''}`}
+                        style={{ width: cell.column.getSize(), minWidth: cell.column.getSize() }}
+                      >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     ))}
@@ -550,12 +1242,18 @@ function ScorecardTableCard({
         {/* Right section: date columns, scrollable, blue divider */}
         <div className="flex-1 min-w-0 flex flex-col border-l-2 border-primary">
           <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
-            <table className="border-collapse text-sm w-max min-w-full">
+            <table className="border-collapse text-sm w-max min-w-full leading-normal">
               <thead>
                 <tr>
                   {periodHeaders.map((h) => (
-                    <th key={h.id} className="text-left font-medium text-foreground border-b border-border px-3 py-2 whitespace-nowrap bg-muted/30 text-xs relative group" style={{ width: h.column.getSize(), minWidth: h.column.getSize() }}>
-                      {typeof h.column.columnDef.header === 'function' ? flexRender(h.column.columnDef.header, h.getContext()) : h.column.columnDef.header}
+                    <th
+                      key={h.id}
+                      className="group relative min-h-12 align-middle border-b border-border bg-muted/30 px-3 py-3 text-left text-sm font-medium text-foreground whitespace-nowrap"
+                      style={{ width: h.column.getSize(), minWidth: h.column.getSize() }}
+                    >
+                      <span className="inline-flex min-h-8 items-center">
+                        {typeof h.column.columnDef.header === 'function' ? flexRender(h.column.columnDef.header, h.getContext()) : h.column.columnDef.header}
+                      </span>
                       <div
                         onMouseDown={h.getResizeHandler()}
                         onTouchStart={h.getResizeHandler()}
@@ -572,7 +1270,11 @@ function ScorecardTableCard({
                   table.getRowModel().rows.map((row) => (
                     <tr key={row.id} className="border-b border-border hover:bg-muted/20">
                       {row.getVisibleCells().filter((cell) => !FIXED_COLUMN_IDS.includes(cell.column.id)).map((cell) => (
-                        <td key={cell.id} className="px-3 py-2 text-foreground whitespace-nowrap" style={{ width: cell.column.getSize(), minWidth: cell.column.getSize() }}>
+                        <td
+                          key={cell.id}
+                          className="min-h-16 align-middle px-3 py-2.5 text-foreground whitespace-nowrap"
+                          style={{ width: cell.column.getSize(), minWidth: cell.column.getSize() }}
+                        >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
                       ))}
@@ -787,9 +1489,17 @@ export function InstrumentsSegmentView({
   const [createMeasurableShowAverage, setCreateMeasurableShowAverage] = useState(true);
   const [createMeasurableShowGoal, setCreateMeasurableShowGoal] = useState(true);
   const [createMeasurableCloseConfirmOpen, setCreateMeasurableCloseConfirmOpen] = useState(false);
-  const [createMeasurableUnit, setCreateMeasurableUnit] = useState('Number');
-  const [createMeasurableOrientation, setCreateMeasurableOrientation] = useState('Greater than or equal to goal');
+  const [createMeasurableUnit, setCreateMeasurableUnit] = useState<MeasurableUnitType>('Number');
+  const [createMeasurableCurrency, setCreateMeasurableCurrency] = useState<MeasurableCurrencyCode>('USD');
+  const [createMeasurableOrientation, setCreateMeasurableOrientation] = useState<
+    (typeof ORIENTATION_RULE_OPTIONS)[number]
+  >('Greater than or equal to goal');
   const [createMeasurableGoalValue, setCreateMeasurableGoalValue] = useState(0);
+  const [createMeasurableGoalMax, setCreateMeasurableGoalMax] = useState(0);
+  const [createMeasurableYesNo, setCreateMeasurableYesNo] = useState<'Yes' | 'No'>('Yes');
+  const [createMeasurableTimeH, setCreateMeasurableTimeH] = useState(0);
+  const [createMeasurableTimeM, setCreateMeasurableTimeM] = useState(0);
+  const [createMeasurableTimeS, setCreateMeasurableTimeS] = useState(0);
   const [createMeasurableRollup, setCreateMeasurableRollup] = useState('Total (default)');
   const [createMeasurableFormulaBuilder, setCreateMeasurableFormulaBuilder] = useState(false);
   const [createMeasurableOwnerId, setCreateMeasurableOwnerId] = useState<string>('');
@@ -835,18 +1545,33 @@ export function InstrumentsSegmentView({
     if (!editingMeasurable) return;
     setCreateMeasurableTitle(editingMeasurable.title);
     setCreateMeasurableDescription('');
-    const g = editingMeasurable.goal?.trim() ?? '';
-    if (/^>=?\s*-?\d*\.?\d+$/.test(g)) {
-      setCreateMeasurableOrientation('Greater than or equal to goal');
-      setCreateMeasurableGoalValue(parseFloat(g.replace(/^>=?\s*/, '')) || 0);
-    } else if (/^<=?\s*-?\d*\.?\d+$/.test(g)) {
-      setCreateMeasurableOrientation('Less than or equal to goal');
-      setCreateMeasurableGoalValue(parseFloat(g.replace(/^<=?\s*/, '')) || 0);
-    } else {
-      const num = parseFloat(g.replace(/^=\s*/, ''));
-      setCreateMeasurableOrientation('Equal to goal');
-      setCreateMeasurableGoalValue(Number.isNaN(num) ? 0 : num);
-    }
+    const gTrim = editingMeasurable.goal?.trim() ?? '';
+    const inferredUnit: MeasurableUnitType =
+      editingMeasurable.unitType ??
+      (gTrim === 'Yes' || gTrim === 'No'
+        ? 'Yes/No'
+        : /^\d{1,3}:\d{2}:\d{2}$/.test(gTrim)
+          ? 'Time'
+          : 'Number');
+    setCreateMeasurableUnit(inferredUnit);
+    setCreateMeasurableCurrency(editingMeasurable.currencyCode ?? 'USD');
+    setCreateMeasurableRollup(editingMeasurable.rollup === 'average' ? 'Average' : 'Total (default)');
+    const parsed = parseGoalForEditForm(editingMeasurable.goal ?? '', inferredUnit);
+    const storedOr = editingMeasurable.orientationRule;
+    const orientOk =
+      storedOr != null &&
+      storedOr !== '' &&
+      (ORIENTATION_RULE_OPTIONS as readonly string[]).includes(storedOr as string) &&
+      inferredUnit !== 'Yes/No';
+    setCreateMeasurableOrientation(
+      orientOk ? (storedOr as (typeof ORIENTATION_RULE_OPTIONS)[number]) : parsed.orientation
+    );
+    setCreateMeasurableGoalValue(parsed.value);
+    setCreateMeasurableGoalMax(parsed.valueMax);
+    setCreateMeasurableYesNo(parsed.yesNo);
+    setCreateMeasurableTimeH(parsed.time.h);
+    setCreateMeasurableTimeM(parsed.time.m);
+    setCreateMeasurableTimeS(parsed.time.s);
     setCreateMeasurableShowTotal(editingMeasurable.showTotal !== false);
     setCreateMeasurableShowAverage(editingMeasurable.showAverage !== false);
     setCreateMeasurableShowGoal(editingMeasurable.showGoal !== false);
@@ -857,6 +1582,51 @@ export function InstrumentsSegmentView({
     if (!createMeasurableOpen || editingMeasurable) return;
     setCreateMeasurableOwnerId(currentUserId ?? '');
   }, [createMeasurableOpen, editingMeasurable, currentUserId]);
+
+  useEffect(() => {
+    if (!createMeasurableOpen || editingMeasurable) return;
+    setCreateMeasurableUnit('Number');
+    setCreateMeasurableCurrency('USD');
+    setCreateMeasurableOrientation('Greater than or equal to goal');
+    setCreateMeasurableGoalValue(0);
+    setCreateMeasurableGoalMax(0);
+    setCreateMeasurableYesNo('Yes');
+    setCreateMeasurableTimeH(0);
+    setCreateMeasurableTimeM(0);
+    setCreateMeasurableTimeS(0);
+    setCreateMeasurableRollup('Total (default)');
+  }, [createMeasurableOpen, editingMeasurable]);
+
+  const flightMetricFormValidation = useMemo(() => {
+    const errors: string[] = [];
+    if (!createMeasurableTitle.trim()) {
+      errors.push('Enter a title for this flight metric.');
+    }
+    if (!editingMeasurable && createMeasurableForGroupId == null) {
+      errors.push('Use New measurable on a flight metrics card to choose where this metric belongs.');
+    }
+    if (createMeasurableShowGoal) {
+      const effectiveUnit = (editingMeasurable?.unitType ?? createMeasurableUnit) as MeasurableUnitType;
+      if (
+        effectiveUnit !== 'Yes/No' &&
+        effectiveUnit !== 'Time' &&
+        createMeasurableOrientation === 'Inside min and max' &&
+        createMeasurableGoalValue > createMeasurableGoalMax
+      ) {
+        errors.push('For Inside min and max, Min must be less than or equal to Max.');
+      }
+    }
+    return { errors, canSave: errors.length === 0 };
+  }, [
+    createMeasurableTitle,
+    editingMeasurable,
+    createMeasurableForGroupId,
+    createMeasurableShowGoal,
+    createMeasurableUnit,
+    createMeasurableOrientation,
+    createMeasurableGoalValue,
+    createMeasurableGoalMax,
+  ]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1012,6 +1782,8 @@ export function InstrumentsSegmentView({
           list.map((m) => {
             const pv = (m.periodValues ?? {}) as Record<string, string>;
             const owner = extractOwnerMeta(pv);
+            const sc = extractScorecardMeta(pv);
+            const cleanPv = stripOwnerMeta(stripScorecardMetaFromPeriodValues(pv));
             return {
               id: m.id,
               title: m.title,
@@ -1019,12 +1791,13 @@ export function InstrumentsSegmentView({
               average: m.average,
               total: m.total,
               trend: m.trend,
-              periodValues: stripOwnerMeta(pv),
+              periodValues: cleanPv,
               groupId: m.groupId ?? undefined,
               ownerId: owner.ownerId,
               ownerName: owner.ownerName,
               ownerEmail: owner.ownerEmail,
               ownerInitials: owner.ownerInitials,
+              ...sc,
             };
           })
         );
@@ -1034,17 +1807,7 @@ export function InstrumentsSegmentView({
         await scorecardMeasurablesService.upsert(
           organizationId,
           meetingId,
-          seed.map((m, i) => ({
-            id: m.id,
-            scorecardGroupId: (m.groupId === undefined || m.groupId === 'main') ? null : m.groupId,
-            title: m.title,
-            goal: m.goal,
-            average: m.average,
-            total: m.total,
-            trend: m.trend,
-            periodValues: m.periodValues,
-            order: i,
-          }))
+          seed.map((m, i) => measurableRowToUpsertEntry(m, i))
         );
       }
     } catch {
@@ -1187,17 +1950,7 @@ export function InstrumentsSegmentView({
         .upsert(
           organizationId,
           meetingId,
-          prev.map((m, i) => ({
-            id: m.id,
-            scorecardGroupId: m.groupId === undefined || m.groupId === 'main' ? null : m.groupId,
-            title: m.title,
-            goal: m.goal,
-            average: m.average,
-            total: m.total,
-            trend: m.trend,
-            periodValues: m.periodValues,
-            order: i,
-          }))
+          prev.map((m, i) => measurableRowToUpsertEntry(m, i))
         )
         .catch((e) => console.error('Failed to persist undo', e));
       return h.slice(0, -1);
@@ -1215,17 +1968,7 @@ export function InstrumentsSegmentView({
         .upsert(
           organizationId,
           meetingId,
-          next.map((m, i) => ({
-            id: m.id,
-            scorecardGroupId: m.groupId === undefined || m.groupId === 'main' ? null : m.groupId,
-            title: m.title,
-            goal: m.goal,
-            average: m.average,
-            total: m.total,
-            trend: m.trend,
-            periodValues: m.periodValues,
-            order: i,
-          }))
+          next.map((m, i) => measurableRowToUpsertEntry(m, i))
         )
         .catch((e) => console.error('Failed to persist redo', e));
       return r.slice(0, -1);
@@ -1246,17 +1989,7 @@ export function InstrumentsSegmentView({
             .upsert(
               organizationId,
               meetingId,
-              next.map((m, i) => ({
-                id: m.id,
-                scorecardGroupId: (m.groupId === undefined || m.groupId === 'main') ? null : m.groupId,
-                title: m.title,
-                goal: m.goal,
-                average: m.average,
-                total: m.total,
-                trend: m.trend,
-                periodValues: m.periodValues,
-                order: i,
-              }))
+              next.map((m, i) => measurableRowToUpsertEntry(m, i))
             )
             .catch((e) => console.error('Failed to save duplicated measurables', e));
         }
@@ -1348,6 +2081,9 @@ export function InstrumentsSegmentView({
         prev.map((m) => {
           if (m.id !== measurableId) return m;
           const nextPv = { ...m.periodValues, [periodKey]: value };
+          if (m.unitType === 'Yes/No' || m.unitType === 'Time') {
+            return { ...m, periodValues: nextPv };
+          }
           const nums = Object.values(nextPv)
             .map((v) => parseFloat(String(v).trim()))
             .filter((n) => !Number.isNaN(n));
@@ -1371,17 +2107,7 @@ export function InstrumentsSegmentView({
             .upsert(
               organizationId!,
               meetingId!,
-              current.map((m, i) => ({
-                id: m.id,
-                scorecardGroupId: m.groupId === undefined || m.groupId === 'main' ? null : m.groupId,
-                title: m.title,
-                goal: m.goal,
-                average: m.average,
-                total: m.total,
-                trend: m.trend,
-                periodValues: m.periodValues,
-                order: i,
-              }))
+              current.map((m, i) => measurableRowToUpsertEntry(m, i))
             )
             .catch((e) => console.error('Failed to save period values', e));
         }, 800);
@@ -1903,11 +2629,11 @@ export function InstrumentsSegmentView({
                   <button
                     type="button"
                     onClick={() => setOwnerPickerOpen((v) => !v)}
-                    className="w-9 h-9 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary hover:bg-primary/20"
+                    className="p-0 rounded-full border-0 bg-transparent hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background"
                     title={`Owner: ${ownerName}`}
                     aria-label="Change owner"
                   >
-                    {ownerInitials}
+                    <OwnerInitialsAvatar initials={ownerInitials} size="lg" title={`Owner: ${ownerName}`} />
                   </button>
                   {ownerPickerOpen && (
                     <>
@@ -1940,7 +2666,7 @@ export function InstrumentsSegmentView({
                                 onClick={() => handleOwnerSelect(uid)}
                                 className={`w-full text-left px-2.5 py-2 rounded flex items-center gap-2 text-sm ${isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'}`}
                               >
-                                <span className="w-6 h-6 rounded-full bg-muted inline-flex items-center justify-center text-xs">{initials}</span>
+                                <OwnerInitialsAvatar initials={initials} size="xs" />
                                 <span className="truncate">{label}</span>
                               </button>
                             );
@@ -2014,52 +2740,162 @@ export function InstrumentsSegmentView({
                   <button type="button" className="p-0.5 rounded-full hover:bg-muted text-muted-foreground" aria-label="Info"><Info className="w-4 h-4" /></button>
                 </div>
                 <div className="space-y-4">
-                  <div>
+                  <div
+                    title={
+                      editingMeasurable
+                        ? "This can't be edited after the flight metric is created."
+                        : undefined
+                    }
+                  >
                     <label className="block text-xs font-medium text-muted-foreground mb-1.5">Unit</label>
                     <Select
                       value={createMeasurableUnit}
-                      onChange={(v) => v && setCreateMeasurableUnit(v)}
+                      disabled={Boolean(editingMeasurable)}
+                      onChange={(v) => {
+                        if (!v) return;
+                        setCreateMeasurableUnit(v as MeasurableUnitType);
+                      }}
                       options={[
-                        { label: 'Number', value: 'Number' },
-                        { label: 'Percentage', value: 'Percentage' },
                         { label: 'Currency', value: 'Currency' },
+                        { label: 'Percentage', value: 'Percentage' },
+                        { label: 'Number', value: 'Number' },
+                        { label: 'Yes/No', value: 'Yes/No' },
+                        { label: 'Time', value: 'Time' },
                       ]}
                       className="w-full"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-muted-foreground mb-1.5">Orientation rule</label>
-                    <Select
-                      value={createMeasurableOrientation}
-                      onChange={(v) => v && setCreateMeasurableOrientation(v)}
-                      options={[
-                        { label: 'Greater than or equal to goal', value: 'Greater than or equal to goal' },
-                        { label: 'Less than or equal to goal', value: 'Less than or equal to goal' },
-                        { label: 'Equal to goal', value: 'Equal to goal' },
-                      ]}
-                      className="w-full"
-                    />
-                  </div>
+                  {createMeasurableUnit === 'Currency' ? (
+                    <div
+                      title={
+                        editingMeasurable
+                          ? "This can't be edited after the flight metric is created."
+                          : undefined
+                      }
+                    >
+                      <label className="block text-xs font-medium text-muted-foreground mb-1.5">Currency</label>
+                      <Select
+                        value={createMeasurableCurrency}
+                        disabled={Boolean(editingMeasurable)}
+                        onChange={(v) => v && setCreateMeasurableCurrency(v as MeasurableCurrencyCode)}
+                        options={CURRENCY_OPTIONS.map((c) => ({ label: c.label, value: c.value }))}
+                        className="w-full"
+                      />
+                    </div>
+                  ) : null}
+                  {createMeasurableUnit !== 'Yes/No' ? (
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1.5">Orientation rule</label>
+                      <Select
+                        value={createMeasurableOrientation}
+                        onChange={(v) =>
+                          v && setCreateMeasurableOrientation(v as (typeof ORIENTATION_RULE_OPTIONS)[number])
+                        }
+                        options={ORIENTATION_RULE_OPTIONS.map((o) => ({ label: o, value: o }))}
+                        className="w-full"
+                      />
+                    </div>
+                  ) : null}
                   <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1.5">Value</label>
-                    <div className="flex">
-                      <input type="number" value={createMeasurableGoalValue} onChange={(e) => setCreateMeasurableGoalValue(Number(e.target.value))} className="w-full px-3 py-2 border border-border rounded-l-lg rounded-r-none bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
-                      <div className="flex flex-col border border-l-0 border-border rounded-r-lg overflow-hidden">
-                        <button type="button" onClick={() => setCreateMeasurableGoalValue((v) => v + 1)} className="px-2 py-0.5 border-b border-border hover:bg-muted text-foreground">▲</button>
-                        <button type="button" onClick={() => setCreateMeasurableGoalValue((v) => v - 1)} className="px-2 py-0.5 hover:bg-muted text-foreground">▼</button>
+                    {createMeasurableUnit === 'Yes/No' ? (
+                      <Select
+                        value={createMeasurableYesNo}
+                        onChange={(v) => v && setCreateMeasurableYesNo(v as 'Yes' | 'No')}
+                        options={[
+                          { label: 'Yes', value: 'Yes' },
+                          { label: 'No', value: 'No' },
+                        ]}
+                        className="w-full"
+                      />
+                    ) : createMeasurableUnit === 'Time' ? (
+                      <div className="flex items-center gap-1 max-w-xs">
+                        <input
+                          type="number"
+                          min={0}
+                          value={Number.isNaN(createMeasurableTimeH) ? 0 : createMeasurableTimeH}
+                          onChange={(e) => setCreateMeasurableTimeH(Number(e.target.value))}
+                          className="w-full min-w-0 px-2 py-2 border border-border rounded-md bg-background text-foreground text-sm text-center tabular-nums"
+                          aria-label="Hours"
+                        />
+                        <span className="text-muted-foreground shrink-0">:</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={59}
+                          value={Number.isNaN(createMeasurableTimeM) ? 0 : createMeasurableTimeM}
+                          onChange={(e) => setCreateMeasurableTimeM(Number(e.target.value))}
+                          className="w-full min-w-0 px-2 py-2 border border-border rounded-md bg-background text-foreground text-sm text-center tabular-nums"
+                          aria-label="Minutes"
+                        />
+                        <span className="text-muted-foreground shrink-0">:</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={59}
+                          value={Number.isNaN(createMeasurableTimeS) ? 0 : createMeasurableTimeS}
+                          onChange={(e) => setCreateMeasurableTimeS(Number(e.target.value))}
+                          className="w-full min-w-0 px-2 py-2 border border-border rounded-md bg-background text-foreground text-sm text-center tabular-nums"
+                          aria-label="Seconds"
+                        />
                       </div>
-                    </div>
+                    ) : createMeasurableOrientation === 'Inside min and max' ||
+                      createMeasurableOrientation === 'Outside min and max' ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <span className="text-xs text-muted-foreground">Min</span>
+                          <input
+                            type="number"
+                            value={createMeasurableGoalValue}
+                            onChange={(e) => setCreateMeasurableGoalValue(Number(e.target.value))}
+                            className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-xs text-muted-foreground">Max</span>
+                          <input
+                            type="number"
+                            value={createMeasurableGoalMax}
+                            onChange={(e) => setCreateMeasurableGoalMax(Number(e.target.value))}
+                            className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex max-w-xs">
+                        <input
+                          type="number"
+                          value={createMeasurableGoalValue}
+                          onChange={(e) => setCreateMeasurableGoalValue(Number(e.target.value))}
+                          className="w-full px-3 py-2 border border-border rounded-l-lg rounded-r-none bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                        <div className="flex flex-col border border-l-0 border-border rounded-r-lg overflow-hidden shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setCreateMeasurableGoalValue((v) => v + 1)}
+                            className="px-2 py-0.5 border-b border-border hover:bg-muted text-foreground text-xs leading-none"
+                          >
+                            ▲
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCreateMeasurableGoalValue((v) => v - 1)}
+                            className="px-2 py-0.5 hover:bg-muted text-foreground text-xs leading-none"
+                          >
+                            ▼
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-muted-foreground mb-1.5">Show rollup data as</label>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1.5">Rollup data</label>
                     <Select
                       value={createMeasurableRollup}
                       onChange={(v) => v && setCreateMeasurableRollup(v)}
                       options={[
                         { label: 'Total (default)', value: 'Total (default)' },
                         { label: 'Average', value: 'Average' },
-                        { label: 'Min', value: 'Min' },
-                        { label: 'Max', value: 'Max' },
                       ]}
                       className="w-full"
                     />
@@ -2086,28 +2922,35 @@ export function InstrumentsSegmentView({
                 type="button"
                 onClick={async () => {
                   if (savingMeasurable) return;
-                  if (!createMeasurableTitle.trim()) return;
-                  const goalOp = createMeasurableOrientation.includes('Greater') ? '>=' : createMeasurableOrientation.includes('Less') ? '<=' : '=';
-                  const goalStr = `${goalOp} ${createMeasurableGoalValue}`;
+                  if (!flightMetricFormValidation.canSave) {
+                    toast.error(
+                      flightMetricFormValidation.errors[0] ?? 'Please complete the required fields.'
+                    );
+                    return;
+                  }
+                  const rollupStored: 'total' | 'average' =
+                    createMeasurableRollup === 'Average' ? 'average' : 'total';
+                  const unitForNew = createMeasurableUnit;
+                  const unitForSaved =
+                    (editingMeasurable?.unitType ?? unitForNew) as MeasurableUnitType;
+                  const goalStr = buildGoalFromTargetForm({
+                    unitType: unitForSaved,
+                    orientation: createMeasurableOrientation,
+                    value: createMeasurableGoalValue,
+                    valueMax: createMeasurableGoalMax,
+                    yesNo: createMeasurableYesNo,
+                    time: {
+                      h: createMeasurableTimeH,
+                      m: createMeasurableTimeM,
+                      s: createMeasurableTimeS,
+                    },
+                  });
+                  const orientationRuleStored =
+                    unitForSaved === 'Yes/No' ? undefined : createMeasurableOrientation;
                   setSavingMeasurable(true);
                   const persistMeasurables = async (rows: MeasurableRow[]) => {
                     if (!organizationId || !meetingId) return;
-                    const payload = rows.map((mm, i) => ({
-                      id: mm.id,
-                      scorecardGroupId: mm.groupId === undefined || mm.groupId === 'main' ? null : mm.groupId,
-                      title: mm.title,
-                      goal: mm.goal,
-                      average: mm.average,
-                      total: mm.total,
-                      trend: mm.trend,
-                      periodValues: withOwnerMeta(mm.periodValues ?? {}, {
-                        ownerId: mm.ownerId,
-                        ownerName: mm.ownerName,
-                        ownerEmail: mm.ownerEmail,
-                        ownerInitials: mm.ownerInitials,
-                      }),
-                      order: i,
-                    }));
+                    const payload = rows.map((mm, i) => measurableRowToUpsertEntry(mm, i));
                     const payloadKey = JSON.stringify(payload);
                     const guard = measurableUpsertGuardRef.current;
                     const now = Date.now();
@@ -2134,6 +2977,10 @@ export function InstrumentsSegmentView({
                             ownerName: ownerMeta.ownerName,
                             ownerEmail: ownerMeta.ownerEmail,
                             ownerInitials: ownerMeta.ownerInitials,
+                            unitType: editingMeasurable.unitType ?? m.unitType,
+                            currencyCode: editingMeasurable.currencyCode ?? m.currencyCode,
+                            orientationRule: orientationRuleStored,
+                            rollup: rollupStored,
                           }
                         : m
                     );
@@ -2144,6 +2991,11 @@ export function InstrumentsSegmentView({
                     setCreateMeasurableTitle('');
                     setCreateMeasurableDescription('');
                     setCreateMeasurableGoalValue(0);
+                    setCreateMeasurableGoalMax(0);
+                    setCreateMeasurableYesNo('Yes');
+                    setCreateMeasurableTimeH(0);
+                    setCreateMeasurableTimeM(0);
+                    setCreateMeasurableTimeS(0);
                     setCreateMeasurableShowTotal(true);
                     setCreateMeasurableShowAverage(true);
                     setCreateMeasurableShowGoal(true);
@@ -2175,6 +3027,10 @@ export function InstrumentsSegmentView({
                     ownerName: ownerMeta.ownerName,
                     ownerEmail: ownerMeta.ownerEmail,
                     ownerInitials: ownerMeta.ownerInitials,
+                    unitType: unitForNew,
+                    currencyCode: unitForNew === 'Currency' ? createMeasurableCurrency : undefined,
+                    orientationRule: orientationRuleStored,
+                    rollup: rollupStored,
                   };
                   pushScorecardHistory();
                   const next = [...measurablesRef.current, newRow];
@@ -2184,6 +3040,11 @@ export function InstrumentsSegmentView({
                   setCreateMeasurableTitle('');
                   setCreateMeasurableDescription('');
                   setCreateMeasurableGoalValue(0);
+                  setCreateMeasurableGoalMax(0);
+                  setCreateMeasurableYesNo('Yes');
+                  setCreateMeasurableTimeH(0);
+                  setCreateMeasurableTimeM(0);
+                  setCreateMeasurableTimeS(0);
                   setCreateMeasurableShowTotal(true);
                   setCreateMeasurableShowAverage(true);
                   setCreateMeasurableShowGoal(true);
@@ -2191,8 +3052,13 @@ export function InstrumentsSegmentView({
                   setCreateMeasurableForGroupId(null);
                   setSavingMeasurable(false);
                 }}
-                disabled={savingMeasurable}
-                className="px-4 py-2.5 bg-primary text-primary-foreground border border-primary rounded-lg hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed text-sm font-medium cursor-pointer shadow-sm transition-colors"
+                disabled={savingMeasurable || !flightMetricFormValidation.canSave}
+                title={
+                  !savingMeasurable && !flightMetricFormValidation.canSave
+                    ? flightMetricFormValidation.errors[0]
+                    : undefined
+                }
+                className="rounded-lg border border-primary bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {savingMeasurable ? 'Saving...' : 'Save'}
               </button>

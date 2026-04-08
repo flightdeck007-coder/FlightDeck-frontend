@@ -471,7 +471,9 @@ export default function MeetingPage() {
       // Attachments: fetch current list so recap has them for the summary
       let attachments: Array<{ id: string; name: string; url?: string }> = [];
       try {
-        const list = await meetingsService.getAttachments(orgId, meetingId);
+        const list = await meetingsService.getAttachments(orgId, meetingId, {
+          meetingLevelOnly: true,
+        });
         attachments = (list || []).map((a: { id: string; fileName: string }) => ({
           id: a.id,
           name: a.fileName,
@@ -819,6 +821,7 @@ export default function MeetingPage() {
           initialLinkedEntity={createPopupInitialLinkedEntity}
           meetingAttendances={meeting?.attendances}
           currentUserId={currentUserId}
+          attachmentMeetingId={scorecardMeetingId || meetingId || undefined}
         />
 
         {/* Suspended banner */}
@@ -851,6 +854,7 @@ export default function MeetingPage() {
                 teamId={meeting?.teamId}
                 teams={teams}
                 scorecardMeetingId={scorecardMeetingId || meetingId}
+                fileStorageMeetingId={scorecardMeetingId || meetingId}
                 facilitatorId={meeting?.facilitatorId}
                 currentUserId={currentUserId}
                 onOpenCreateIssue={() => {

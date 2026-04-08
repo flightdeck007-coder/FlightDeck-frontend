@@ -24,6 +24,7 @@ import {
 import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
 import { useTodos, type TodoItem } from '@/contexts/TodosContext';
 import { EditTodoPanel } from './TodosSegmentView';
+import { OwnerInitialsAvatar } from './OwnerInitialsAvatar';
 
 const MENU_WIDTH = 248;
 const MENU_GAP = 8;
@@ -593,6 +594,7 @@ export function ConcludeSegmentView({
             teams={teams}
             currentTeamId={currentTeamId}
             organizationId={organizationId}
+            fileStorageMeetingId={meetingId}
           />
         );
       })()}
@@ -654,9 +656,7 @@ function RecapTodoRow({
         <td className="px-4 py-2 text-muted-foreground align-middle">{formatDueDate(item.dueDate)}</td>
         <td className="px-4 py-2 align-middle">
           {item.assigneeId ? (
-            <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground" title="Owner">
-              {item.ownerInitials}
-            </div>
+            <OwnerInitialsAvatar initials={item.ownerInitials} size="sm" title="Owner" />
           ) : (
             <span className="text-muted-foreground text-sm">—</span>
           )}

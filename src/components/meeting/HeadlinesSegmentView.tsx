@@ -30,7 +30,10 @@ import {
   X,
   Check,
   Loader2,
+  Download,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { meetingsService } from '@/lib/api/meetings.service';
 import {
   useHeadlines,
   type HeadlineItem,
@@ -38,6 +41,7 @@ import {
 } from '@/contexts/HeadlinesContext';
 import { ContentAreaLoader } from '@/components/ui/loaders';
 import { RichTextEditor } from '@/components/meeting/RichTextEditor';
+import { OwnerInitialsAvatar } from '@/components/meeting/OwnerInitialsAvatar';
 import { formatDateTime, formatRelativeTime } from '@/lib/formatDate';
 
 const MENU_WIDTH = 248;
@@ -68,6 +72,9 @@ interface HeadlinesSegmentViewProps {
   owners?: Array<{ id: string; name?: string | null; email?: string }>;
   embedded?: boolean;
   meetingId?: string;
+  organizationId?: string | null;
+  /** Meeting id used for attachment storage (upload/download). */
+  fileStorageMeetingId?: string;
   isFacilitator?: boolean;
   /** Scribe or facilitator can change filters and create (recording) */
   canRecord?: boolean;
@@ -79,6 +86,8 @@ export function HeadlinesSegmentView({
   owners = [],
   embedded = false,
   meetingId,
+  organizationId,
+  fileStorageMeetingId,
   isFacilitator = true,
   canRecord,
   onOpenCreate,
@@ -344,6 +353,8 @@ export function HeadlinesSegmentView({
           <HeadlineDetailPanel
             item={item}
             owners={owners}
+            organizationId={organizationId}
+            fileStorageMeetingId={fileStorageMeetingId}
             onOpenCreate={onOpenCreate}
             onClose={() => setSelectedHeadlineId(null)}
             onSave={(patch) => updateHeadline(item.id, patch)}
@@ -362,6 +373,8 @@ export function HeadlinesSegmentView({
             item={item}
             teamName={teamName}
             owners={owners}
+            organizationId={organizationId}
+            fileStorageMeetingId={fileStorageMeetingId}
             onOpenCreate={onOpenCreate}
             onClose={() => setSelectedDirectiveId(null)}
             onSave={(patch) => updateCascadingMessage(item.id, patch)}
@@ -611,9 +624,7 @@ function HeadlineRow({ item, onOpenEdit, onOpenCreate }: { item: HeadlineItem; o
           <div className="text-xs">{formatRelativeTime(item.createdAt)}</div>
         </td>
         <td className="px-4 py-2 align-middle">
-          <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
-            {item.ownerInitials}
-          </div>
+          <OwnerInitialsAvatar initials={item.ownerInitials} size="sm" />
         </td>
         <td className="px-4 py-2 align-middle text-right">
           <button
@@ -777,9 +788,7 @@ function CascadingRow({ item, onOpenEdit, onOpenCreate }: { item: CascadingMessa
           <div className="text-xs">{formatRelativeTime(item.createdAt)}</div>
         </td>
         <td className="px-4 py-2 align-middle">
-          <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground">
-            {item.ownerInitials}
-          </div>
+          <OwnerInitialsAvatar initials={item.ownerInitials} size="sm" />
         </td>
         <td className="px-4 py-2 align-middle text-right">
           <button
@@ -825,9 +834,15 @@ function ownerInitialsFromLabel(name?: string | null, email?: string): string {
   return '?';
 }
 
+function isPersistedAttachmentId(id: string): boolean {
+  return /^[a-z][a-z0-9]{20,}$/i.test(id);
+}
+
 function HeadlineDetailPanel({
   item,
   owners,
+  organizationId,
+  fileStorageMeetingId,
   onOpenCreate,
   onClose,
   onSave,
@@ -836,6 +851,8 @@ function HeadlineDetailPanel({
 }: {
   item: HeadlineItem;
   owners: Array<{ id: string; name?: string | null; email?: string }>;
+  organizationId?: string | null;
+  fileStorageMeetingId?: string;
   onOpenCreate?: (type: CreatePopupType, options?: OpenCreateOptions) => void;
   onClose: () => void;
   onSave: (patch: { title?: string; description?: string; ownerInitials?: string; linkedEntityType?: string | null; linkedEntityId?: string | null; linkedEntityTitle?: string | null; comments?: Array<{ id: string; text: string; authorInitials?: string; authorName?: string; createdAt: string }>; attachments?: Array<{ id: string; name: string; uploadedAt: string }>; archived?: boolean }) => void;
@@ -907,11 +924,11 @@ function HeadlineDetailPanel({
               <button
                 type="button"
                 onClick={() => setOwnerPickerOpen((v) => !v)}
-                className="w-9 h-9 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary hover:bg-primary/20"
+                className="p-0 rounded-full border-0 bg-transparent hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background"
                 title={`Owner: ${ownerLabel}`}
                 aria-label="Change owner"
               >
-                {ownerInitials || '?'}
+                <OwnerInitialsAvatar initials={ownerInitials} size="lg" title={`Owner: ${ownerLabel}`} />
               </button>
               {ownerPickerOpen && (
                 <>
@@ -949,7 +966,7 @@ function HeadlineDetailPanel({
                             }}
                             className={`w-full text-left px-2.5 py-2 rounded flex items-center gap-2 text-sm ${isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'}`}
                           >
-                            <span className="w-6 h-6 rounded-full bg-muted inline-flex items-center justify-center text-xs">{initials}</span>
+                            <OwnerInitialsAvatar initials={initials} size="xs" />
                             <span className="truncate">{label}</span>
                           </button>
                         );
@@ -1005,9 +1022,10 @@ function HeadlineDetailPanel({
               <button
                 type="button"
                 className="text-sm text-primary hover:underline"
-                onClick={() =>
-                  onOpenCreate?.('cascading_message', getLinkedCreateOptions({ id: item.id, title: item.title }, 'headline', 'cascading_message'))
-                }
+                onClick={() => {
+                  onOpenCreate?.('cascading_message', getLinkedCreateOptions({ id: item.id, title: item.title }, 'headline', 'cascading_message'));
+                  onClose();
+                }}
               >
                 + Linked Flight Directive
               </button>
@@ -1022,16 +1040,47 @@ function HeadlineDetailPanel({
                 <input
                   type="file"
                   className="hidden"
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files ?? []);
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={async (e) => {
+                    const inputEl = e.currentTarget;
+                    const files = Array.from(inputEl.files ?? []);
                     if (!files.length) return;
-                    const next = [
-                      ...attachments,
-                      ...files.map((f) => ({ id: `${Date.now()}-${f.name}`, name: f.name, uploadedAt: new Date().toISOString() })),
-                    ];
-                    setAttachments(next);
-                    onSave({ attachments: next });
-                    e.currentTarget.value = '';
+                    try {
+                      if (organizationId && fileStorageMeetingId) {
+                        const next = [...attachments];
+                        for (const f of files) {
+                          try {
+                            const r = await meetingsService.uploadAttachment(organizationId, fileStorageMeetingId, f, {
+                              linkedEntityType: 'headline',
+                              linkedEntityId: item.id,
+                            });
+                            next.push({
+                              id: r.id,
+                              name: r.fileName,
+                              uploadedAt: r.createdAt ?? new Date().toISOString(),
+                            });
+                          } catch {
+                            toast.error(`Couldn't upload ${f.name}`);
+                          }
+                        }
+                        setAttachments(next);
+                        onSave({ attachments: next });
+                      } else {
+                        const next = [
+                          ...attachments,
+                          ...files.map((f) => ({
+                            id: `${Date.now()}-${f.name}`,
+                            name: f.name,
+                            uploadedAt: new Date().toISOString(),
+                          })),
+                        ];
+                        setAttachments(next);
+                        onSave({ attachments: next });
+                        toast.message('Attachment saved locally only (open a flight review with storage to upload files).');
+                      }
+                    } finally {
+                      inputEl.value = '';
+                    }
                   }}
                 />
               </label>
@@ -1039,19 +1088,32 @@ function HeadlineDetailPanel({
             {attachments.length > 0 && (
               <div className="mt-3 space-y-1">
                 {attachments.map((a) => (
-                  <div key={a.id} className="flex items-center justify-between text-sm">
-                    <span className="truncate">{a.name}</span>
-                    <button
-                      type="button"
-                      className="text-xs text-primary hover:underline"
-                      onClick={() => {
-                        const next = attachments.filter((x) => x.id !== a.id);
-                        setAttachments(next);
-                        onSave({ attachments: next });
-                      }}
-                    >
-                      Remove
-                    </button>
+                  <div key={a.id} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="truncate min-w-0">{a.name}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {organizationId && fileStorageMeetingId && isPersistedAttachmentId(a.id) && (
+                        <button
+                          type="button"
+                          className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                          onClick={() =>
+                            meetingsService.downloadAttachment(organizationId, fileStorageMeetingId, a.id, a.name)
+                          }
+                        >
+                          <Download className="w-3.5 h-3.5" /> Download
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="text-xs text-primary hover:underline"
+                        onClick={() => {
+                          const next = attachments.filter((x) => x.id !== a.id);
+                          setAttachments(next);
+                          onSave({ attachments: next });
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1060,7 +1122,7 @@ function HeadlineDetailPanel({
           <section className="pt-2 mt-2 border-t border-border">
             <h4 className="font-medium text-foreground mb-3">Comments {comments.length}</h4>
             <div className="flex gap-3">
-              <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground shrink-0">{ownerInitials || '?'}</div>
+              <OwnerInitialsAvatar initials={ownerInitials} size="lg" />
               <input
                 type="text"
                 value={newComment}
@@ -1121,7 +1183,14 @@ function HeadlineDetailPanel({
           }}
           includeCascade
           sourceType="headline"
-          onOpenCreate={onOpenCreate}
+          onOpenCreate={
+            onOpenCreate
+              ? (type, options) => {
+                  onOpenCreate(type, options);
+                  onClose();
+                }
+              : undefined
+          }
         />
       )}
     </>
@@ -1132,6 +1201,8 @@ function CascadingDetailPanel({
   item,
   teamName,
   owners,
+  organizationId,
+  fileStorageMeetingId,
   onOpenCreate,
   onClose,
   onSave,
@@ -1141,6 +1212,8 @@ function CascadingDetailPanel({
   item: CascadingMessageItem;
   teamName: string;
   owners: Array<{ id: string; name?: string | null; email?: string }>;
+  organizationId?: string | null;
+  fileStorageMeetingId?: string;
   onOpenCreate?: (type: CreatePopupType, options?: OpenCreateOptions) => void;
   onClose: () => void;
   onSave: (patch: { title?: string; description?: string; from?: string; ownerInitials?: string; linkedEntityType?: string | null; linkedEntityId?: string | null; linkedEntityTitle?: string | null; comments?: Array<{ id: string; text: string; authorInitials?: string; authorName?: string; createdAt: string }>; attachments?: Array<{ id: string; name: string; uploadedAt: string }>; archived?: boolean }) => void;
@@ -1214,11 +1287,11 @@ function CascadingDetailPanel({
               <button
                 type="button"
                 onClick={() => setOwnerPickerOpen((v) => !v)}
-                className="w-9 h-9 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary hover:bg-primary/20"
+                className="p-0 rounded-full border-0 bg-transparent hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background"
                 title={`Owner: ${ownerLabel}`}
                 aria-label="Change owner"
               >
-                {ownerInitials || '?'}
+                <OwnerInitialsAvatar initials={ownerInitials} size="lg" title={`Owner: ${ownerLabel}`} />
               </button>
               {ownerPickerOpen && (
                 <>
@@ -1256,7 +1329,7 @@ function CascadingDetailPanel({
                             }}
                             className={`w-full text-left px-2.5 py-2 rounded flex items-center gap-2 text-sm ${isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'}`}
                           >
-                            <span className="w-6 h-6 rounded-full bg-muted inline-flex items-center justify-center text-xs">{initials}</span>
+                            <OwnerInitialsAvatar initials={initials} size="xs" />
                             <span className="truncate">{label}</span>
                           </button>
                         );
@@ -1321,9 +1394,10 @@ function CascadingDetailPanel({
               <button
                 type="button"
                 className="text-sm text-primary hover:underline"
-                onClick={() =>
-                  onOpenCreate?.('headline', getLinkedCreateOptions({ id: item.id, title: item.title }, 'cascading_message', 'headline'))
-                }
+                onClick={() => {
+                  onOpenCreate?.('headline', getLinkedCreateOptions({ id: item.id, title: item.title }, 'cascading_message', 'headline'));
+                  onClose();
+                }}
               >
                 + Linked Announcement
               </button>
@@ -1338,16 +1412,47 @@ function CascadingDetailPanel({
                 <input
                   type="file"
                   className="hidden"
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files ?? []);
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={async (e) => {
+                    const inputEl = e.currentTarget;
+                    const files = Array.from(inputEl.files ?? []);
                     if (!files.length) return;
-                    const next = [
-                      ...attachments,
-                      ...files.map((f) => ({ id: `${Date.now()}-${f.name}`, name: f.name, uploadedAt: new Date().toISOString() })),
-                    ];
-                    setAttachments(next);
-                    onSave({ attachments: next });
-                    e.currentTarget.value = '';
+                    try {
+                      if (organizationId && fileStorageMeetingId) {
+                        const next = [...attachments];
+                        for (const f of files) {
+                          try {
+                            const r = await meetingsService.uploadAttachment(organizationId, fileStorageMeetingId, f, {
+                              linkedEntityType: 'cascading_message',
+                              linkedEntityId: item.id,
+                            });
+                            next.push({
+                              id: r.id,
+                              name: r.fileName,
+                              uploadedAt: r.createdAt ?? new Date().toISOString(),
+                            });
+                          } catch {
+                            toast.error(`Couldn't upload ${f.name}`);
+                          }
+                        }
+                        setAttachments(next);
+                        onSave({ attachments: next });
+                      } else {
+                        const next = [
+                          ...attachments,
+                          ...files.map((f) => ({
+                            id: `${Date.now()}-${f.name}`,
+                            name: f.name,
+                            uploadedAt: new Date().toISOString(),
+                          })),
+                        ];
+                        setAttachments(next);
+                        onSave({ attachments: next });
+                        toast.message('Attachment saved locally only (open a flight review with storage to upload files).');
+                      }
+                    } finally {
+                      inputEl.value = '';
+                    }
                   }}
                 />
               </label>
@@ -1355,19 +1460,32 @@ function CascadingDetailPanel({
             {attachments.length > 0 && (
               <div className="mt-3 space-y-1">
                 {attachments.map((a) => (
-                  <div key={a.id} className="flex items-center justify-between text-sm">
-                    <span className="truncate">{a.name}</span>
-                    <button
-                      type="button"
-                      className="text-xs text-primary hover:underline"
-                      onClick={() => {
-                        const next = attachments.filter((x) => x.id !== a.id);
-                        setAttachments(next);
-                        onSave({ attachments: next });
-                      }}
-                    >
-                      Remove
-                    </button>
+                  <div key={a.id} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="truncate min-w-0">{a.name}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {organizationId && fileStorageMeetingId && isPersistedAttachmentId(a.id) && (
+                        <button
+                          type="button"
+                          className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                          onClick={() =>
+                            meetingsService.downloadAttachment(organizationId, fileStorageMeetingId, a.id, a.name)
+                          }
+                        >
+                          <Download className="w-3.5 h-3.5" /> Download
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="text-xs text-primary hover:underline"
+                        onClick={() => {
+                          const next = attachments.filter((x) => x.id !== a.id);
+                          setAttachments(next);
+                          onSave({ attachments: next });
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1376,7 +1494,7 @@ function CascadingDetailPanel({
           <section className="pt-2 mt-2 border-t border-border">
             <h4 className="font-medium text-foreground mb-3">Comments {comments.length}</h4>
             <div className="flex gap-3">
-              <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground shrink-0">{ownerInitials || '?'}</div>
+              <OwnerInitialsAvatar initials={ownerInitials} size="lg" />
               <input
                 type="text"
                 value={newComment}
@@ -1437,7 +1555,14 @@ function CascadingDetailPanel({
           }}
           includeCascade={false}
           sourceType="cascading_message"
-          onOpenCreate={onOpenCreate}
+          onOpenCreate={
+            onOpenCreate
+              ? (type, options) => {
+                  onOpenCreate(type, options);
+                  onClose();
+                }
+              : undefined
+          }
         />
       )}
     </>

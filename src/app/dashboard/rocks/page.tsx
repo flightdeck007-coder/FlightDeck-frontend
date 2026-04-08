@@ -16,6 +16,7 @@ export default function RocksPage() {
     meetings,
     isLoading: teamsLoading,
     selectedTeam,
+    fileStorageMeetingId,
   } = useMeetingsData();
   const [createOpen, setCreateOpen] = useState(false);
   const [createType, setCreateType] = useState<'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | undefined>(undefined);
@@ -67,6 +68,7 @@ export default function RocksPage() {
               organizationId={organizationId}
               teamId={selectedTeamId || undefined}
               teamName={teamName}
+              fileStorageMeetingId={fileStorageMeetingId}
               canRecord
               onOpenCreate={(type, options) => {
                 setCreateType(type);
@@ -96,6 +98,7 @@ export default function RocksPage() {
             initialDescription={createDescription}
             initialLinkedEntity={createLinkedEntity}
             meetingAttendances={meetingAttendances}
+            attachmentMeetingId={fileStorageMeetingId}
           />
         </RocksProvider>
       </div>

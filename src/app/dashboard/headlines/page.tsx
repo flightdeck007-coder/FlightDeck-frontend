@@ -17,6 +17,7 @@ export default function HeadlinesPage() {
     meetings,
     isLoading: teamsLoading,
     selectedTeam,
+    fileStorageMeetingId,
   } = useMeetingsData();
   const [selectedMeeting, setSelectedMeeting] = useState<Awaited<ReturnType<typeof meetingsService.findOne>> | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -83,6 +84,8 @@ export default function HeadlinesPage() {
                     email: m.user.email,
                   }))}
                   meetingId={undefined}
+                  organizationId={organizationId}
+                  fileStorageMeetingId={fileStorageMeetingId}
                   canRecord
                   onOpenCreate={(type, options) => {
                     setCreateType(type);
@@ -112,6 +115,7 @@ export default function HeadlinesPage() {
                 initialDescription={createDescription}
                 initialLinkedEntity={createLinkedEntity}
                 meetingAttendances={selectedMeeting?.attendances ?? meetingAttendances}
+                attachmentMeetingId={fileStorageMeetingId}
               />
             </HeadlinesProvider>
           </MeetingSocketProvider>

@@ -40,6 +40,8 @@ interface MeetingContentProps {
   /** All teams for edit-todo team dropdown (meeting and dashboard) */
   teams?: Array<{ id: string; name: string }>;
   scorecardMeetingId?: string;
+  /** Meeting id for entity file uploads (attachments); usually same as scorecard canonical meeting. */
+  fileStorageMeetingId?: string;
 }
 
 // Demo data for different sections (L10-style; flight wording in UI)
@@ -95,7 +97,7 @@ const demoData: Record<string, any> = {
   },
 };
 
-export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onOpenCreate, onFinishMeeting, finishLoading, meetingId, organizationId, isFacilitator, canRecord, facilitatorId, currentUserId, meetingAttendances, isMeetingInFuture, teamName: meetingTeamName, teamId: meetingTeamId, teams: meetingTeams = [], scorecardMeetingId }: MeetingContentProps) {
+export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onOpenCreate, onFinishMeeting, finishLoading, meetingId, organizationId, isFacilitator, canRecord, facilitatorId, currentUserId, meetingAttendances, isMeetingInFuture, teamName: meetingTeamName, teamId: meetingTeamId, teams: meetingTeams = [], scorecardMeetingId, fileStorageMeetingId }: MeetingContentProps) {
   const canRecordOrFacilitator = canRecord ?? isFacilitator;
   const attendances = meetingAttendances ?? [];
   const data = demoData[sectionId.toLowerCase()] || demoData.segue;
@@ -167,6 +169,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
             isFacilitator={isFacilitator}
             canRecord={canRecordOrFacilitator}
             onOpenCreate={onOpenCreate}
+            fileStorageMeetingId={fileStorageMeetingId}
           />
         )}
         {sectionId === 'headlines' && (
@@ -179,6 +182,8 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
               email: a.user.email,
             }))}
             meetingId={undefined}
+            organizationId={organizationId}
+            fileStorageMeetingId={fileStorageMeetingId}
             isFacilitator={isFacilitator}
             canRecord={canRecordOrFacilitator}
             onOpenCreate={onOpenCreate}
@@ -192,6 +197,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
             teams={meetingTeams}
             organizationId={organizationId}
             meetingId={undefined}
+            fileStorageMeetingId={fileStorageMeetingId}
             isFacilitator={isFacilitator}
             canRecord={canRecordOrFacilitator}
             onOpenCreate={onOpenCreate}
@@ -205,6 +211,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
             teams={meetingTeams}
             organizationId={organizationId}
             meetingId={undefined}
+            fileStorageMeetingId={fileStorageMeetingId}
             isFacilitator={isFacilitator}
             canRecord={canRecordOrFacilitator}
             onOpenCreate={onOpenCreate}

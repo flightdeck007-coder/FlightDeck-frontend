@@ -41,7 +41,9 @@ export function MeetingNotesSection({
     if (!organizationId || !meetingId) return;
     setLoadingAttachments(true);
     try {
-      const list = await meetingsService.getAttachments(organizationId, meetingId);
+      const list = await meetingsService.getAttachments(organizationId, meetingId, {
+        meetingLevelOnly: true,
+      });
       setAttachments(list.map((a) => ({ id: a.id, fileName: a.fileName, mimeType: a.mimeType })));
     } catch {
       setAttachments([]);

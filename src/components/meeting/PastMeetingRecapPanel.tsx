@@ -27,6 +27,7 @@ import type { Meeting } from '@/lib/api/meetings.service';
 import { meetingsService } from '@/lib/api/meetings.service';
 import { ROUTES } from '@/lib/constants/routes';
 import { formatSegmentDuration } from '@/lib/formatDate';
+import { OwnerInitialsAvatar } from '@/components/meeting/OwnerInitialsAvatar';
 
 export interface MeetingRecapTodo {
   id: string;
@@ -167,7 +168,9 @@ export function PastMeetingRecapPanel({
     (async () => {
       setLoadingAttachments(true);
       try {
-        const list = await meetingsService.getAttachments(organizationId, meeting.id);
+        const list = await meetingsService.getAttachments(organizationId, meeting.id, {
+          meetingLevelOnly: true,
+        });
         if (!cancelled) setApiAttachments(list.map((a) => ({ id: a.id, fileName: a.fileName })));
       } catch {
         if (!cancelled) setApiAttachments([]);
@@ -383,12 +386,7 @@ export function PastMeetingRecapPanel({
                         <ExternalLink className="w-4 h-4" />
                       </Link>
                       {todo.assigneeInitials && (
-                        <span
-                          className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground"
-                          title="Assignee"
-                        >
-                          {todo.assigneeInitials}
-                        </span>
+                        <OwnerInitialsAvatar initials={todo.assigneeInitials} size="sm" title="Assignee" />
                       )}
                     </div>
                   </li>

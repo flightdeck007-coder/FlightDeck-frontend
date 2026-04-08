@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useForm, Controller, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -28,6 +29,7 @@ import { useTodosOptional } from "@/contexts/TodosContext";
 import { useHeadlinesOptional } from "@/contexts/HeadlinesContext";
 import type { Team } from "@/lib/api/teams.service";
 import { teamsService } from "@/lib/api/teams.service";
+import { meetingsService } from "@/lib/api/meetings.service";
 
 export type CreateType =
   | "issue"
@@ -147,6 +149,10 @@ type TodoFormData = z.infer<typeof todoSchema>;
 type HeadlineFormData = z.infer<typeof headlineSchema>;
 type CascadingFormData = z.infer<typeof cascadingSchema>;
 
+/** Above meeting drawers (~50–100) and nested confirm dialogs; below Ant Design overlays (~1050). */
+const CREATE_POPUP_Z_BACKDROP = 200;
+const CREATE_POPUP_Z_SHEET = 201;
+
 const MUI_PICKER_SX = {
   "& .MuiInputLabel-root": { color: "var(--foreground) !important", "&.Mui-focused": { color: "var(--primary) !important" } },
   "& .MuiOutlinedInput-root": {
@@ -242,6 +248,8 @@ interface CreatePopupProps {
   /** Meeting attendees for rock owner dropdown (and issue/todo assignees if needed) */
   meetingAttendances?: Array<{ id: string; user: { id: string; name?: string | null; email: string } }>;
   currentUserId?: string | null;
+  /** Meeting used for attachment storage (paths + DB). Use canonical team meeting when not in a specific review. */
+  attachmentMeetingId?: string;
 }
 
 export function CreatePopup({
@@ -258,6 +266,7 @@ export function CreatePopup({
   initialLinkedEntity,
   meetingAttendances = [],
   currentUserId,
+  attachmentMeetingId,
 }: CreatePopupProps) {
   const teamsList = Array.isArray(teams) ? teams : [];
   const teamsForSelect = teamsList.length > 0 ? teamsList.map((t) => ({ id: t.id, name: t.name })) : [];
@@ -286,6 +295,16 @@ export function CreatePopup({
   const issuesApi = useIssuesOptional();
   const todosApi = useTodosOptional();
   const headlinesApi = useHeadlinesOptional();
+
+  const uploadEntityFiles = async (entityType: string, entityId: string, files: File[]) => {
+    if (!organizationId || !attachmentMeetingId || files.length === 0) return;
+    for (const file of files) {
+      await meetingsService.uploadAttachment(organizationId, attachmentMeetingId, file, {
+        linkedEntityType: entityType,
+        linkedEntityId: entityId,
+      });
+    }
+  };
 
   const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx", ".xls", ".xlsx"];
   const ALLOWED_MIMES = [
@@ -322,7 +341,8 @@ export function CreatePopup({
       );
     }
     setAttachmentFiles((prev) => [...prev, ...allowed]);
-    e.target.value = "";
+    const el = e.target;
+    if (el) el.value = "";
   };
 
   const removeAttachment = (index: number) => {
@@ -349,7 +369,8 @@ export function CreatePopup({
       );
     }
     setRockAttachmentFiles((prev) => [...prev, ...allowed]);
-    e.target.value = "";
+    const el = e.target;
+    if (el) el.value = "";
   };
 
   const removeRockAttachment = (index: number) => {
@@ -369,7 +390,8 @@ export function CreatePopup({
       setTodoAttachmentError(`Not allowed: ${rejected.map((f) => f.name).join(", ")}. Only PDF, DOC, DOCX, XLS, XLSX are allowed.`);
     }
     setTodoAttachmentFiles((prev) => [...prev, ...allowed]);
-    e.target.value = "";
+    const el = e.target;
+    if (el) el.value = "";
   };
   const removeTodoAttachment = (index: number) => {
     setTodoAttachmentFiles((prev) => prev.filter((_, i) => i !== index));
@@ -388,7 +410,8 @@ export function CreatePopup({
       setHeadlineAttachmentError(`Not allowed: ${rejected.map((f) => f.name).join(", ")}. Only PDF, DOC, DOCX, XLS, XLSX are allowed.`);
     }
     setHeadlineAttachmentFiles((prev) => [...prev, ...allowed]);
-    e.target.value = "";
+    const el = e.target;
+    if (el) el.value = "";
   };
   const removeHeadlineAttachment = (index: number) => {
     setHeadlineAttachmentFiles((prev) => prev.filter((_, i) => i !== index));
@@ -407,7 +430,8 @@ export function CreatePopup({
       setCascadingAttachmentError(`Not allowed: ${rejected.map((f) => f.name).join(", ")}. Only PDF, DOC, DOCX, XLS, XLSX are allowed.`);
     }
     setCascadingAttachmentFiles((prev) => [...prev, ...allowed]);
-    e.target.value = "";
+    const el = e.target;
+    if (el) el.value = "";
   };
   const removeCascadingAttachment = (index: number) => {
     setCascadingAttachmentFiles((prev) => prev.filter((_, i) => i !== index));
@@ -560,6 +584,23 @@ export function CreatePopup({
 
   useEffect(() => {
     if (!open) return;
+    if (initialLinkedEntity) {
+      setIsModal(true);
+      setMinimized(false);
+    }
+  }, [open, initialLinkedEntity]);
+
+  useEffect(() => {
+    if (!open || !isModal || typeof document === "undefined") return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open, isModal]);
+
+  useEffect(() => {
+    if (!open) return;
     if (initialType) setCreateType(initialType === 'measurable' ? 'todo' : initialType);
     if ((initialTitle != null || initialDescription != null) && initialType) {
       const title = initialTitle ?? "";
@@ -636,6 +677,14 @@ export function CreatePopup({
         setSubmitError("Couldn't create Turbulence. Please check your input and try again.");
         return;
       }
+      if (attachmentFiles.length > 0) {
+        try {
+          await uploadEntityFiles("issue", createdId, attachmentFiles);
+        } catch {
+          setSubmitError("Turbulence was created, but one or more attachments failed to upload.");
+          return;
+        }
+      }
       resetPopupState();
       onClose();
     } catch {
@@ -643,7 +692,7 @@ export function CreatePopup({
     }
   };
 
-  const onRockSubmit = (data: RockFormData) => {
+  const onRockSubmit = async (data: RockFormData) => {
     setSubmitError(null);
     try {
       if (!rocksApi) {
@@ -665,7 +714,19 @@ export function CreatePopup({
         ...(ownerName ? { ownerName: String(ownerName) } : {}),
         ...(ownerInitials ? { ownerInitials: ownerInitials.slice(0, 2) } : {}),
       };
-      rocksApi.addRock(rockPayload);
+      const newId = await rocksApi.addRock(rockPayload);
+      if (!newId) {
+        setSubmitError("Couldn't create Waypoint. Please try again.");
+        return;
+      }
+      if (rockAttachmentFiles.length > 0) {
+        try {
+          await uploadEntityFiles("rock", newId, rockAttachmentFiles);
+        } catch {
+          setSubmitError("Waypoint was created, but one or more attachments failed to upload.");
+          return;
+        }
+      }
       resetPopupState();
       onClose();
     } catch {
@@ -681,7 +742,7 @@ export function CreatePopup({
         return;
       }
       const selectedTeam = (teamsList as Team[]).find((t) => t.id === data.teamId);
-      await todosApi.addTodo({
+      const todoId = await todosApi.addTodo({
         title: data.title,
         description: data.description || undefined,
         dueDate: data.dueDate || null,
@@ -696,6 +757,14 @@ export function CreatePopup({
           linkedEntityTitle: linkedEntity.title,
         }),
       });
+      if (todoAttachmentFiles.length > 0 && todoId) {
+        try {
+          await uploadEntityFiles("todo", todoId, todoAttachmentFiles);
+        } catch {
+          setSubmitError("Clearance was created, but one or more attachments failed to upload.");
+          return;
+        }
+      }
       resetPopupState();
       onClose();
     } catch {
@@ -703,7 +772,7 @@ export function CreatePopup({
     }
   };
 
-  const onHeadlineSubmit = (data: HeadlineFormData) => {
+  const onHeadlineSubmit = async (data: HeadlineFormData) => {
     setSubmitError(null);
     try {
       if (!headlinesApi) {
@@ -711,7 +780,7 @@ export function CreatePopup({
         return;
       }
       const now = new Date().toISOString();
-      headlinesApi.addHeadline({
+      const headlineId = await headlinesApi.addHeadline({
         title: data.title,
         description: data.description || undefined,
         ...(linkedEntity && {
@@ -724,6 +793,26 @@ export function CreatePopup({
         ownerInitials: "U",
         archived: false,
       });
+      if (headlineId && headlineAttachmentFiles.length > 0 && organizationId && attachmentMeetingId) {
+        try {
+          const meta: Array<{ id: string; name: string; uploadedAt: string }> = [];
+          for (const file of headlineAttachmentFiles) {
+            const r = await meetingsService.uploadAttachment(organizationId, attachmentMeetingId, file, {
+              linkedEntityType: "headline",
+              linkedEntityId: headlineId,
+            });
+            meta.push({
+              id: r.id,
+              name: r.fileName,
+              uploadedAt: r.createdAt ?? new Date().toISOString(),
+            });
+          }
+          await headlinesApi.updateHeadline(headlineId, { attachments: meta });
+        } catch {
+          setSubmitError("Announcement was created, but one or more attachments failed to upload.");
+          return;
+        }
+      }
       resetPopupState();
       onClose();
     } catch {
@@ -731,7 +820,7 @@ export function CreatePopup({
     }
   };
 
-  const onCascadingSubmit = (data: CascadingFormData) => {
+  const onCascadingSubmit = async (data: CascadingFormData) => {
     setSubmitError(null);
     try {
       if (!headlinesApi) {
@@ -739,7 +828,7 @@ export function CreatePopup({
         return;
       }
       const now = new Date().toISOString();
-      headlinesApi.addCascadingMessage({
+      const messageId = await headlinesApi.addCascadingMessage({
         title: data.title,
         description: data.description || undefined,
         from: teamName || "Flight Crew",
@@ -753,6 +842,26 @@ export function CreatePopup({
         ownerInitials: "U",
         archived: false,
       });
+      if (messageId && cascadingAttachmentFiles.length > 0 && organizationId && attachmentMeetingId) {
+        try {
+          const meta: Array<{ id: string; name: string; uploadedAt: string }> = [];
+          for (const file of cascadingAttachmentFiles) {
+            const r = await meetingsService.uploadAttachment(organizationId, attachmentMeetingId, file, {
+              linkedEntityType: "cascading_message",
+              linkedEntityId: messageId,
+            });
+            meta.push({
+              id: r.id,
+              name: r.fileName,
+              uploadedAt: r.createdAt ?? new Date().toISOString(),
+            });
+          }
+          await headlinesApi.updateCascadingMessage(messageId, { attachments: meta });
+        } catch {
+          setSubmitError("Flight Directive was created, but one or more attachments failed to upload.");
+          return;
+        }
+      }
       resetPopupState();
       onClose();
     } catch {
@@ -1661,29 +1770,38 @@ export function CreatePopup({
     </div>
   );
 
-  if (isModal) {
-    return (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-        onClick={(e) => e.target === e.currentTarget && onClose()}
-      >
-        <div
-          className="bg-background border border-border rounded-lg shadow-xl flex flex-col w-full max-w-2xl max-h-[90vh] overflow-hidden min-h-0"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {panelContent}
-        </div>
-      </div>
-    );
-  }
-
-  return (
+  const popupNode = isModal ? (
     <div
-      className={`fixed z-50 flex flex-col bg-background border border-border rounded-lg shadow-xl overflow-hidden bottom-0 right-0 ${
+      className="fixed inset-0 flex items-center justify-center p-4 bg-black/55 backdrop-blur-[2px]"
+      style={{ zIndex: CREATE_POPUP_Z_BACKDROP }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      role="presentation"
+    >
+      <div
+        className="relative flex flex-col w-full max-w-2xl max-h-[90vh] overflow-hidden min-h-0 rounded-xl border border-border bg-background shadow-2xl ring-1 ring-black/5 dark:ring-white/10"
+        style={{ zIndex: CREATE_POPUP_Z_SHEET }}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Create"
+      >
+        {panelContent}
+      </div>
+    </div>
+  ) : (
+    <div
+      className={`fixed flex flex-col overflow-hidden bottom-0 right-0 rounded-tl-xl border border-border bg-background shadow-2xl ring-1 ring-black/5 dark:ring-white/10 ${
         minimized ? "w-[420px]" : "w-full max-w-[650px] max-h-[80vh]"
       }`}
+      style={{ zIndex: CREATE_POPUP_Z_SHEET }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Create"
     >
       {panelContent}
     </div>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(popupNode, document.body);
 }

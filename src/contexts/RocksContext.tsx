@@ -75,7 +75,7 @@ function apiToRock(r: {
 
 interface RocksContextValue {
   rocks: Rock[];
-  addRock: (rock: Omit<Rock, 'id' | 'ownerName' | 'ownerInitials'> & { id?: string; ownerName?: string; ownerInitials?: string }) => void;
+  addRock: (rock: Omit<Rock, 'id' | 'ownerName' | 'ownerInitials'> & { id?: string; ownerName?: string; ownerInitials?: string }) => Promise<string | undefined>;
   updateRock: (id: string, updates: Partial<Rock>) => void;
   moveRockToColumn: (rockId: string, column: RockColumnId) => void;
   archiveRock: (id: string) => void;
@@ -159,7 +159,7 @@ export function RocksProvider({
   const addRock = useCallback(
     async (rock: Omit<Rock, 'id' | 'ownerName' | 'ownerInitials'> & { id?: string; ownerName?: string; ownerInitials?: string }) => {
       const targetMeetingId = meetingId ?? fallbackMeetingId;
-      if (!organizationId || !targetMeetingId) return;
+      if (!organizationId || !targetMeetingId) return undefined;
       try {
         const created = await meetingsService.createRock(organizationId, targetMeetingId, {
           title: rock.title,
@@ -177,8 +177,9 @@ export function RocksProvider({
         setRocks((prev) =>
           prev.some((r) => r.id === newRock.id) ? prev : [...prev, newRock]
         );
+        return newRock.id;
       } catch {
-        // keep UI unchanged on error
+        return undefined;
       }
     },
     [organizationId, meetingId, fallbackMeetingId]

@@ -162,10 +162,28 @@ export const meetingsService = {
   getAttachments: async (
     organizationId: string,
     meetingId: string,
-  ): Promise<Array<{ id: string; fileName: string; filePath: string; mimeType?: string; user?: { id: string; name?: string; email: string } }>> => {
-    const response = await apiClient.get(
-      `/meetings/${meetingId}/attachments?organizationId=${organizationId}`,
-    );
+    opts?: {
+      linkedEntityType?: string;
+      linkedEntityId?: string;
+      meetingLevelOnly?: boolean;
+    },
+  ): Promise<
+    Array<{
+      id: string;
+      fileName: string;
+      filePath: string;
+      mimeType?: string;
+      linkedEntityType?: string | null;
+      linkedEntityId?: string | null;
+      createdAt?: string;
+      user?: { id: string; name?: string; email: string };
+    }>
+  > => {
+    const params = new URLSearchParams({ organizationId });
+    if (opts?.linkedEntityType) params.set('linkedEntityType', opts.linkedEntityType);
+    if (opts?.linkedEntityId) params.set('linkedEntityId', opts.linkedEntityId);
+    if (opts?.meetingLevelOnly) params.set('meetingLevelOnly', 'true');
+    const response = await apiClient.get(`/meetings/${meetingId}/attachments?${params}`);
     return response.data;
   },
 
@@ -173,18 +191,26 @@ export const meetingsService = {
     organizationId: string,
     meetingId: string,
     file: File,
-  ): Promise<{ id: string; fileName: string; filePath: string; mimeType?: string }> => {
+    opts?: { linkedEntityType?: string; linkedEntityId?: string },
+  ): Promise<{
+    id: string;
+    fileName: string;
+    filePath: string;
+    mimeType?: string;
+    linkedEntityType?: string | null;
+    linkedEntityId?: string | null;
+    createdAt?: string;
+  }> => {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await apiClient.post(
-      `/meetings/${meetingId}/attachments?organizationId=${organizationId}`,
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+    const params = new URLSearchParams({ organizationId });
+    if (opts?.linkedEntityType) params.set('linkedEntityType', opts.linkedEntityType);
+    if (opts?.linkedEntityId) params.set('linkedEntityId', opts.linkedEntityId);
+    const response = await apiClient.post(`/meetings/${meetingId}/attachments?${params}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
       },
-    );
+    });
     return response.data;
   },
 

@@ -48,9 +48,11 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { MobileDatePicker } from '@mui/x-date-pickers/MobileDatePicker';
 import { useTodos, type TodoItem } from '@/contexts/TodosContext';
 import { RichTextEditor } from './RichTextEditor';
+import { OwnerInitialsAvatar } from './OwnerInitialsAvatar';
 import { ContentAreaLoader } from '@/components/ui/loaders';
 import { teamsService } from '@/lib/api/teams.service';
 import type { TeamMember } from '@/lib/api/teams.service';
+import { meetingsService } from '@/lib/api/meetings.service';
 
 const datePickerTextFieldSx = {
   '& .MuiInputLabel-root': { color: 'var(--foreground) !important', '&.Mui-focused': { color: 'var(--primary) !important' } },
@@ -87,6 +89,8 @@ interface TodosSegmentViewProps {
   onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string } }) => void;
   /** Meeting attendees for Owner multi-select (id, user with id, name, email) */
   meetingAttendances?: Array<{ id: string; user: { id: string; name?: string | null; email: string } }>;
+  /** Meeting id for entity file uploads. */
+  fileStorageMeetingId?: string;
 }
 
 function formatDueDate(iso: string | null): string {
@@ -107,6 +111,10 @@ function linkedEntityTypeLabel(type: string | null | undefined): string {
     rock_milestone: 'Waypoint milestone',
   };
   return map[type] ?? type;
+}
+
+function isPersistedAttachmentId(id: string): boolean {
+  return /^[a-z][a-z0-9]{20,}$/i.test(id);
 }
 
 function getLinkedCreateOptions(item: TodoItem, target: CreatePopupType) {
@@ -147,6 +155,7 @@ export function TodosSegmentView({
   canRecord,
   onOpenCreate,
   meetingAttendances = [],
+  fileStorageMeetingId,
 }: TodosSegmentViewProps) {
   const canUseFilters = canRecord ?? isFacilitator;
   const [teamFilter, setTeamFilter] = useState(teamName);
@@ -373,7 +382,7 @@ export function TodosSegmentView({
                         }}
                         className="rounded border-border"
                       />
-                      <span className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs text-foreground shrink-0">{initials}</span>
+                      <OwnerInitialsAvatar initials={initials} size="xs" />
                       <span className="text-sm text-foreground truncate">{name}</span>
                     </label>
                   );
@@ -675,6 +684,7 @@ export function TodosSegmentView({
           teams={teams}
           currentTeamId={currentTeamId}
           organizationId={organizationId}
+          fileStorageMeetingId={fileStorageMeetingId}
         />
       )}
     </div>
@@ -822,9 +832,7 @@ function TodoRow({
         </td>
         <td className="px-4 py-2 align-middle">
           {item.assigneeId ? (
-            <div className="w-7 h-7 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary" title="Owner">
-              {item.ownerInitials}
-            </div>
+            <OwnerInitialsAvatar initials={item.ownerInitials} size="sm" title="Owner" />
           ) : (
             <span className="text-muted-foreground text-sm">—</span>
           )}
@@ -1004,6 +1012,7 @@ export function EditTodoPanel({
   teams = [],
   currentTeamId,
   organizationId,
+  fileStorageMeetingId,
 }: {
   todo: TodoItem;
   onClose: () => void;
@@ -1017,6 +1026,7 @@ export function EditTodoPanel({
   currentTeamId?: string | null;
   /** Organization id for fetching team members when team changes */
   organizationId?: string | null;
+  fileStorageMeetingId?: string;
 }) {
   const [title, setTitle] = useState(todo.title);
   const [description, setDescription] = useState(todo.description || '');
@@ -1036,6 +1046,67 @@ export function EditTodoPanel({
   const [organizationRole, setOrganizationRole] = useState<string | null>(null);
   const [confirmOwnerChangeOpen, setConfirmOwnerChangeOpen] = useState(false);
   const [pendingOwnerId, setPendingOwnerId] = useState<string | null>(null);
+  const attachmentMeetingId = fileStorageMeetingId;
+  const [todoAttachments, setTodoAttachments] = useState<Array<{ id: string; name: string; uploadedAt: string }>>([]);
+  const [todoAttachmentsLoading, setTodoAttachmentsLoading] = useState(false);
+  const [todoAttachDragOver, setTodoAttachDragOver] = useState(false);
+
+  const loadTodoAttachments = useCallback(async () => {
+    if (!organizationId || !attachmentMeetingId || !todo.id) {
+      setTodoAttachments([]);
+      return;
+    }
+    setTodoAttachmentsLoading(true);
+    try {
+      const list = await meetingsService.getAttachments(organizationId, attachmentMeetingId, {
+        linkedEntityType: 'todo',
+        linkedEntityId: todo.id,
+      });
+      setTodoAttachments(
+        list.map((a) => ({
+          id: a.id,
+          name: a.fileName,
+          uploadedAt:
+            a.createdAt != null
+              ? typeof a.createdAt === 'string'
+                ? a.createdAt
+                : new Date(a.createdAt as unknown as string).toISOString()
+              : new Date().toISOString(),
+        })),
+      );
+    } catch {
+      setTodoAttachments([]);
+      toast.error("Couldn't load attachments.");
+    } finally {
+      setTodoAttachmentsLoading(false);
+    }
+  }, [organizationId, attachmentMeetingId, todo.id]);
+
+  const uploadTodoFiles = useCallback(
+    async (files: File[]) => {
+      if (!files.length) return;
+      if (!organizationId || !attachmentMeetingId) {
+        toast.message('Open a scheduled flight review to upload files to the server.');
+        return;
+      }
+      for (const f of files) {
+        try {
+          await meetingsService.uploadAttachment(organizationId, attachmentMeetingId, f, {
+            linkedEntityType: 'todo',
+            linkedEntityId: todo.id,
+          });
+        } catch {
+          toast.error(`Couldn't upload ${f.name}`);
+        }
+      }
+      await loadTodoAttachments();
+    },
+    [organizationId, attachmentMeetingId, todo.id, loadTodoAttachments],
+  );
+
+  useEffect(() => {
+    void loadTodoAttachments();
+  }, [loadTodoAttachments]);
 
   useEffect(() => {
     setTeamId(todo.teamId ?? currentTeamId ?? teams[0]?.id ?? '');
@@ -1221,11 +1292,11 @@ export function EditTodoPanel({
             <button
               type="button"
               onClick={() => setOwnerPickerOpen((v) => !v)}
-              className="w-9 h-9 rounded-full bg-primary/15 ring-1 ring-primary/30 flex items-center justify-center text-xs font-semibold text-primary hover:bg-primary/20"
+              className="p-0 rounded-full border-0 bg-transparent hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background"
               title={`Owner: ${ownerName}`}
               aria-label="Change owner"
             >
-              {ownerInitials}
+              <OwnerInitialsAvatar initials={ownerInitials} size="lg" title={`Owner: ${ownerName}`} />
             </button>
             {ownerPickerOpen && (
               <>
@@ -1258,7 +1329,7 @@ export function EditTodoPanel({
                           onClick={() => handleOwnerSelect(uid)}
                           className={`w-full text-left px-2.5 py-2 rounded flex items-center gap-2 text-sm ${isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'}`}
                         >
-                          <span className="w-6 h-6 rounded-full bg-muted inline-flex items-center justify-center text-xs">{initials}</span>
+                          <OwnerInitialsAvatar initials={initials} size="xs" />
                           <span className="truncate">{label}</span>
                         </button>
                       );
@@ -1432,20 +1503,73 @@ export function EditTodoPanel({
           )}
         </section>
         <section className="pt-6 mt-6 border-t border-border">
-          <h4 className="font-medium text-foreground mb-3">Attachments 0</h4>
-          <div className="border-2 border-dashed border-border rounded-lg p-8 text-center text-sm text-muted-foreground">
+          <h4 className="font-medium text-foreground mb-3">
+            Attachments {todoAttachmentsLoading ? '…' : todoAttachments.length}
+          </h4>
+          <div
+            className={`border-2 border-dashed rounded-lg p-8 text-center text-sm text-muted-foreground transition-colors ${
+              todoAttachDragOver ? 'border-primary bg-primary/5' : 'border-border'
+            }`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setTodoAttachDragOver(true);
+            }}
+            onDragLeave={() => setTodoAttachDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setTodoAttachDragOver(false);
+              void uploadTodoFiles(Array.from(e.dataTransfer.files ?? []));
+            }}
+          >
             Drag and drop files to attach, or{' '}
-            <button type="button" className="text-primary hover:underline">
+            <label className="text-primary hover:underline cursor-pointer">
               browse
-            </button>
+              <input
+                type="file"
+                className="hidden"
+                multiple
+                accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={(e) => {
+                  const input = e.currentTarget;
+                  const files = Array.from(input.files ?? []);
+                  input.value = '';
+                  void uploadTodoFiles(files);
+                }}
+              />
+            </label>
           </div>
+          {todoAttachments.length > 0 && (
+            <div className="mt-3 space-y-1">
+              {todoAttachments.map((a) => (
+                <div key={a.id} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="truncate min-w-0" title={a.name}>
+                    {a.name}
+                  </span>
+                  {organizationId && attachmentMeetingId && isPersistedAttachmentId(a.id) && (
+                    <button
+                      type="button"
+                      className="text-xs text-primary hover:underline inline-flex items-center gap-1 shrink-0"
+                      onClick={() =>
+                        meetingsService.downloadAttachment(organizationId, attachmentMeetingId, a.id, a.name)
+                      }
+                    >
+                      <Download className="w-3.5 h-3.5" /> Download
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {!attachmentMeetingId && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Open a scheduled flight review to upload files to the server.
+            </p>
+          )}
         </section>
         <section className="pt-6 mt-6 border-t border-border">
           <h4 className="font-medium text-foreground mb-3">Comments 0</h4>
           <div className="flex gap-3">
-            <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-foreground shrink-0">
-              {todo.ownerInitials}
-            </div>
+            <OwnerInitialsAvatar initials={todo.ownerInitials} size="lg" />
             <input
               type="text"
               placeholder="Add a comment..."
