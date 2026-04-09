@@ -50,6 +50,16 @@ import { toast } from 'sonner';
 
 export type TimeframeTab = 'weekly' | 'monthly' | 'quarterly' | 'annual';
 type ViewBy = 'week' | 'month' | 'quarter' | 'year';
+
+/** Period cells are editable only when the main tab matches the View by grain. */
+function tabMatchesView(timeframe: TimeframeTab, viewBy: ViewBy): boolean {
+  return (
+    (timeframe === 'weekly' && viewBy === 'week') ||
+    (timeframe === 'monthly' && viewBy === 'month') ||
+    (timeframe === 'quarterly' && viewBy === 'quarter') ||
+    (timeframe === 'annual' && viewBy === 'year')
+  );
+}
 type DateRangeKey = 'last13weeks' | 'last13months' | 'custom' | 'qtd' | 'ytd' | 'current_quarter' | 'current_year';
 
 const DATE_RANGE_OPTIONS: { value: DateRangeKey; label: string }[] = [
@@ -62,33 +72,317 @@ const DATE_RANGE_OPTIONS: { value: DateRangeKey; label: string }[] = [
   { value: 'current_year', label: 'Current Year' },
 ];
 
-function getWeekRangeLabels(count: number): string[] {
-  const labels: string[] = [];
-  const now = new Date();
-  for (let i = 0; i < count; i++) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 7 * i);
-    const sun = new Date(d);
-    sun.setDate(d.getDate() - d.getDay());
-    const sat = new Date(sun);
-    sat.setDate(sun.getDate() + 6);
-    const m1 = sun.toLocaleDateString('en-US', { month: 'short' });
-    const d1 = sun.getDate();
-    const m2 = sat.toLocaleDateString('en-US', { month: 'short' });
-    const d2 = sat.getDate();
-    labels.push(`${m1} ${d1} - ${m2} ${d2}`);
-  }
-  return labels.reverse();
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
 }
 
-function getMonthLabels(count: number): string[] {
-  const labels: string[] = [];
+function endOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+}
+
+function startOfWeekSunday(d: Date): Date {
+  const x = startOfDay(d);
+  x.setDate(x.getDate() - x.getDay());
+  return x;
+}
+
+function addDays(d: Date, days: number): Date {
+  const x = new Date(d);
+  x.setDate(x.getDate() + days);
+  return x;
+}
+
+function startOfQuarter(d: Date): Date {
+  const q = Math.floor(d.getMonth() / 3);
+  return new Date(d.getFullYear(), q * 3, 1, 0, 0, 0, 0);
+}
+
+function startOfYear(d: Date): Date {
+  return new Date(d.getFullYear(), 0, 1, 0, 0, 0, 0);
+}
+
+function endOfQuarter(d: Date): Date {
+  const q = Math.floor(d.getMonth() / 3);
+  return endOfDay(new Date(d.getFullYear(), q * 3 + 3, 0));
+}
+
+function endOfYear(d: Date): Date {
+  return endOfDay(new Date(d.getFullYear(), 11, 31));
+}
+
+function formatWeekWindowLabel(sun: Date, sat: Date): string {
+  const m1 = sun.toLocaleDateString('en-US', { month: 'short' });
+  const d1 = sun.getDate();
+  const m2 = sat.toLocaleDateString('en-US', { month: 'short' });
+  const d2 = sat.getDate();
+  return `${m1} ${d1} - ${m2} ${d2}`;
+}
+
+/** Weeks (Sun–Sat) that overlap [rangeStart, rangeEnd], oldest first. Labels match persisted `periodValues` keys. */
+function enumerateWeekWindowsInRange(rangeStart: Date, rangeEnd: Date): { label: string; start: Date }[] {
+  const rs = startOfDay(rangeStart);
+  const re = startOfDay(rangeEnd);
+  const out: { label: string; start: Date }[] = [];
+  let sun = startOfWeekSunday(rs);
+  while (sun <= re) {
+    const sat = addDays(sun, 6);
+    if (sat >= rs && sun <= re) {
+      out.push({ label: formatWeekWindowLabel(sun, sat), start: new Date(sun) });
+    }
+    sun = addDays(sun, 7);
+  }
+  return out;
+}
+
+/** Last N Sunday weeks ending in the week that contains `ref`, oldest first (same shape as legacy 13-week grid). */
+function getWeekRangeWindows(count: number, ref: Date = new Date()): { label: string; start: Date }[] {
+  const endWeekSun = startOfWeekSunday(ref);
+  const startWeekSun = addDays(endWeekSun, -(count - 1) * 7);
+  return enumerateWeekWindowsInRange(startWeekSun, ref);
+}
+
+function getWeekRangeLabels(count: number, ref?: Date): string[] {
+  return getWeekRangeWindows(count, ref ?? new Date()).map((w) => w.label);
+}
+
+function resolveScorecardDateHorizon(dateRange: DateRangeKey, ref: Date): { start: Date; end: Date } {
+  const today = startOfDay(ref);
+  switch (dateRange) {
+    case 'last13weeks': {
+      const endWeekSun = startOfWeekSunday(ref);
+      const startWeekSun = addDays(endWeekSun, -12 * 7);
+      return { start: startWeekSun, end: endOfDay(ref) };
+    }
+    case 'last13months': {
+      const start = new Date(ref.getFullYear(), ref.getMonth() - 12, 1);
+      return { start: startOfDay(start), end: endOfDay(ref) };
+    }
+    case 'qtd':
+      return { start: startOfQuarter(ref), end: endOfDay(ref) };
+    case 'ytd':
+      return { start: startOfYear(ref), end: endOfDay(ref) };
+    case 'current_quarter':
+      return { start: startOfQuarter(ref), end: endOfQuarter(ref) };
+    case 'current_year':
+      return { start: startOfYear(ref), end: endOfYear(ref) };
+    case 'custom':
+    default:
+      return resolveScorecardDateHorizon('last13weeks', ref);
+  }
+}
+
+function monthNeedsYearSuffix(horizonStart: Date, horizonEnd: Date): boolean {
+  return horizonStart.getFullYear() !== horizonEnd.getFullYear();
+}
+
+function formatMonthSlotLabel(y: number, m: number, withYear: boolean): string {
+  const d = new Date(y, m, 1);
+  const short = d.toLocaleDateString('en-US', { month: 'short' });
+  if (!withYear) return short;
+  return `${short} '${String(y).slice(-2)}`;
+}
+
+function enumerateMonthSlotsInRange(rangeStart: Date, rangeEnd: Date): { label: string; y: number; m: number }[] {
+  const slots: { label: string; y: number; m: number }[] = [];
+  const needYear = monthNeedsYearSuffix(rangeStart, rangeEnd);
+  let y = rangeStart.getFullYear();
+  let m = rangeStart.getMonth();
+  const endM = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth(), 1);
+  while (new Date(y, m, 1) <= endM) {
+    slots.push({ label: formatMonthSlotLabel(y, m, needYear), y, m });
+    m += 1;
+    if (m > 11) {
+      m = 0;
+      y += 1;
+    }
+  }
+  return slots;
+}
+
+function enumerateQuarterSlotsInRange(rangeStart: Date, rangeEnd: Date): { label: string; y: number; q0: number }[] {
+  const slots: { label: string; y: number; q0: number }[] = [];
+  let y = rangeStart.getFullYear();
+  let q0 = Math.floor(rangeStart.getMonth() / 3);
+  const endY = rangeEnd.getFullYear();
+  const endQ = Math.floor(rangeEnd.getMonth() / 3);
+  while (y < endY || (y === endY && q0 <= endQ)) {
+    slots.push({ label: `Q${q0 + 1} ${y}`, y, q0 });
+    q0 += 1;
+    if (q0 > 3) {
+      q0 = 0;
+      y += 1;
+    }
+  }
+  return slots;
+}
+
+function enumerateYearSlotsInRange(rangeStart: Date, rangeEnd: Date): { label: string; y: number }[] {
+  const slots: { label: string; y: number }[] = [];
+  for (let y = rangeStart.getFullYear(); y <= rangeEnd.getFullYear(); y++) {
+    slots.push({ label: String(y), y });
+  }
+  return slots;
+}
+
+type ScorecardDisplayBucket = 'week' | 'month' | 'quarter' | 'year';
+
+type ScorecardPeriodPlan = {
+  weekWindows: { label: string; start: Date }[];
+  periodColumns: string[];
+  monthSlots: { label: string; y: number; m: number }[];
+  quarterSlots: { label: string; y: number; q0: number }[];
+  yearSlots: { label: string; y: number }[];
+  displayBucket: ScorecardDisplayBucket;
+  /** Shown under filters: tab + date preset + column grain */
+  rangeLabel: string;
+};
+
+function buildScorecardPeriodPlan(
+  ref: Date,
+  timeframe: TimeframeTab,
+  viewBy: ViewBy,
+  dateRange: DateRangeKey
+): ScorecardPeriodPlan {
+  const { start, end } = resolveScorecardDateHorizon(dateRange, ref);
+  const weekWindows = enumerateWeekWindowsInRange(start, end);
+
+  const displayBucket: ScorecardDisplayBucket =
+    viewBy === 'week'
+      ? 'week'
+      : viewBy === 'month'
+        ? 'month'
+        : viewBy === 'quarter'
+          ? 'quarter'
+          : 'year';
+
+  const monthSlots = enumerateMonthSlotsInRange(start, end);
+  const quarterSlots = enumerateQuarterSlotsInRange(start, end);
+  const yearSlots = enumerateYearSlotsInRange(start, end);
+
+  let periodColumns: string[];
+  if (displayBucket === 'week') {
+    periodColumns = weekWindows.map((w) => w.label);
+  } else if (displayBucket === 'month') {
+    periodColumns = monthSlots.map((s) => s.label);
+  } else if (displayBucket === 'quarter') {
+    periodColumns = quarterSlots.map((s) => s.label);
+  } else {
+    periodColumns = yearSlots.map((s) => s.label);
+  }
+
+  const datePresetLabel = DATE_RANGE_OPTIONS.find((o) => o.value === dateRange)?.label ?? dateRange;
+  const tabLabel =
+    timeframe === 'weekly'
+      ? 'Weekly'
+      : timeframe === 'monthly'
+        ? 'Monthly'
+        : timeframe === 'quarterly'
+          ? 'Quarterly'
+          : 'Annual';
+  const grainLabel =
+    displayBucket === 'week'
+      ? 'week'
+      : displayBucket === 'month'
+        ? 'month'
+        : displayBucket === 'quarter'
+          ? 'quarter'
+          : 'year';
+
+  const rangeLabel = `${tabLabel} scorecard · ${datePresetLabel} · ${grainLabel} columns`;
+
+  return {
+    weekWindows,
+    periodColumns,
+    monthSlots,
+    quarterSlots,
+    yearSlots,
+    displayBucket,
+    rangeLabel,
+  };
+}
+
+function getMonthSlots(count: number): { label: string; y: number; m: number }[] {
+  const slots: { label: string; y: number; m: number }[] = [];
   const now = new Date();
   for (let i = 0; i < count; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    labels.push(d.toLocaleDateString('en-US', { month: 'short' }));
+    slots.push({
+      label: d.toLocaleDateString('en-US', { month: 'short' }),
+      y: d.getFullYear(),
+      m: d.getMonth(),
+    });
   }
-  return labels.reverse();
+  return slots.reverse();
+}
+
+function getMonthLabels(count: number): string[] {
+  return getMonthSlots(count).map((s) => s.label);
+}
+
+function getQuarterSlots(count: number): { label: string; y: number; q0: number }[] {
+  const slots: { label: string; y: number; q0: number }[] = [];
+  const now = new Date();
+  let y = now.getFullYear();
+  let cur = Math.floor(now.getMonth() / 3);
+  for (let i = 0; i < count; i++) {
+    slots.push({ label: `Q${cur + 1} ${y}`, y, q0: cur });
+    cur -= 1;
+    if (cur < 0) {
+      cur = 3;
+      y -= 1;
+    }
+  }
+  return slots.reverse();
+}
+
+function getQuarterLabels(count: number): string[] {
+  return getQuarterSlots(count).map((s) => s.label);
+}
+
+function getYearSlots(count: number): { label: string; y: number }[] {
+  const y0 = new Date().getFullYear();
+  const slots: { label: string; y: number }[] = [];
+  for (let i = 0; i < count; i++) {
+    const y = y0 - i;
+    slots.push({ label: String(y), y });
+  }
+  return slots.reverse();
+}
+
+function getYearLabels(count: number): string[] {
+  return getYearSlots(count).map((s) => s.label);
+}
+
+function buildColumnWeekMap(
+  labels: string[],
+  bucket: 'month' | 'quarter' | 'year',
+  weekWindows: { label: string; start: Date }[],
+  monthSlots: { label: string; y: number; m: number }[],
+  quarterSlots: { label: string; y: number; q0: number }[],
+  yearSlots: { label: string; y: number }[]
+): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  for (const col of labels) map.set(col, []);
+
+  for (const w of weekWindows) {
+    const sun = w.start;
+    let col: string | undefined;
+    if (bucket === 'month') {
+      const slot = monthSlots.find((s) => s.y === sun.getFullYear() && s.m === sun.getMonth());
+      col = slot?.label;
+    } else if (bucket === 'quarter') {
+      const q0 = Math.floor(sun.getMonth() / 3);
+      const slot = quarterSlots.find((s) => s.y === sun.getFullYear() && s.q0 === q0);
+      col = slot?.label;
+    } else {
+      const slot = yearSlots.find((s) => s.y === sun.getFullYear());
+      col = slot?.label;
+    }
+    if (col && map.has(col)) {
+      map.get(col)!.push(w.label);
+    }
+  }
+  return map;
 }
 
 /** Flight desk measurable unit — immutable after the measurable is first saved. */
@@ -203,6 +497,38 @@ function padTimeUnit(n: number, max: number) {
   return String(Math.max(0, Math.min(max, Math.floor(n)))).padStart(2, '0');
 }
 
+function parseTimeWithMs(raw: string): { h: number; m: number; s: number; ms: number } {
+  const t = raw.trim();
+  if (!t) return { h: 0, m: 0, s: 0, ms: 0 };
+  const dot = t.split('.');
+  const main = dot[0];
+  let ms = 0;
+  if (dot.length > 1) {
+    const msStr = dot[1].replace(/\D/g, '').padEnd(3, '0').slice(0, 3);
+    ms = parseInt(msStr, 10);
+    if (Number.isNaN(ms)) ms = 0;
+  }
+  const segs = main.split(':').map((x) => parseInt(x.trim(), 10));
+  if (segs.length !== 3 || segs.some((n) => Number.isNaN(n))) {
+    return { h: 0, m: 0, s: 0, ms: 0 };
+  }
+  return {
+    h: Math.max(0, Math.min(999, segs[0])),
+    m: Math.max(0, Math.min(59, segs[1])),
+    s: Math.max(0, Math.min(59, segs[2])),
+    ms: Math.max(0, Math.min(999, ms)),
+  };
+}
+
+function formatTimeWithMs(h: number, m: number, s: number, ms: number): string {
+  const hh = String(Math.max(0, Math.min(999, Math.floor(h)))).padStart(2, '0');
+  const mm = padTimeUnit(Math.max(0, Math.min(59, Math.floor(m))), 59);
+  const ss = padTimeUnit(Math.max(0, Math.min(59, Math.floor(s))), 59);
+  const msc = Math.max(0, Math.min(999, Math.floor(ms)));
+  if (msc === 0) return `${hh}:${mm}:${ss}`;
+  return `${hh}:${mm}:${ss}.${String(msc).padStart(3, '0')}`;
+}
+
 function buildGoalFromTargetForm(params: {
   unitType: MeasurableUnitType;
   orientation: string;
@@ -314,7 +640,7 @@ function inferUnitTypeFromRow(r: MeasurableRow): MeasurableUnitType {
 function inferUnitTypeFromGoalString(goal: string | undefined): MeasurableUnitType {
   const g = goal?.trim() ?? '';
   if (g === 'Yes' || g === 'No') return 'Yes/No';
-  if (/^\d{1,3}:\d{2}:\d{2}$/.test(g)) return 'Time';
+  if (/^\d{1,3}:\d{2}:\d{2}(\.\d{1,3})?$/.test(g)) return 'Time';
   return 'Number';
 }
 
@@ -398,9 +724,19 @@ function formatGoalDisplay(r: MeasurableRow): string {
 }
 
 function timeStringToSeconds(hms: string): number | null {
-  const p = hms.trim().split(':').map((x) => parseInt(x, 10));
+  const t = hms.trim();
+  if (!t) return null;
+  const dot = t.split('.');
+  const main = dot[0];
+  let ms = 0;
+  if (dot.length > 1) {
+    const msStr = dot[1].replace(/\D/g, '').padEnd(3, '0').slice(0, 3);
+    ms = parseInt(msStr, 10);
+    if (Number.isNaN(ms)) return null;
+  }
+  const p = main.split(':').map((x) => parseInt(x.trim(), 10));
   if (p.length !== 3 || p.some((n) => Number.isNaN(n))) return null;
-  return p[0] * 3600 + p[1] * 60 + p[2];
+  return p[0] * 3600 + p[1] * 60 + p[2] + ms / 1000;
 }
 
 function parseNumericCell(raw: string): number | null {
@@ -414,11 +750,14 @@ function parseNumericCell(raw: string): number | null {
 
 function secondsToRollupTimeDisplay(totalSeconds: number): string {
   if (!Number.isFinite(totalSeconds) || totalSeconds < 0) totalSeconds = 0;
-  const sec = Math.floor(Math.round(totalSeconds));
-  const h = Math.min(999, Math.floor(sec / 3600));
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  return `${String(h).padStart(2, '0')}:${padTimeUnit(m, 59)}:${padTimeUnit(s, 59)}`;
+  const ms = Math.round((totalSeconds % 1) * 1000);
+  const secFloat = Math.floor(totalSeconds);
+  const h = Math.min(999, Math.floor(secFloat / 3600));
+  const m = Math.floor((secFloat % 3600) / 60);
+  const s = secFloat % 60;
+  const base = `${String(h).padStart(2, '0')}:${padTimeUnit(m, 59)}:${padTimeUnit(s, 59)}`;
+  if (ms === 0) return base;
+  return `${base}.${String(ms).padStart(3, '0')}`;
 }
 
 function formatCurrencyRollup(n: number, sym: string): string {
@@ -453,7 +792,7 @@ function formatRollupCellDisplay(r: MeasurableRow, raw: string | undefined, kind
   }
 
   if (unit === 'Time') {
-    if (/^\d{1,3}:\d{2}:\d{2}$/.test(t)) return t;
+    if (/^\d{1,3}:\d{2}:\d{2}(\.\d{1,3})?$/.test(t)) return t;
     const n = parseFloat(t);
     if (!Number.isNaN(n)) return secondsToRollupTimeDisplay(n);
     return t;
@@ -469,6 +808,101 @@ function formatRollupCellDisplay(r: MeasurableRow, raw: string | undefined, kind
     return formatPercentageRollup(n, kind);
   }
   return formatGoalNumberToken(n);
+}
+
+function aggregateRawCellsForRow(rawCells: string[], row: MeasurableRow): string {
+  const unit = inferUnitTypeFromRow(row);
+  const rollup = row.rollup === 'average' ? 'average' : 'total';
+  const ne = rawCells.map((c) => c.trim()).filter(Boolean);
+  if (ne.length === 0) return '';
+
+  if (unit === 'Yes/No') {
+    let yes = 0;
+    let no = 0;
+    for (const c of ne) {
+      if (c === 'Yes') yes++;
+      else if (c === 'No') no++;
+    }
+    if (yes === 0 && no === 0) return ne[ne.length - 1] ?? '';
+    return yes >= no ? 'Yes' : 'No';
+  }
+
+  if (unit === 'Time') {
+    const secs = ne.map(timeStringToSeconds).filter((n): n is number => n != null);
+    if (secs.length === 0) return '';
+    const t = rollup === 'average' ? secs.reduce((a, b) => a + b, 0) / secs.length : secs.reduce((a, b) => a + b, 0);
+    return secondsToRollupTimeDisplay(t);
+  }
+
+  const nums = ne.map((c) => parseNumericCell(c)).filter((n): n is number => n !== null);
+  if (nums.length === 0) return '';
+  const v = rollup === 'average' ? nums.reduce((a, b) => a + b, 0) / nums.length : nums.reduce((a, b) => a + b, 0);
+  const round2 = (x: number) => Math.round(x * 100) / 100;
+  return String(round2(v));
+}
+
+function recomputeAvgTotalFromPeriodCols(row: MeasurableRow, periodCols: string[]): { average: string; total: string } {
+  const unit = inferUnitTypeFromRow(row);
+  if (unit === 'Yes/No' || unit === 'Time') {
+    return { average: row.average, total: row.total };
+  }
+  const nums = periodCols
+    .map((k) => parseNumericCell(row.periodValues[k] ?? ''))
+    .filter((n): n is number => n !== null);
+  if (nums.length === 0) {
+    return { average: row.average, total: row.total };
+  }
+  const round2 = (x: number) => Math.round(x * 100) / 100;
+  const total = round2(nums.reduce((a, b) => a + b, 0));
+  const avg = round2(total / nums.length);
+  return { average: String(avg), total: String(total) };
+}
+
+/** Roll week-level `periodValues` into month/quarter/year columns for read-only tabs / view modes. */
+function transformMeasurablesForScorecardView(
+  rows: MeasurableRow[],
+  opts: {
+    timeframe: TimeframeTab;
+    viewBy: ViewBy;
+    plan: ScorecardPeriodPlan;
+  }
+): MeasurableRow[] {
+  const { timeframe, viewBy, plan } = opts;
+  const isWeekEdit = timeframe === 'weekly' && viewBy === 'week' && plan.displayBucket === 'week';
+  if (isWeekEdit) return rows;
+
+  const { weekWindows, monthSlots, quarterSlots, yearSlots, periodColumns, displayBucket } = plan;
+  if (displayBucket === 'week') return rows;
+
+  const bucket = displayBucket;
+  const labels = periodColumns;
+
+  const colWeeks = buildColumnWeekMap(labels, bucket, weekWindows, monthSlots, quarterSlots, yearSlots);
+
+  return rows.map((row) => {
+    const nextPv: Record<string, string> = {};
+    for (const col of labels) {
+      const explicit = row.periodValues[col];
+      if (explicit != null && String(explicit).trim() !== '') {
+        nextPv[col] = String(explicit).trim();
+        continue;
+      }
+      const weeks = colWeeks.get(col) ?? [];
+      const rawWeekVals = weeks
+        .map((w) => row.periodValues[w])
+        .filter((v) => v != null && String(v).trim() !== '') as string[];
+      let cell: string;
+      if (rawWeekVals.length === 0) {
+        const fallback = row.periodValues[col];
+        cell = fallback != null && String(fallback).trim() !== '' ? String(fallback) : '';
+      } else {
+        cell = aggregateRawCellsForRow(rawWeekVals, row);
+      }
+      nextPv[col] = cell;
+    }
+    const roll = recomputeAvgTotalFromPeriodCols({ ...row, periodValues: nextPv }, labels);
+    return { ...row, periodValues: nextPv, average: roll.average, total: roll.total };
+  });
 }
 
 /** Whether a period cell satisfies the row goal (green/red heatmap). */
@@ -571,6 +1005,10 @@ function periodCellAffixClasses(status: 'pass' | 'fail' | 'empty'): string {
   return 'border-border/60 bg-muted/30 text-muted-foreground';
 }
 
+/** Fixed height for scorecard body rows (left + period columns align). */
+const SCORECARD_BODY_TD = 'h-[50px] min-h-[50px] max-h-[50px] px-3 py-0 align-middle box-border';
+const PERIOD_CTRL_H = 'h-8 min-h-8 max-h-8 py-0 text-sm leading-none';
+
 const MOCK_MEASURABLES: MeasurableRow[] = [
   {
     id: '1',
@@ -632,62 +1070,173 @@ function withOwnerMeta(periodValues: Record<string, string>, owner: {
   return next;
 }
 
-function TimePeriodInputs({
+function TimePeriodSetModal({
+  initialValue,
+  onClose,
+  onApply,
+}: {
+  initialValue: string;
+  onClose: () => void;
+  onApply: (v: string) => void;
+}) {
+  const p0 = parseTimeWithMs(initialValue);
+  const [h, setH] = useState(p0.h);
+  const [mi, setMi] = useState(p0.m);
+  const [s, setS] = useState(p0.s);
+  const [ms, setMs] = useState(p0.ms);
+
+  useEffect(() => {
+    const p = parseTimeWithMs(initialValue);
+    setH(p.h);
+    setMi(p.m);
+    setS(p.s);
+    setMs(p.ms);
+  }, [initialValue]);
+
+  const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+
+  const apply = () => {
+    onApply(formatTimeWithMs(clamp(h, 0, 999), clamp(mi, 0, 59), clamp(s, 0, 59), clamp(ms, 0, 999)));
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const fieldCls =
+    'mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm tabular-nums text-foreground';
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[110] bg-black/20" onClick={onClose} aria-hidden />
+      <div
+        className="fixed left-1/2 top-1/2 z-[111] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-card p-5 shadow-xl"
+        role="dialog"
+        aria-labelledby="time-modal-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="time-modal-title" className="text-base font-semibold text-foreground mb-4">
+          Set time
+        </h3>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <label className="text-xs text-muted-foreground">
+            Hours
+            <input
+              type="number"
+              min={0}
+              max={999}
+              className={fieldCls}
+              value={h}
+              onChange={(e) => setH(clamp(Number(e.target.value) || 0, 0, 999))}
+            />
+          </label>
+          <label className="text-xs text-muted-foreground">
+            Minutes
+            <input
+              type="number"
+              min={0}
+              max={59}
+              className={fieldCls}
+              value={mi}
+              onChange={(e) => setMi(clamp(Number(e.target.value) || 0, 0, 59))}
+            />
+          </label>
+          <label className="text-xs text-muted-foreground">
+            Seconds
+            <input
+              type="number"
+              min={0}
+              max={59}
+              className={fieldCls}
+              value={s}
+              onChange={(e) => setS(clamp(Number(e.target.value) || 0, 0, 59))}
+            />
+          </label>
+          <label className="text-xs text-muted-foreground">
+            Milliseconds
+            <input
+              type="number"
+              min={0}
+              max={999}
+              className={fieldCls}
+              value={ms}
+              onChange={(e) => setMs(clamp(Number(e.target.value) || 0, 0, 999))}
+            />
+          </label>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 border border-border rounded-md hover:bg-muted text-sm font-medium text-foreground"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={apply}
+            className="px-4 py-2 bg-primary text-primary-foreground border border-primary rounded-md hover:bg-primary/90 text-sm font-medium shadow-sm"
+          >
+            Apply
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ScorecardTimePeriodCell({
   value,
   onCommit,
-  disabled,
-  className = '',
+  heat,
 }: {
   value: string;
   onCommit: (next: string) => void;
-  disabled?: boolean;
-  className?: string;
+  heat: string;
 }) {
-  const parts = value.trim().split(':');
-  const h = Math.min(999, Math.max(0, parseInt(parts[0] || '0', 10) || 0));
-  const m = Math.min(59, Math.max(0, parseInt(parts[1] || '0', 10) || 0));
-  const sec = Math.min(59, Math.max(0, parseInt(parts[2] || '0', 10) || 0));
-  const emit = (nh: number, nm: number, ns: number) => {
-    onCommit(
-      `${String(Math.max(0, Math.min(999, nh))).padStart(2, '0')}:${padTimeUnit(Math.max(0, Math.min(59, nm)), 59)}:${padTimeUnit(Math.max(0, Math.min(59, ns)), 59)}`
-    );
-  };
-  const inputCls =
-    'w-9 min-w-0 px-1 py-[3px] text-xs text-center tabular-nums rounded border border-border bg-background disabled:opacity-60';
+  const [open, setOpen] = useState(false);
+  const { h, m, s, ms } = parseTimeWithMs(value);
+  const hh = String(h).padStart(2, '0');
+  const mm = padTimeUnit(m, 59);
+  const ss = padTimeUnit(s, 59);
+  const msStr = ms === 0 ? '' : `.${String(ms).padStart(3, '0')}`;
+
   return (
-    <div className={`flex items-center justify-center gap-0.5 ${className}`}>
-      <input
-        type="number"
-        min={0}
-        disabled={disabled}
-        className={inputCls}
-        value={h}
-        onChange={(e) => emit(Number(e.target.value), m, sec)}
-        aria-label="Hours"
-      />
-      <span className="text-muted-foreground text-xs leading-none">:</span>
-      <input
-        type="number"
-        min={0}
-        max={59}
-        disabled={disabled}
-        className={inputCls}
-        value={m}
-        onChange={(e) => emit(h, Number(e.target.value), sec)}
-        aria-label="Minutes"
-      />
-      <span className="text-muted-foreground text-xs leading-none">:</span>
-      <input
-        type="number"
-        min={0}
-        max={59}
-        disabled={disabled}
-        className={inputCls}
-        value={sec}
-        onChange={(e) => emit(h, m, Number(e.target.value))}
-        aria-label="Seconds"
-      />
-    </div>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={`flex h-8 min-h-8 max-h-8 w-full min-w-0 items-stretch rounded-md border overflow-hidden text-left text-sm leading-none ${heat} focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 focus:ring-offset-background`}
+      >
+        <span className="flex flex-1 min-w-0 items-center justify-center border-r border-border/50 px-1.5 py-0 tabular-nums text-xs font-medium">
+          {hh}
+        </span>
+        <span className="flex flex-1 min-w-0 items-center justify-center border-r border-border/50 px-1.5 py-0 tabular-nums text-xs font-medium">
+          {mm}
+        </span>
+        <span className="flex flex-[1.2] min-w-0 items-center justify-center px-1.5 py-0 tabular-nums text-xs font-medium">
+          {ss}
+          {msStr ? <span className="text-muted-foreground font-normal">{msStr}</span> : null}
+        </span>
+      </button>
+      {open &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <TimePeriodSetModal
+            initialValue={value}
+            onClose={() => setOpen(false)}
+            onApply={(v) => {
+              onCommit(v);
+              setOpen(false);
+            }}
+          />,
+          document.body
+        )}
+    </>
   );
 }
 
@@ -719,6 +1268,7 @@ function ScorecardTableCard({
   columnVisibility,
   onPeriodValueChange,
   onEditMeasurable,
+  periodHeadersMuted = false,
 }: {
   title: string;
   data: MeasurableRow[];
@@ -749,6 +1299,8 @@ function ScorecardTableCard({
   onPeriodValueChange?: (measurableId: string, periodKey: string, value: string) => void;
   /** When set, double-click on measurable title opens edit panel with this row prefilled */
   onEditMeasurable?: (row: MeasurableRow) => void;
+  /** Muted styling for period column headers (e.g. view-only grain vs tab) */
+  periodHeadersMuted?: boolean;
 }) {
   const showAddExistingMeasurableOption = false;
   const effectiveGroupId = groupId ?? 'main';
@@ -765,6 +1317,11 @@ function ScorecardTableCard({
   const [moveTargetGroupId, setMoveTargetGroupId] = useState<string | null>(null);
   const selectActionBtnRef = useRef<HTMLButtonElement>(null);
   const [selectActionPosition, setSelectActionPosition] = useState<{ top: number; left: number } | null>(null);
+
+  const periodColumnsSig = periodColumns.join('\u0001');
+  useLayoutEffect(() => {
+    setColumnSizing({});
+  }, [periodColumnsSig]);
 
   useLayoutEffect(() => {
     if (!selectActionOpen || !selectActionBtnRef.current) {
@@ -879,9 +1436,13 @@ function ScorecardTableCard({
         size: 80,
       });
     const periodCols = (displayDirection === 'rtl' ? [...periodColumns].reverse() : periodColumns).map((label, i) => ({
-      id: `period-${i}`,
+      id: `period-${i}-${periodColumnsSig.slice(0, 12)}-${label.replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 48)}`,
       header: () => (
-        <span className="font-medium text-foreground text-sm leading-snug whitespace-nowrap">{label}</span>
+        <span
+          className={`font-medium text-sm leading-snug whitespace-nowrap ${periodHeadersMuted ? 'text-muted-foreground' : 'text-foreground'}`}
+        >
+          {label}
+        </span>
       ),
       cell: ({ row }: { row: { original: MeasurableRow } }) => {
         const r = row.original;
@@ -894,7 +1455,13 @@ function ScorecardTableCard({
         if (!onPeriodValueChange) {
           const show = pv || '—';
           if (status === 'empty') return show;
-          return <span className={`inline-flex min-w-[3rem] justify-center rounded border px-2 py-[3px] text-sm ${heat}`}>{show}</span>;
+          return (
+            <span
+              className={`inline-flex min-w-[3rem] ${PERIOD_CTRL_H} items-center justify-center rounded border px-2 ${heat}`}
+            >
+              {show}
+            </span>
+          );
         }
 
         if (unit === 'Yes/No') {
@@ -905,7 +1472,7 @@ function ScorecardTableCard({
                 ? '[&_.ant-select-selection-item]:!text-red-100 [&_.ant-select-selection-placeholder]:!text-red-300/70'
                 : '';
           return (
-            <div className={`rounded-md border ${heat}`}>
+            <div className={`h-8 min-h-8 max-h-8 rounded-md border overflow-hidden ${heat}`}>
               <Select
                 value={pv || undefined}
                 onChange={(v) => {
@@ -917,7 +1484,7 @@ function ScorecardTableCard({
                   { value: 'Yes', label: 'Yes' },
                   { value: 'No', label: 'No' },
                 ]}
-                className={`w-full min-w-[88px] [&_.ant-select-selector]:border-0 [&_.ant-select-selector]:shadow-none ${selectTone}`}
+                className={`w-full min-w-[88px] h-8 [&_.ant-select-selector]:!h-8 [&_.ant-select-selector]:!min-h-8 [&_.ant-select-selector]:!py-0 [&_.ant-select-selector]:!px-2 [&_.ant-select-selector]:border-0 [&_.ant-select-selector]:shadow-none [&_.ant-select-selector]:flex [&_.ant-select-selector]:items-center ${selectTone}`}
               />
             </div>
           );
@@ -925,13 +1492,11 @@ function ScorecardTableCard({
 
         if (unit === 'Time') {
           return (
-            <div className={`rounded-md border p-0.5 ${heat}`}>
-              <TimePeriodInputs
-                value={pv}
-                onCommit={(next) => onPeriodValueChange(r.id, label, next)}
-                className=""
-              />
-            </div>
+            <ScorecardTimePeriodCell
+              value={pv}
+              onCommit={(next) => onPeriodValueChange(r.id, label, next)}
+              heat={heat}
+            />
           );
         }
 
@@ -944,7 +1509,7 @@ function ScorecardTableCard({
                 ? 'text-red-100 placeholder:text-red-400/50'
                 : '';
           return (
-            <div className={`flex items-stretch rounded-md border overflow-hidden ${heat}`}>
+            <div className={`flex h-8 min-h-8 max-h-8 items-stretch rounded-md border overflow-hidden ${heat}`}>
               <span
                 className={`flex items-center shrink-0 border-r px-1.5 text-xs ${periodCellAffixClasses(status)}`}
               >
@@ -958,7 +1523,7 @@ function ScorecardTableCard({
                   const v = e.target.value;
                   if (v === '' || /^-?\d*\.?\d*$/.test(v)) onPeriodValueChange(r.id, label, v);
                 }}
-                className={`min-w-0 flex-1 bg-transparent px-2 py-[3px] text-sm ${ringFocus} ${inputTone}`}
+                className={`min-w-0 flex-1 bg-transparent px-2 ${PERIOD_CTRL_H} ${ringFocus} ${inputTone}`}
                 placeholder="0"
               />
             </div>
@@ -973,7 +1538,7 @@ function ScorecardTableCard({
                 ? 'text-red-100 placeholder:text-red-400/50'
                 : '';
           return (
-            <div className={`flex items-stretch rounded-md border overflow-hidden ${heat}`}>
+            <div className={`flex h-8 min-h-8 max-h-8 items-stretch rounded-md border overflow-hidden ${heat}`}>
               <input
                 type="text"
                 inputMode="decimal"
@@ -982,7 +1547,7 @@ function ScorecardTableCard({
                   const v = e.target.value;
                   if (v === '' || /^-?\d*\.?\d*%?$/.test(v)) onPeriodValueChange(r.id, label, v);
                 }}
-                className={`min-w-0 flex-1 bg-transparent px-2 py-[3px] text-sm ${ringFocus} ${inputTone}`}
+                className={`min-w-0 flex-1 bg-transparent px-2 ${PERIOD_CTRL_H} ${ringFocus} ${inputTone}`}
                 placeholder="0"
               />
               <span
@@ -1009,7 +1574,7 @@ function ScorecardTableCard({
               const v = e.target.value;
               if (v === '' || /^-?\d*\.?\d*$/.test(v)) onPeriodValueChange(r.id, label, v);
             }}
-            className={`w-full min-w-0 rounded-md border px-2 py-[3px] text-sm ${heat} ${ringFocus} ${numInputTone}`}
+            className={`w-full min-w-0 rounded-md border px-2 ${PERIOD_CTRL_H} ${heat} ${ringFocus} ${numInputTone}`}
             placeholder="—"
           />
         );
@@ -1018,7 +1583,7 @@ function ScorecardTableCard({
     }));
     cols.push(...periodCols);
     return cols;
-  }, [periodColumns, selectedIds, data, displayDirection, visibility, onPeriodValueChange, onEditMeasurable, isExpanded]);
+  }, [periodColumns, selectedIds, data, displayDirection, visibility, onPeriodValueChange, onEditMeasurable, isExpanded, periodHeadersMuted]);
   const FIXED_COLUMN_IDS = useMemo(() => {
     const ids = ['select'];
     if (visibility.showStatusIndicators) ids.push('trend');
@@ -1227,7 +1792,7 @@ function ScorecardTableCard({
                     {row.getVisibleCells().filter((cell) => FIXED_COLUMN_IDS.includes(cell.column.id)).map((cell) => (
                       <td
                         key={cell.id}
-                        className={`min-h-16 align-middle px-3 py-2.5 text-foreground whitespace-nowrap ${cell.column.id === 'average' || cell.column.id === 'total' ? 'text-right tabular-nums' : ''}`}
+                        className={`${SCORECARD_BODY_TD} text-foreground whitespace-nowrap ${cell.column.id === 'average' || cell.column.id === 'total' ? 'text-right tabular-nums' : ''}`}
                         style={{ width: cell.column.getSize(), minWidth: cell.column.getSize() }}
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -1240,7 +1805,7 @@ function ScorecardTableCard({
           </table>
         </div>
         {/* Right section: date columns, scrollable, blue divider */}
-        <div className="flex-1 min-w-0 flex flex-col border-l-2 border-primary">
+        <div className={`flex-1 min-w-0 flex flex-col border-l-2 ${periodHeadersMuted ? 'border-border' : 'border-primary'}`}>
           <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
             <table className="border-collapse text-sm w-max min-w-full leading-normal">
               <thead>
@@ -1248,7 +1813,7 @@ function ScorecardTableCard({
                   {periodHeaders.map((h) => (
                     <th
                       key={h.id}
-                      className="group relative min-h-12 align-middle border-b border-border bg-muted/30 px-3 py-3 text-left text-sm font-medium text-foreground whitespace-nowrap"
+                      className={`group relative min-h-12 align-middle border-b border-border px-3 py-3 text-left text-sm font-medium whitespace-nowrap ${periodHeadersMuted ? 'bg-muted/50 text-muted-foreground' : 'bg-muted/30 text-foreground'}`}
                       style={{ width: h.column.getSize(), minWidth: h.column.getSize() }}
                     >
                       <span className="inline-flex min-h-8 items-center">
@@ -1272,7 +1837,7 @@ function ScorecardTableCard({
                       {row.getVisibleCells().filter((cell) => !FIXED_COLUMN_IDS.includes(cell.column.id)).map((cell) => (
                         <td
                           key={cell.id}
-                          className="min-h-16 align-middle px-3 py-2.5 text-foreground whitespace-nowrap"
+                          className={`${SCORECARD_BODY_TD} text-foreground whitespace-nowrap`}
                           style={{ width: cell.column.getSize(), minWidth: cell.column.getSize() }}
                         >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -1525,10 +2090,27 @@ export function InstrumentsSegmentView({
   measurablesRef.current = measurables;
   const measurableUpsertGuardRef = useRef<{ payloadKey: string; ts: number } | null>(null);
 
-  const periodColumns = useMemo(() => {
-    if (timeframe === 'weekly') return getWeekRangeLabels(13);
-    if (timeframe === 'monthly') return getMonthLabels(13);
-    return getWeekRangeLabels(4);
+  const scorecardPeriodPlan = useMemo(
+    () => buildScorecardPeriodPlan(new Date(), timeframe, viewBy, dateRange),
+    [timeframe, viewBy, dateRange]
+  );
+  const weekWindows = scorecardPeriodPlan.weekWindows;
+  const periodColumns = scorecardPeriodPlan.periodColumns;
+
+  /** Forces scorecard tables to remount when filters / period headers change (avoids TanStack Table stale headers). */
+  const scorecardGridKey = useMemo(
+    () => `${timeframe}|${viewBy}|${dateRange}|${periodColumns.join('\u0001')}`,
+    [timeframe, viewBy, dateRange, periodColumns]
+  );
+
+  useEffect(() => {
+    if (timeframe === 'monthly') {
+      setDateRange((r) => (r === 'last13weeks' ? 'last13months' : r));
+    } else if (timeframe === 'quarterly') {
+      setDateRange((r) => (r === 'last13weeks' || r === 'last13months' ? 'current_quarter' : r));
+    } else if (timeframe === 'annual') {
+      setDateRange((r) => (r === 'last13weeks' || r === 'last13months' ? 'current_year' : r));
+    }
   }, [timeframe]);
 
   useEffect(() => {
@@ -1550,7 +2132,7 @@ export function InstrumentsSegmentView({
       editingMeasurable.unitType ??
       (gTrim === 'Yes' || gTrim === 'No'
         ? 'Yes/No'
-        : /^\d{1,3}:\d{2}:\d{2}$/.test(gTrim)
+        : /^\d{1,3}:\d{2}:\d{2}(\.\d{1,3})?$/.test(gTrim)
           ? 'Time'
           : 'Number');
     setCreateMeasurableUnit(inferredUnit);
@@ -1828,7 +2410,10 @@ export function InstrumentsSegmentView({
   }, [organizationId, meetingId, fetchScorecardMeasurables]);
 
   const wrap = embedded ? 'pt-0 pb-4' : 'pt-0 pb-6';
-  const contentPad = embedded ? 'px-4' : 'px-6';
+  /** Flush to meeting sidebar when embedded; keep right padding for readability */
+  const contentPad = embedded ? 'pl-0 pr-4' : 'px-6';
+  const filtersRowPad = embedded ? 'pl-0 pr-4' : 'px-4';
+  const tabsRowPad = embedded ? 'pl-0 pr-2' : '';
 
   const { socket } = useMeetingSocket();
 
@@ -1889,11 +2474,24 @@ export function InstrumentsSegmentView({
     },
     [mainGroup.name, mainGroupHidden, currentGroups]
   );
-  const mainMeasurables = measurables.filter((m) => !m.groupId || m.groupId === 'main');
+  const displayMeasurables = useMemo(
+    () =>
+      transformMeasurablesForScorecardView(measurables, {
+        timeframe,
+        viewBy,
+        plan: scorecardPeriodPlan,
+      }),
+    [measurables, timeframe, viewBy, scorecardPeriodPlan]
+  );
+
+  const mainMeasurables = displayMeasurables.filter((m) => !m.groupId || m.groupId === 'main');
   /** Measurables visible on the current tab (main + any group in this timeframe). */
   const measurablesForCurrentTab = useMemo(
-    () => measurables.filter((m) => !m.groupId || m.groupId === 'main' || currentGroups.some((g) => g.id === m.groupId)),
-    [measurables, currentGroups]
+    () =>
+      displayMeasurables.filter(
+        (m) => !m.groupId || m.groupId === 'main' || currentGroups.some((g) => g.id === m.groupId)
+      ),
+    [displayMeasurables, currentGroups]
   );
 
   const downloadCsv = useCallback((rows: MeasurableRow[], filename: string) => {
@@ -2084,17 +2682,12 @@ export function InstrumentsSegmentView({
           if (m.unitType === 'Yes/No' || m.unitType === 'Time') {
             return { ...m, periodValues: nextPv };
           }
-          const nums = Object.values(nextPv)
-            .map((v) => parseFloat(String(v).trim()))
-            .filter((n) => !Number.isNaN(n));
-          const total = nums.length ? nums.reduce((a, b) => a + b, 0) : 0;
-          const avg = nums.length ? total / nums.length : 0;
-          const round2 = (x: number) => Math.round(x * 100) / 100;
+          const roll = recomputeAvgTotalFromPeriodCols({ ...m, periodValues: nextPv }, periodColumns);
           return {
             ...m,
             periodValues: nextPv,
-            total: String(round2(total)),
-            average: String(round2(avg)),
+            total: roll.total,
+            average: roll.average,
           };
         })
       );
@@ -2113,7 +2706,7 @@ export function InstrumentsSegmentView({
         }, 800);
       }
     },
-    [organizationId, meetingId, pushScorecardHistory]
+    [organizationId, meetingId, pushScorecardHistory, periodColumns]
   );
 
   useEffect(() => {
@@ -2126,6 +2719,32 @@ export function InstrumentsSegmentView({
     setEditingMeasurable(row);
     setCreateMeasurableOpen(true);
   }, []);
+
+  const scorecardPeriodGridReadOnly = !canUseFilters || !tabMatchesView(timeframe, viewBy);
+
+  const viewBySelectOptions = useMemo(
+    () =>
+      (['week', 'month', 'quarter', 'year'] as const).map((v) => {
+        const base = { week: 'Week', month: 'Month', quarter: 'Quarter', year: 'Year' }[v];
+        return {
+          value: v,
+          label: tabMatchesView(timeframe, v) ? base : `${base} (view only)`,
+        };
+      }),
+    [timeframe]
+  );
+
+  const dateRangeSelectDisabled = !canUseFilters || !tabMatchesView(timeframe, viewBy);
+
+  const resolveSourceMeasurableRow = useCallback(
+    (displayRow: MeasurableRow) => measurables.find((m) => m.id === displayRow.id) ?? displayRow,
+    [measurables]
+  );
+
+  const handleEditMeasurableFromGrid = useCallback(
+    (row: MeasurableRow) => handleEditMeasurable(resolveSourceMeasurableRow(row)),
+    [handleEditMeasurable, resolveSourceMeasurableRow]
+  );
 
   useLayoutEffect(() => {
     if (!moreMenuOpen || !moreMenuBtnRef.current) {
@@ -2140,7 +2759,7 @@ export function InstrumentsSegmentView({
     <div className={`flex flex-col min-h-0 h-full min-w-0 overflow-x-hidden ${wrap} ${isMeetingInFuture ? 'bg-muted/40 cursor-not-allowed' : ''}`}>
       {/* Section-style tabs: Weekly / Monthly / Quarterly / Annual (like Upcoming / Past / Agenda) */}
       <div className="w-full border-b border-border shrink-0 bg-background mt-0 overflow-x-auto">
-        <div className="flex gap-0 px-2 min-w-max">
+        <div className={`flex gap-0 min-w-max ${tabsRowPad}`}>
           {(['weekly', 'monthly', 'quarterly', 'annual'] as const).map((tab) => (
             <button
               key={tab}
@@ -2148,7 +2767,9 @@ export function InstrumentsSegmentView({
               onClick={() => {
                 if (!canUseFilters) return;
                 setTimeframe(tab);
-                if (meetingId && socket) socket.emit('scorecard_filter', { meetingId, timeframe: tab });
+                const defaultViewBy: ViewBy = tab === 'weekly' ? 'week' : tab === 'monthly' ? 'month' : tab === 'quarterly' ? 'quarter' : 'year';
+                setViewBy(defaultViewBy);
+                if (meetingId && socket) socket.emit('scorecard_filter', { meetingId, timeframe: tab, viewBy: defaultViewBy });
               }}
               disabled={!canUseFilters}
               className={`pl-7 pr-6 py-3 text-sm font-medium border-b-2 flex items-center justify-center gap-2 text-center transition-colors rounded-t-md ${
@@ -2163,7 +2784,7 @@ export function InstrumentsSegmentView({
         </div>
       </div>
       {/* Filters row: dropdowns + LTR/RTL | space | undo/redo/search/actions */}
-      <div className={`w-full px-4 border-b border-border shrink-0 py-2.5 min-w-0 overflow-x-visible ${isMeetingInFuture ? 'bg-muted/50' : 'bg-muted/30'}`}>
+      <div className={`w-full ${filtersRowPad} border-b border-border shrink-0 py-2.5 min-w-0 overflow-x-visible ${isMeetingInFuture ? 'bg-muted/50' : 'bg-muted/30'}`}>
         <div className="flex flex-wrap items-center justify-between gap-3 min-w-0 w-full">
           <div className="flex flex-wrap items-center gap-3 min-w-0 flex-1">
             <Select
@@ -2182,23 +2803,19 @@ export function InstrumentsSegmentView({
                 if (meetingId && socket && v) socket.emit('scorecard_filter', { meetingId, viewBy: v });
               }}
               disabled={!canUseFilters}
-              options={[
-                { label: 'Week', value: 'week' },
-                { label: 'Month', value: 'month' },
-                { label: 'Quarter', value: 'quarter' },
-                { label: 'Year', value: 'year' },
-              ]}
-              className="min-w-[88px] w-[88px] shrink-0"
+              title="Pick column grain (week/month/quarter/year) for this tab and date range."
+              options={viewBySelectOptions}
+              className="min-w-[150px] w-[150px] shrink-0"
             />
             <span className="text-muted-foreground text-xs shrink-0">Date:</span>
             <Select<DateRangeKey>
               value={dateRange}
               onChange={(v) => {
-                if (!canUseFilters) return;
+                if (!canUseFilters || dateRangeSelectDisabled) return;
                 if (v) setDateRange(v);
                 if (meetingId && socket && v) socket.emit('scorecard_filter', { meetingId, dateRange: v });
               }}
-              disabled={!canUseFilters}
+              disabled={dateRangeSelectDisabled}
               options={DATE_RANGE_OPTIONS}
               className="min-w-[140px] w-[140px] shrink-0"
             />
@@ -3129,7 +3746,7 @@ export function InstrumentsSegmentView({
             {/* Expanded card: 80% of content area; rest of cards below in scroll */}
             {expandedGroupId === 'main' && !mainGroupHidden ? (
               <ScorecardTableCard
-                key="main"
+                key={`main-${scorecardGridKey}`}
                 title={mainGroup.name + (mainMeasurables.length ? ` ${mainMeasurables.length}` : '')}
                 data={mainMeasurables}
                 periodColumns={periodColumns}
@@ -3155,14 +3772,15 @@ export function InstrumentsSegmentView({
                 onCreateIssue={handleCreateIssueFromMeasurable}
                 onRemoveFromGroup={handleRemoveFromGroup}
                 onDelete={handleDeleteMeasurables}
-                onPeriodValueChange={canUseFilters ? handlePeriodValueChange : undefined}
-                onEditMeasurable={canUseFilters ? handleEditMeasurable : undefined}
+                onPeriodValueChange={scorecardPeriodGridReadOnly ? undefined : handlePeriodValueChange}
+                onEditMeasurable={scorecardPeriodGridReadOnly ? undefined : handleEditMeasurableFromGrid}
+                periodHeadersMuted={scorecardPeriodGridReadOnly}
               />
             ) : currentGroups.find((g) => g.id === expandedGroupId) ? (
               <ScorecardTableCard
-                key={expandedGroupId}
+                key={`${expandedGroupId}-${scorecardGridKey}`}
                 title={currentGroups.find((g) => g.id === expandedGroupId)!.name}
-                data={measurables.filter((m) => m.groupId === expandedGroupId)}
+                data={displayMeasurables.filter((m) => m.groupId === expandedGroupId)}
                 periodColumns={periodColumns}
                 displayDirection={displayDirection}
                 columnVisibility={scorecardColumnVisibility}
@@ -3186,17 +3804,18 @@ export function InstrumentsSegmentView({
                 onCreateIssue={handleCreateIssueFromMeasurable}
                 onRemoveFromGroup={handleRemoveFromGroup}
                 onDelete={handleDeleteMeasurables}
-                onPeriodValueChange={canUseFilters ? handlePeriodValueChange : undefined}
-                onEditMeasurable={canUseFilters ? handleEditMeasurable : undefined}
+                onPeriodValueChange={scorecardPeriodGridReadOnly ? undefined : handlePeriodValueChange}
+                onEditMeasurable={scorecardPeriodGridReadOnly ? undefined : handleEditMeasurableFromGrid}
+                periodHeadersMuted={scorecardPeriodGridReadOnly}
               />
             ) : null}
             <div className="flex-1 min-h-0 overflow-auto flex flex-col gap-4">
               {expandedGroupId === 'main' ? (
                 currentGroups.map((g) => (
                   <ScorecardTableCard
-                    key={g.id}
+                    key={`${g.id}-${scorecardGridKey}`}
                     title={g.name}
-                    data={measurables.filter((m) => m.groupId === g.id)}
+                    data={displayMeasurables.filter((m) => m.groupId === g.id)}
                     periodColumns={periodColumns}
                     displayDirection={displayDirection}
                     columnVisibility={scorecardColumnVisibility}
@@ -3220,14 +3839,16 @@ export function InstrumentsSegmentView({
                     onCreateIssue={handleCreateIssueFromMeasurable}
                     onRemoveFromGroup={handleRemoveFromGroup}
                     onDelete={handleDeleteMeasurables}
-                    onPeriodValueChange={canUseFilters ? handlePeriodValueChange : undefined}
-                    onEditMeasurable={canUseFilters ? handleEditMeasurable : undefined}
+                    onPeriodValueChange={scorecardPeriodGridReadOnly ? undefined : handlePeriodValueChange}
+                    onEditMeasurable={scorecardPeriodGridReadOnly ? undefined : handleEditMeasurableFromGrid}
+                    periodHeadersMuted={scorecardPeriodGridReadOnly}
                   />
                 ))
               ) : (
                 <>
                   {!mainGroupHidden && (
                   <ScorecardTableCard
+                    key={`main-${scorecardGridKey}`}
                     title={mainGroup.name + (mainMeasurables.length ? ` ${mainMeasurables.length}` : '')}
                     data={mainMeasurables}
                     periodColumns={periodColumns}
@@ -3252,15 +3873,16 @@ export function InstrumentsSegmentView({
                     onCreateIssue={handleCreateIssueFromMeasurable}
                     onRemoveFromGroup={handleRemoveFromGroup}
                     onDelete={handleDeleteMeasurables}
-                    onPeriodValueChange={canUseFilters ? handlePeriodValueChange : undefined}
-                    onEditMeasurable={canUseFilters ? handleEditMeasurable : undefined}
+                    onPeriodValueChange={scorecardPeriodGridReadOnly ? undefined : handlePeriodValueChange}
+                    onEditMeasurable={scorecardPeriodGridReadOnly ? undefined : handleEditMeasurableFromGrid}
+                    periodHeadersMuted={scorecardPeriodGridReadOnly}
                   />
                   )}
                   {currentGroups.filter((g) => g.id !== expandedGroupId).map((g) => (
                     <ScorecardTableCard
-                      key={g.id}
+                      key={`${g.id}-${scorecardGridKey}`}
                       title={g.name}
-                      data={measurables.filter((m) => m.groupId === g.id)}
+                      data={displayMeasurables.filter((m) => m.groupId === g.id)}
                       periodColumns={periodColumns}
                       displayDirection={displayDirection}
                       columnVisibility={scorecardColumnVisibility}
@@ -3284,8 +3906,9 @@ export function InstrumentsSegmentView({
                       onCreateIssue={handleCreateIssueFromMeasurable}
                       onRemoveFromGroup={handleRemoveFromGroup}
                       onDelete={handleDeleteMeasurables}
-                      onPeriodValueChange={canUseFilters ? handlePeriodValueChange : undefined}
-                      onEditMeasurable={canUseFilters ? handleEditMeasurable : undefined}
+                      onPeriodValueChange={scorecardPeriodGridReadOnly ? undefined : handlePeriodValueChange}
+                      onEditMeasurable={scorecardPeriodGridReadOnly ? undefined : handleEditMeasurableFromGrid}
+                      periodHeadersMuted={scorecardPeriodGridReadOnly}
                     />
                   ))}
                 </>
@@ -3296,6 +3919,7 @@ export function InstrumentsSegmentView({
           <div className="flex-1 flex flex-col min-h-0 overflow-y-auto gap-4">
             {!mainGroupHidden && (
             <ScorecardTableCard
+              key={`main-${scorecardGridKey}`}
               title={mainGroup.name + (mainMeasurables.length ? ` ${mainMeasurables.length}` : '')}
               data={mainMeasurables}
               periodColumns={periodColumns}
@@ -3321,15 +3945,16 @@ export function InstrumentsSegmentView({
               onCreateIssue={handleCreateIssueFromMeasurable}
               onRemoveFromGroup={handleRemoveFromGroup}
               onDelete={handleDeleteMeasurables}
-              onPeriodValueChange={canUseFilters ? handlePeriodValueChange : undefined}
-              onEditMeasurable={canUseFilters ? handleEditMeasurable : undefined}
+              onPeriodValueChange={scorecardPeriodGridReadOnly ? undefined : handlePeriodValueChange}
+              onEditMeasurable={scorecardPeriodGridReadOnly ? undefined : handleEditMeasurableFromGrid}
+              periodHeadersMuted={scorecardPeriodGridReadOnly}
             />
             )}
             {currentGroups.map((g) => (
               <ScorecardTableCard
-                key={g.id}
+                key={`${g.id}-${scorecardGridKey}`}
                 title={g.name}
-                data={measurables.filter((m) => m.groupId === g.id)}
+                data={displayMeasurables.filter((m) => m.groupId === g.id)}
                 periodColumns={periodColumns}
                 displayDirection={displayDirection}
                 newMeasurableOpen={newMeasurableOpenGroupId === g.id}
@@ -3352,8 +3977,9 @@ export function InstrumentsSegmentView({
                 onCreateIssue={handleCreateIssueFromMeasurable}
                 onRemoveFromGroup={handleRemoveFromGroup}
                 onDelete={handleDeleteMeasurables}
-                onPeriodValueChange={canUseFilters ? handlePeriodValueChange : undefined}
-                onEditMeasurable={canUseFilters ? handleEditMeasurable : undefined}
+                onPeriodValueChange={scorecardPeriodGridReadOnly ? undefined : handlePeriodValueChange}
+                onEditMeasurable={scorecardPeriodGridReadOnly ? undefined : handleEditMeasurableFromGrid}
+                periodHeadersMuted={scorecardPeriodGridReadOnly}
               />
             ))}
           </div>

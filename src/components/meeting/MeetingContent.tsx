@@ -146,9 +146,17 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
       )}
 
       {/* Content: for Segue = prompt line + empty; others = existing UI. Issues: no section spacing so filters/tabs sit flush. */}
-      <div className={`flex-1 overflow-y-auto ${
-        sectionId === 'issues' ? 'pt-0 pb-0 px-6' : hasFilterBar ? 'pt-0 px-6 pb-6' : 'p-6'
-      }`}>
+      <div
+        className={`flex-1 overflow-y-auto ${
+          sectionId === 'issues'
+            ? 'pt-0 pb-0 px-6'
+            : sectionId === 'scorecard'
+              ? 'pt-0 pl-0 pr-6 pb-6'
+              : hasFilterBar
+                ? 'pt-0 px-6 pb-6'
+                : 'p-6'
+        }`}
+      >
         {isMinimalPrompt && sectionId !== 'headlines' && (
           <>
             <p className="text-lg text-foreground font-medium">{data.content}</p>

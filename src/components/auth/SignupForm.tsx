@@ -2,14 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { ROUTES } from '@/lib/constants/routes';
 import { Building2, Users, Copy, Check } from 'lucide-react';
 import { authService } from '@/lib/api/auth.service';
 
 export function SignupForm() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -89,7 +88,7 @@ export function SignupForm() {
         orgChoice === 'join' ? inviteCode : undefined,
         orgChoice === 'create' ? orgName : undefined,
       );
-      router.push(ROUTES.OVERVIEW);
+      window.location.replace(ROUTES.OVERVIEW);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Registration failed. Please try again.');
     } finally {

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { ROUTES } from '@/lib/constants/routes';
 
 export function LoginForm() {
@@ -11,7 +11,6 @@ export function LoginForm() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   const getRedirectTarget = () => {
@@ -33,8 +32,9 @@ export function LoginForm() {
     try {
       await login(email, password);
       const target = getRedirectTarget();
-      router.replace(target);
-      router.refresh();
+      // Full navigation so the next request includes the `token` cookie (middleware reads it).
+      // Client-side router navigation can run before the cookie is sent → redirect loop to /login.
+      window.location.replace(target);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Login failed. Please try again.');
     } finally {

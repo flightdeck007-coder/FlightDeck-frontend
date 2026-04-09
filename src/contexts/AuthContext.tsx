@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { authService, AuthResponse } from '@/lib/api/auth.service';
+import { setAuthTokenCookie } from '@/lib/auth-token-cookie';
 import { ROUTES } from '@/lib/constants/routes';
 
 interface User {
@@ -27,11 +28,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-function persistTokenCookie(token: string) {
-  // Ensure value is cookie-safe and sent to middleware on same-site navigations.
-  document.cookie = `token=${encodeURIComponent(token)}; path=/; max-age=${7 * 24 * 60 * 60}; samesite=lax`;
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -59,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('token', response.access_token);
       localStorage.setItem('user', JSON.stringify(response.user));
       // Also set cookie for middleware
-      persistTokenCookie(response.access_token);
+      setAuthTokenCookie(response.access_token);
       
       // Auto-set organization if provided
       if (response.organization) {
@@ -93,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('token', response.access_token);
       localStorage.setItem('user', JSON.stringify(response.user));
       // Also set cookie for middleware
-      persistTokenCookie(response.access_token);
+      setAuthTokenCookie(response.access_token);
       
       // Auto-set organization if provided (from signup)
       if (response.organization) {

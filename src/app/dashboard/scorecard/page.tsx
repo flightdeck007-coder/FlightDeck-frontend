@@ -62,21 +62,23 @@ export default function ScorecardPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-6 flex flex-col min-h-0 h-full">
-        <div className="-mx-6 -mt-6 px-6 pt-6 pb-4 border-b border-border bg-white shrink-0">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-foreground">Flight Desk</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Key metrics and measurables for your flight crew dashboard.
-            </p>
+      <div className="flex flex-col min-h-0 h-full">
+        <header className="shrink-0 px-6 pt-6 pb-4 border-b border-border bg-background">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold text-foreground">Flight Desk</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Key metrics and measurables for your flight crew dashboard.
+              </p>
+            </div>
           </div>
-        </div>
-        </div>
+        </header>
 
         {!scorecardMeetingId ? (
-          <div className="flex-1 flex items-center justify-center rounded-xl border border-border bg-muted/20">
-            <p className="text-muted-foreground">No flight review found for this crew yet.</p>
+          <div className="flex-1 flex items-center justify-center px-6 py-8">
+            <div className="w-full max-w-md rounded-xl border border-border bg-muted/20 px-6 py-10 text-center">
+              <p className="text-muted-foreground">No flight review found for this crew yet.</p>
+            </div>
           </div>
         ) : (
           <MeetingSocketProvider meetingId={scorecardMeetingId} organizationId={organizationId}>

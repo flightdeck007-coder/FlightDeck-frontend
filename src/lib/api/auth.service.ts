@@ -1,3 +1,4 @@
+import { removeAuthTokenCookie } from '@/lib/auth-token-cookie';
 import { apiClient } from './client';
 
 export interface RegisterDto {
@@ -43,8 +44,7 @@ export const authService = {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      // Clear cookie
-      document.cookie = 'token=; path=/; max-age=0';
+      removeAuthTokenCookie();
     }
   },
 
