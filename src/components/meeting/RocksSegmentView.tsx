@@ -1898,8 +1898,14 @@ function RockDetailPanel({
           teamId={teamId}
           teamName={teamName}
           milestones={milestones}
+          ownerCandidates={ownerCandidates}
+          onRequestOwnerChange={requestOwnerChange}
           onOpenCreate={onOpenCreate}
           onClose={() => setEditingMilestone(null)}
+          onDelete={() => {
+            applyMilestones(milestones.filter((m) => m.id !== editingMilestone.id));
+            setEditingMilestone(null);
+          }}
           onSave={(milestone) => {
             upsertMilestone(milestone);
             setEditingMilestone(null);
@@ -2011,8 +2017,11 @@ function MilestoneDetailPanel({
   teamId,
   teamName,
   milestones,
+  ownerCandidates = [],
+  onRequestOwnerChange = () => {},
   onOpenCreate,
   onClose,
+  onDelete,
   onSave,
 }: {
   rock: Rock;
@@ -2023,8 +2032,11 @@ function MilestoneDetailPanel({
   teamId?: string | null;
   teamName: string;
   milestones: RockMilestone[];
+  ownerCandidates?: TeamMember[];
+  onRequestOwnerChange?: (ownerId: string) => void;
   onOpenCreate?: (type: CreatePopupType, options?: { title?: string; description?: string; linkedEntity?: LinkedEntityOption }) => void;
   onClose: () => void;
+  onDelete?: () => void;
   onSave: (m: RockMilestone) => void;
 }) {
   const attachmentMeetingId = fileStorageMeetingId;
@@ -2040,6 +2052,9 @@ function MilestoneDetailPanel({
   const [linkExistingOpen, setLinkExistingOpen] = useState(false);
   const [linkedItems, setLinkedItems] = useState<LinkedRockItem[]>([]);
   const [linkedEditMode, setLinkedEditMode] = useState(false);
+  const [ownerPickerOpen, setOwnerPickerOpen] = useState(false);
+  const [ownerSearch, setOwnerSearch] = useState('');
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [milestoneAttachments, setMilestoneAttachments] = useState<Array<{ id: string; name: string; uploadedAt: string }>>([]);
   const [milestoneAttachmentsLoading, setMilestoneAttachmentsLoading] = useState(false);
 
@@ -2174,6 +2189,35 @@ function MilestoneDetailPanel({
     onClose();
   };
 
+  const filteredOwnerCandidates = ownerCandidates.filter((m) => {
+    const q = ownerSearch.trim().toLowerCase();
+    if (!q) return true;
+    const label = `${m.user?.name ?? ''} ${m.user?.email ?? ''}`.toLowerCase();
+    return label.includes(q);
+  });
+
+  const milestoneLinkDescription = `Milestone: ${milestone.title}\nWaypoint: ${rock.title}`;
+  const milestoneLinkedEntity: LinkedEntityOption = {
+    type: 'rock_milestone',
+    id: milestone.id,
+    title: milestone.title,
+  };
+  const openLinkedCreateFromMilestone = (type: CreatePopupType) => {
+    const prefills =
+      type === 'rock'
+        ? { title: `Waypoint: ${milestone.title}`, description: milestoneLinkDescription, linkedEntity: milestoneLinkedEntity }
+        : type === 'todo'
+          ? { title: `Clearance: ${milestone.title}`, description: milestoneLinkDescription, linkedEntity: milestoneLinkedEntity }
+          : type === 'issue'
+            ? { title: `Turbulence: ${milestone.title}`, description: milestoneLinkDescription, linkedEntity: milestoneLinkedEntity }
+            : type === 'headline'
+              ? { title: `Announcement: ${milestone.title}`, description: milestoneLinkDescription, linkedEntity: milestoneLinkedEntity }
+              : { title: `Flight Directive: ${milestone.title}`, description: milestoneLinkDescription, linkedEntity: milestoneLinkedEntity };
+    onOpenCreate?.(type, prefills);
+    setHeaderMenuOpen(false);
+    onClose();
+  };
+
   return (
     <>
       <div className="fixed inset-0 bg-black/20 z-[70]" onClick={onClose} aria-hidden />
@@ -2185,8 +2229,92 @@ function MilestoneDetailPanel({
             <Mountain className="w-5 h-5 text-muted-foreground shrink-0" />
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <button type="button" className="p-2 rounded-md hover:bg-muted text-muted-foreground" aria-label="More"><MoreHorizontal className="w-4 h-4" /></button>
-            <OwnerInitialsAvatar initials={rock.ownerInitials} size="md" />
+            <button
+              type="button"
+              className="p-2 rounded-md hover:bg-muted text-muted-foreground"
+              aria-label="More"
+              onClick={() => setHeaderMenuOpen((v) => !v)}
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+            {headerMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-[72]" onClick={() => setHeaderMenuOpen(false)} aria-hidden />
+                <div className="absolute right-14 top-12 z-[73] py-2 bg-card border border-border rounded-lg shadow-xl min-w-[230px]">
+                  <div className="px-2 py-1 space-y-0.5">
+                    <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent rounded-md flex items-center gap-2" onClick={() => openLinkedCreateFromMilestone('todo')}>
+                      <CheckSquare className="w-4 h-4 text-muted-foreground" /> Create linked Clearance
+                    </button>
+                    <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent rounded-md flex items-center gap-2" onClick={() => openLinkedCreateFromMilestone('issue')}>
+                      <AlertCircle className="w-4 h-4 text-muted-foreground" /> Create linked Turbulence
+                    </button>
+                    <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent rounded-md flex items-center gap-2" onClick={() => openLinkedCreateFromMilestone('headline')}>
+                      <Megaphone className="w-4 h-4 text-muted-foreground" /> Create linked Announcement
+                    </button>
+                  </div>
+                  <div className="border-t border-border my-1" />
+                  <div className="px-2 py-1">
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2.5 text-sm text-destructive hover:bg-red-50 dark:hover:bg-red-950/30 rounded-md flex items-center gap-2"
+                      onClick={() => {
+                        setHeaderMenuOpen(false);
+                        onDelete?.();
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4" /> Delete Milestone
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setOwnerPickerOpen((v) => !v)}
+                className="p-0 rounded-full border-0 bg-transparent hover:opacity-90 focus:outline-none"
+                aria-label="Change owner"
+                title="Change owner"
+              >
+                <OwnerInitialsAvatar initials={rock.ownerInitials} size="md" />
+              </button>
+              {ownerPickerOpen && (
+                <>
+                  <div className="fixed inset-0 z-[72]" onClick={() => setOwnerPickerOpen(false)} aria-hidden />
+                  <div className="absolute right-0 top-full mt-2 z-[73] w-[280px] bg-card border border-border rounded-lg shadow-xl p-2">
+                    <input
+                      type="text"
+                      value={ownerSearch}
+                      onChange={(e) => setOwnerSearch(e.target.value)}
+                      placeholder="Search crew member..."
+                      className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm mb-2"
+                    />
+                    <div className="max-h-60 overflow-auto">
+                      {filteredOwnerCandidates.map((m) => {
+                        const uid = m.user?.id ?? m.userId;
+                        const label = m.user?.name || m.user?.email || uid;
+                        const initials = rockAssigneeInitials(m.user?.name, m.user?.email);
+                        return (
+                          <button
+                            key={uid}
+                            type="button"
+                            onClick={() => {
+                              onRequestOwnerChange(uid);
+                              setOwnerPickerOpen(false);
+                              setOwnerSearch('');
+                            }}
+                            className="w-full text-left px-2.5 py-2 rounded flex items-center gap-2 text-sm hover:bg-muted text-foreground"
+                          >
+                            <OwnerInitialsAvatar initials={initials} size="xs" />
+                            <span className="truncate">{label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
             <button type="button" onClick={onClose} className="p-2 rounded-md hover:bg-muted text-muted-foreground" aria-label="Close"><X className="w-5 h-5" /></button>
           </div>
         </header>
@@ -2660,6 +2788,10 @@ function RockRow({
   const [editingMilestoneDateId, setEditingMilestoneDateId] = useState<string | null>(null);
   const [milestoneDateDraft, setMilestoneDateDraft] = useState('');
   const [editingMilestoneModal, setEditingMilestoneModal] = useState<RockMilestone | null>(null);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [organizationRole, setOrganizationRole] = useState<string | null>(null);
+  const [confirmOwnerChangeOpen, setConfirmOwnerChangeOpen] = useState(false);
+  const [pendingOwnerId, setPendingOwnerId] = useState<string | null>(null);
 
   useEffect(() => {
     setTitleInput(rock.title);
@@ -2672,6 +2804,81 @@ function RockRow({
   useEffect(() => {
     if (editingMilestoneTitleId && milestoneTitleInputRef.current) milestoneTitleInputRef.current.focus();
   }, [editingMilestoneTitleId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncRole = () => setOrganizationRole(localStorage.getItem('organizationRole'));
+    syncRole();
+    const onRoleChange = (e: Event) => {
+      const evt = e as CustomEvent<{ role?: string }>;
+      if (evt.detail?.role) setOrganizationRole(evt.detail.role);
+      else syncRole();
+    };
+    window.addEventListener('organizationRoleChanged', onRoleChange as EventListener);
+    return () => window.removeEventListener('organizationRoleChanged', onRoleChange as EventListener);
+  }, []);
+
+  const fetchTeamMembers = useCallback(() => {
+    if (!organizationId || !teamId) {
+      setTeamMembers([]);
+      return Promise.resolve();
+    }
+    return Promise.allSettled([
+      teamsService.getOne(organizationId, teamId),
+      teamsService.list(organizationId),
+    ])
+      .then(([singleRes, listRes]) => {
+        const fromSingle =
+          singleRes.status === 'fulfilled' ? singleRes.value.members ?? [] : [];
+        const fromListTeam =
+          listRes.status === 'fulfilled'
+            ? (listRes.value.find((t) => t.id === teamId)?.members ?? [])
+            : [];
+        const mergedByUserId = new Map<string, TeamMember>();
+        [...fromSingle, ...fromListTeam].forEach((m) => {
+          const key = m.user?.id ?? m.userId;
+          if (!mergedByUserId.has(key)) mergedByUserId.set(key, m);
+        });
+        setTeamMembers(Array.from(mergedByUserId.values()));
+      })
+      .catch(() => setTeamMembers([]));
+  }, [organizationId, teamId]);
+
+  useEffect(() => {
+    fetchTeamMembers();
+  }, [fetchTeamMembers]);
+
+  const isAdmin = organizationRole === 'ADMIN';
+  const requestOwnerChange = (nextOwnerId: string) => {
+    if (!isAdmin) {
+      toast.error("You're not admin");
+      return;
+    }
+    setPendingOwnerId(nextOwnerId);
+    setConfirmOwnerChangeOpen(true);
+  };
+
+  const confirmOwnerChange = () => {
+    const nextOwnerId = pendingOwnerId ?? '';
+    if (!nextOwnerId) {
+      const fallbackName = teamName || rock.ownerName || 'Crew';
+      updateRock(rock.id, {
+        ownerName: fallbackName,
+        ownerInitials: rockAssigneeInitials(fallbackName, '').slice(0, 2),
+      });
+    } else {
+      const m = teamMembers.find((x) => (x.user?.id ?? x.userId) === nextOwnerId);
+      const u = m?.user;
+      if (u) {
+        updateRock(rock.id, {
+          ownerName: u.name || u.email || 'User',
+          ownerInitials: rockAssigneeInitials(u.name, u.email).slice(0, 2),
+        });
+      }
+    }
+    setConfirmOwnerChangeOpen(false);
+    setPendingOwnerId(null);
+  };
 
   const openMenu = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -3146,8 +3353,14 @@ function RockRow({
           teamId={teamId}
           teamName={teamName ?? rock.ownerName}
           milestones={milestones}
+          ownerCandidates={teamMembers}
+          onRequestOwnerChange={requestOwnerChange}
           onOpenCreate={onOpenCreate}
           onClose={() => setEditingMilestoneModal(null)}
+          onDelete={() => {
+            onUpdateMilestones?.(rock.id, milestones.filter((x) => x.id !== editingMilestoneModal.id));
+            setEditingMilestoneModal(null);
+          }}
           onSave={(milestone) => {
             upsertMilestone(milestone.id, {
               title: milestone.title,
@@ -3158,6 +3371,41 @@ function RockRow({
             setEditingMilestoneModal(null);
           }}
         />
+      )}
+      {confirmOwnerChangeOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/20 z-[80]"
+            onClick={() => {
+              setConfirmOwnerChangeOpen(false);
+              setPendingOwnerId(null);
+            }}
+            aria-hidden
+          />
+          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[81] w-full max-w-sm bg-card border border-border rounded-lg shadow-xl p-5">
+            <h3 className="text-base font-semibold text-foreground mb-2">Change owner?</h3>
+            <p className="text-sm text-muted-foreground mb-4">Only admins can change owner. Confirm this owner update.</p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-3 py-2 border border-border rounded-md text-sm hover:bg-muted"
+                onClick={() => {
+                  setConfirmOwnerChangeOpen(false);
+                  setPendingOwnerId(null);
+                }}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                className="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90"
+                onClick={confirmOwnerChange}
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </>
   );

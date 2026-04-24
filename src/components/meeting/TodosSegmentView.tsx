@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { useMeetingSocket } from '@/contexts/MeetingSocketContext';
 import {
@@ -53,6 +54,7 @@ import { ContentAreaLoader } from '@/components/ui/loaders';
 import { teamsService } from '@/lib/api/teams.service';
 import type { TeamMember } from '@/lib/api/teams.service';
 import { meetingsService } from '@/lib/api/meetings.service';
+import { ROUTES } from '@/lib/constants/routes';
 
 const datePickerTextFieldSx = {
   '& .MuiInputLabel-root': { color: 'var(--foreground) !important', '&.Mui-focused': { color: 'var(--primary) !important' } },
@@ -1028,6 +1030,7 @@ export function EditTodoPanel({
   organizationId?: string | null;
   fileStorageMeetingId?: string;
 }) {
+  const router = useRouter();
   const [title, setTitle] = useState(todo.title);
   const [description, setDescription] = useState(todo.description || '');
   const [dueDateValue, setDueDateValue] = useState<Dayjs | null>(
@@ -1046,6 +1049,7 @@ export function EditTodoPanel({
   const [organizationRole, setOrganizationRole] = useState<string | null>(null);
   const [confirmOwnerChangeOpen, setConfirmOwnerChangeOpen] = useState(false);
   const [pendingOwnerId, setPendingOwnerId] = useState<string | null>(null);
+  const [linkPickerOpen, setLinkPickerOpen] = useState(false);
   const attachmentMeetingId = fileStorageMeetingId;
   const [todoAttachments, setTodoAttachments] = useState<Array<{ id: string; name: string; uploadedAt: string }>>([]);
   const [todoAttachmentsLoading, setTodoAttachmentsLoading] = useState(false);
@@ -1216,6 +1220,30 @@ export function EditTodoPanel({
   };
 
   const handleCancel = () => {
+    onClose();
+  };
+
+  const handleOpenLinkedItem = () => {
+    if (!todo.linkedEntityType || !todo.linkedEntityId) return;
+
+    const linkedRoutes: Partial<Record<NonNullable<TodoItem['linkedEntityType']>, string>> = {
+      todo: `${ROUTES.TODOS}#todo-${todo.linkedEntityId}`,
+      issue: `${ROUTES.ISSUES}#issue-${todo.linkedEntityId}`,
+      rock: `${ROUTES.ROCKS}#rock-${todo.linkedEntityId}`,
+      headline: `${ROUTES.HEADLINES}#headline-${todo.linkedEntityId}`,
+      cascading_message: ROUTES.HEADLINES,
+    };
+
+    const target = linkedRoutes[todo.linkedEntityType];
+    if (!target) return;
+
+    onClose();
+    router.push(target);
+  };
+
+  const openLinkedCreateFromPanel = (type: CreatePopupType) => {
+    onOpenCreate?.(type, getLinkedCreateOptions(todo, type));
+    setLinkPickerOpen(false);
     onClose();
   };
 
@@ -1475,12 +1503,20 @@ export function EditTodoPanel({
             <button
               type="button"
               className="text-sm text-primary hover:underline"
+              onClick={() => {
+                if (!todo.linkedEntityTitle) return;
+                onUpdate({ linkedEntityType: null, linkedEntityId: null, linkedEntityTitle: null });
+              }}
             >
-              Edit
+              {todo.linkedEntityTitle ? 'Remove' : 'Edit'}
             </button>
           </div>
           {todo.linkedEntityTitle ? (
-            <div className="border border-border rounded-lg bg-muted/30 p-4 shadow-sm">
+            <button
+              type="button"
+              onClick={handleOpenLinkedItem}
+              className="w-full text-left border border-border rounded-lg bg-muted/30 p-4 shadow-sm hover:bg-muted/50 transition-colors"
+            >
               <div className="flex items-start gap-3">
                 <Link2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                 <div className="min-w-0 flex-1">
@@ -1492,16 +1528,55 @@ export function EditTodoPanel({
                   </p>
                 </div>
               </div>
-            </div>
+            </button>
           ) : (
             <button
               type="button"
               className="text-sm text-primary hover:underline"
+              onClick={() => {
+                setLinkPickerOpen(true);
+              }}
             >
               + Linked Item
             </button>
           )}
         </section>
+        {linkPickerOpen && (
+          <>
+            <div className="fixed inset-0 z-[60] bg-black/40" onClick={() => setLinkPickerOpen(false)} aria-hidden />
+            <div className="fixed left-1/2 top-1/2 z-[70] w-[min(92vw,440px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-4 shadow-xl">
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold text-foreground">Link Clearance To</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Choose what to create. Title and description will be pre-filled automatically.
+                </p>
+              </div>
+              <div className="space-y-1">
+                <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => openLinkedCreateFromPanel('rock')}>
+                  <Mountain className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Waypoint
+                </button>
+                <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => openLinkedCreateFromPanel('todo')}>
+                  <CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Clearance
+                </button>
+                <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => openLinkedCreateFromPanel('issue')}>
+                  <AlertCircle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Turbulence
+                </button>
+                <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => openLinkedCreateFromPanel('headline')}>
+                  <Megaphone className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Announcement
+                </button>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setLinkPickerOpen(false)}
+                  className="px-3 py-1.5 rounded-md border border-border text-sm text-foreground hover:bg-muted"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </>
+        )}
         <section className="pt-6 mt-6 border-t border-border">
           <h4 className="font-medium text-foreground mb-3">
             Attachments {todoAttachmentsLoading ? '…' : todoAttachments.length}

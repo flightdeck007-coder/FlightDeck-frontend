@@ -5,6 +5,8 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MeetingSocketProvider } from '@/contexts/MeetingSocketContext';
 import { IssuesProvider } from '@/contexts/IssuesContext';
 import { TodosProvider } from '@/contexts/TodosContext';
+import { RocksProvider } from '@/contexts/RocksContext';
+import { HeadlinesProvider } from '@/contexts/HeadlinesContext';
 import { IssuesSegmentView } from '@/components/meeting/IssuesSegmentView';
 import { CreatePopup } from '@/components/meeting/CreatePopup';
 import { useMeetingsData } from '@/hooks/useMeetingsData';
@@ -19,7 +21,9 @@ export default function IssuesPage() {
     isLoading: teamsLoading,
     selectedTeam,
     fileStorageMeetingId,
+    meetings,
   } = useMeetingsData();
+
   const [createOpen, setCreateOpen] = useState(false);
   const [createType, setCreateType] = useState<'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | undefined>(undefined);
   const [createTitle, setCreateTitle] = useState<string | undefined>(undefined);
@@ -32,6 +36,7 @@ export default function IssuesPage() {
     id: m.user.id,
     user: { id: m.user.id, name: m.user.name ?? null, email: m.user.email },
   }));
+  const fallbackMeetingId = meetings.find((m) => !selectedTeamId || m.teamId === selectedTeamId)?.id;
 
   if (!organizationId || teamsLoading) {
     return (
@@ -49,91 +54,95 @@ export default function IssuesPage() {
       <MeetingSocketProvider meetingId={null} organizationId={organizationId}>
         <IssuesProvider organizationId={organizationId} teamId={selectedTeamId || undefined} meetingId={undefined}>
           <TodosProvider meetingId={undefined} organizationId={organizationId} teamId={selectedTeamId || undefined}>
-            <div className="p-6 flex flex-col min-h-0 h-full">
-              <div className="-mx-6 -mt-6 px-6 pt-6 pb-4 border-b border-border bg-white shrink-0">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <h1 className="text-2xl font-semibold text-foreground">Turbulence</h1>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    All issues for the team across meetings.
-                  </p>
+            <RocksProvider organizationId={organizationId} teamId={selectedTeamId || undefined} fallbackMeetingId={fallbackMeetingId}>
+              <HeadlinesProvider organizationId={organizationId} teamId={selectedTeamId || undefined} fallbackMeetingId={fallbackMeetingId}>
+                <div className="p-6 flex flex-col min-h-0 h-full">
+                  <div className="-mx-6 -mt-6 px-6 pt-6 pb-4 border-b border-border bg-white shrink-0">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <h1 className="text-2xl font-semibold text-foreground">Turbulence</h1>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          All issues for the team across meetings.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Select
+                          value={selectedTeamId || undefined}
+                          onChange={(v) => setSelectedTeamId(v ?? '')}
+                          options={teams.map((t) => ({ label: t.name, value: t.id }))}
+                          className="min-w-[180px]"
+                          placeholder="Select team"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreateType('issue');
+                            setCreateTitle(undefined);
+                            setCreateDescription(undefined);
+                            setCreateIssueInterval('short');
+                            setCreateLinkedEntity(undefined);
+                            setCreateOpen(true);
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium"
+                        >
+                          + Add Turbulence
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 min-h-0">
+                    <IssuesSegmentView
+                      teamName={teamName}
+                      teamId={selectedTeamId || undefined}
+                      teams={teams.map((t) => ({ id: t.id, name: t.name }))}
+                      organizationId={organizationId}
+                      meetingId={undefined}
+                      fileStorageMeetingId={fileStorageMeetingId}
+                      canRecord
+                      onOpenCreate={(type, options) => {
+                        setCreateType(type);
+                        setCreateTitle(options?.title);
+                        setCreateDescription(options?.description);
+                        setCreateIssueInterval(options?.issueInterval);
+                        setCreateLinkedEntity(options?.linkedEntity);
+                        setCreateOpen(true);
+                      }}
+                      onOpenCreateIssue={() => {
+                        setCreateType('issue');
+                        setCreateTitle(undefined);
+                        setCreateDescription(undefined);
+                        setCreateIssueInterval('short');
+                        setCreateLinkedEntity(undefined);
+                        setCreateOpen(true);
+                      }}
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Select
-                    value={selectedTeamId || undefined}
-                    onChange={(v) => setSelectedTeamId(v ?? '')}
-                    options={teams.map((t) => ({ label: t.name, value: t.id }))}
-                    className="min-w-[180px]"
-                    placeholder="Select team"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCreateType('issue');
-                      setCreateTitle(undefined);
-                      setCreateDescription(undefined);
-                      setCreateIssueInterval('short');
-                      setCreateLinkedEntity(undefined);
-                      setCreateOpen(true);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium"
-                  >
-                    + Add Turbulence
-                  </button>
-                </div>
-              </div>
-              </div>
-              <div className="flex-1 min-h-0">
-                <IssuesSegmentView
-                  teamName={teamName}
-                  teamId={selectedTeamId || undefined}
-                  teams={teams.map((t) => ({ id: t.id, name: t.name }))}
-                  organizationId={organizationId}
-                  meetingId={undefined}
-                  fileStorageMeetingId={fileStorageMeetingId}
-                  canRecord
-                  onOpenCreate={(type, options) => {
-                    setCreateType(type);
-                    setCreateTitle(options?.title);
-                    setCreateDescription(options?.description);
-                    setCreateIssueInterval(options?.issueInterval);
-                    setCreateLinkedEntity(options?.linkedEntity);
-                    setCreateOpen(true);
-                  }}
-                  onOpenCreateIssue={() => {
-                    setCreateType('issue');
+
+                <CreatePopup
+                  open={createOpen}
+                  onClose={() => {
+                    setCreateOpen(false);
+                    setCreateType(undefined);
                     setCreateTitle(undefined);
                     setCreateDescription(undefined);
-                    setCreateIssueInterval('short');
+                    setCreateIssueInterval(undefined);
                     setCreateLinkedEntity(undefined);
-                    setCreateOpen(true);
                   }}
+                  teamName={teamName}
+                  teamId={selectedTeamId || undefined}
+                  teams={teams}
+                  organizationId={organizationId}
+                  initialType={createType}
+                  initialTitle={createTitle}
+                  initialDescription={createDescription}
+                  initialIssueInterval={createIssueInterval}
+                  initialLinkedEntity={createLinkedEntity}
+                  meetingAttendances={meetingAttendances}
+                  attachmentMeetingId={fileStorageMeetingId}
                 />
-              </div>
-            </div>
-
-            <CreatePopup
-              open={createOpen}
-              onClose={() => {
-                setCreateOpen(false);
-                setCreateType(undefined);
-                setCreateTitle(undefined);
-                setCreateDescription(undefined);
-                setCreateIssueInterval(undefined);
-                setCreateLinkedEntity(undefined);
-              }}
-              teamName={teamName}
-              teamId={selectedTeamId || undefined}
-              teams={teams}
-              organizationId={organizationId}
-              initialType={createType}
-              initialTitle={createTitle}
-              initialDescription={createDescription}
-              initialIssueInterval={createIssueInterval}
-              initialLinkedEntity={createLinkedEntity}
-              meetingAttendances={meetingAttendances}
-              attachmentMeetingId={fileStorageMeetingId}
-            />
+              </HeadlinesProvider>
+            </RocksProvider>
           </TodosProvider>
         </IssuesProvider>
       </MeetingSocketProvider>

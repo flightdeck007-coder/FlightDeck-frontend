@@ -3,6 +3,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MeetingSocketProvider } from '@/contexts/MeetingSocketContext';
+import { RocksProvider } from '@/contexts/RocksContext';
+import { HeadlinesProvider } from '@/contexts/HeadlinesContext';
+import { TodosProvider } from '@/contexts/TodosContext';
+import { IssuesProvider } from '@/contexts/IssuesContext';
 import { InstrumentsSegmentView } from '@/components/meeting/InstrumentsSegmentView';
 import { CreatePopup } from '@/components/meeting/CreatePopup';
 import { useMeetingsData } from '@/hooks/useMeetingsData';
@@ -82,40 +86,48 @@ export default function ScorecardPage() {
           </div>
         ) : (
           <MeetingSocketProvider meetingId={scorecardMeetingId} organizationId={organizationId}>
-            <div className="flex-1 min-h-0 flex flex-col">
-              <InstrumentsSegmentView
-                teamName={teamName}
-                teamId={selectedTeamId || undefined}
-                meetingId={scorecardMeetingId}
-                organizationId={organizationId}
-                currentUserId={currentUserId}
-                canRecord
-                isMeetingInFuture={false}
-                meetingAttendances={selectedMeeting?.attendances}
-                onOpenCreate={(type) => {
-                  setCreateType(type);
-                  setCreateOpen(true);
-                }}
-                onOpenCreateIssue={() => {
-                  setCreateType('issue');
-                  setCreateOpen(true);
-                }}
-              />
-            </div>
+            <RocksProvider organizationId={organizationId} teamId={selectedTeamId || undefined} fallbackMeetingId={scorecardMeetingId}>
+              <HeadlinesProvider organizationId={organizationId} teamId={selectedTeamId || undefined} fallbackMeetingId={scorecardMeetingId}>
+                <TodosProvider meetingId={undefined} organizationId={organizationId} teamId={selectedTeamId || undefined}>
+                  <IssuesProvider organizationId={organizationId} teamId={selectedTeamId || undefined} meetingId={undefined}>
+                    <div className="flex-1 min-h-0 flex flex-col">
+                      <InstrumentsSegmentView
+                        teamName={teamName}
+                        teamId={selectedTeamId || undefined}
+                        meetingId={scorecardMeetingId}
+                        organizationId={organizationId}
+                        currentUserId={currentUserId}
+                        canRecord
+                        isMeetingInFuture={false}
+                        meetingAttendances={selectedMeeting?.attendances}
+                        onOpenCreate={(type) => {
+                          setCreateType(type);
+                          setCreateOpen(true);
+                        }}
+                        onOpenCreateIssue={() => {
+                          setCreateType('issue');
+                          setCreateOpen(true);
+                        }}
+                      />
+                    </div>
 
-            <CreatePopup
-              open={createOpen}
-              onClose={() => {
-                setCreateOpen(false);
-                setCreateType(undefined);
-              }}
-              teamName={teamName}
-              teamId={selectedTeamId || undefined}
-              teams={teams}
-              organizationId={organizationId}
-              initialType={createType}
-              meetingAttendances={selectedMeeting?.attendances}
-            />
+                    <CreatePopup
+                      open={createOpen}
+                      onClose={() => {
+                        setCreateOpen(false);
+                        setCreateType(undefined);
+                      }}
+                      teamName={teamName}
+                      teamId={selectedTeamId || undefined}
+                      teams={teams}
+                      organizationId={organizationId}
+                      initialType={createType}
+                      meetingAttendances={selectedMeeting?.attendances}
+                    />
+                  </IssuesProvider>
+                </TodosProvider>
+              </HeadlinesProvider>
+            </RocksProvider>
           </MeetingSocketProvider>
         )}
       </div>

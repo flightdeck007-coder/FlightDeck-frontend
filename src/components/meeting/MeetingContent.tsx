@@ -184,6 +184,7 @@ export function MeetingContent({ sectionId, sectionTitle, onOpenCreateIssue, onO
           <HeadlinesSegmentView
             embedded
             teamName={meetingTeamName ?? 'No team found'}
+            teamId={meetingTeamId}
             owners={attendances.map((a) => ({
               id: a.user.id,
               name: a.user.name ?? undefined,

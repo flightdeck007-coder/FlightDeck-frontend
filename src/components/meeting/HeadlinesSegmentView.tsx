@@ -34,6 +34,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { meetingsService } from '@/lib/api/meetings.service';
+import { todosService } from '@/lib/api/todos.service';
+import { issuesService } from '@/lib/api/issues.service';
 import {
   useHeadlines,
   type HeadlineItem,
@@ -50,6 +52,20 @@ const MENU_GAP = 8;
 type CreatePopupType = 'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message';
 type LinkedEntity = { type: 'rock' | 'todo' | 'issue' | 'headline' | 'cascading_message'; id: string; title: string };
 type OpenCreateOptions = { title?: string; description?: string; linkedEntity?: LinkedEntity };
+
+function linkedEntityTypeLabel(type?: string | null): string {
+  if (!type) return 'Linked item';
+  const map: Record<string, string> = {
+    issue: 'Turbulence',
+    rock: 'Waypoint',
+    todo: 'Clearance',
+    headline: 'Announcement',
+    cascading_message: 'Flight Directive',
+    measurable: 'Flight Metric',
+    rock_milestone: 'Waypoint milestone',
+  };
+  return map[type] ?? type;
+}
 
 function getLinkedCreateOptions(
   source: { id: string; title: string },
@@ -69,6 +85,7 @@ function getLinkedCreateOptions(
 
 interface HeadlinesSegmentViewProps {
   teamName?: string;
+  teamId?: string | null;
   owners?: Array<{ id: string; name?: string | null; email?: string }>;
   embedded?: boolean;
   meetingId?: string;
@@ -83,6 +100,7 @@ interface HeadlinesSegmentViewProps {
 
 export function HeadlinesSegmentView({
   teamName = 'No team found',
+  teamId,
   owners = [],
   embedded = false,
   meetingId,
@@ -372,6 +390,7 @@ export function HeadlinesSegmentView({
           <CascadingDetailPanel
             item={item}
             teamName={teamName}
+            teamId={teamId}
             owners={owners}
             organizationId={organizationId}
             fileStorageMeetingId={fileStorageMeetingId}
@@ -617,7 +636,14 @@ function HeadlineRow({ item, onOpenEdit, onOpenCreate }: { item: HeadlineItem; o
           <input type="checkbox" className="rounded border-border" />
         </td>
         <td className="px-4 py-2 font-medium text-foreground align-middle">
-          {item.title}
+          <div className="min-w-0">
+            <div className="truncate">{item.title}</div>
+            {(item.linkedEntityTitle || item.linkedEntityId) && (
+              <div className="text-xs text-muted-foreground truncate">
+                {linkedEntityTypeLabel(item.linkedEntityType)}: {item.linkedEntityTitle || item.linkedEntityId}
+              </div>
+            )}
+          </div>
         </td>
         <td className="px-4 py-2 text-muted-foreground align-middle">
           <div>{formatDateTime(item.createdAt)}</div>
@@ -873,6 +899,7 @@ function HeadlineDetailPanel({
   const [ownerSearch, setOwnerSearch] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
+  const [linkPickerOpen, setLinkPickerOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -1002,8 +1029,8 @@ function HeadlineDetailPanel({
           </div>
           <section className="pt-2 mt-2 border-t border-border">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="font-medium text-foreground">Linked Items {item.linkedEntityTitle ? 1 : 0}</h4>
-              {item.linkedEntityTitle && (
+              <h4 className="font-medium text-foreground">Linked Items {(item.linkedEntityTitle || item.linkedEntityId) ? 1 : 0}</h4>
+              {(item.linkedEntityTitle || item.linkedEntityId) && (
                 <button
                   type="button"
                   className="text-sm text-primary hover:underline"
@@ -1013,24 +1040,60 @@ function HeadlineDetailPanel({
                 </button>
               )}
             </div>
-            {item.linkedEntityTitle ? (
+            {(item.linkedEntityTitle || item.linkedEntityId) ? (
               <div className="border border-border rounded-lg bg-muted/30 p-3 text-sm">
-                <div className="text-xs text-muted-foreground">{item.linkedEntityType || 'linked item'}</div>
-                <div className="font-medium text-foreground">{item.linkedEntityTitle}</div>
+                <div className="text-xs text-muted-foreground">{linkedEntityTypeLabel(item.linkedEntityType)}</div>
+                <div className="font-medium text-foreground">{item.linkedEntityTitle || item.linkedEntityId}</div>
               </div>
             ) : (
               <button
                 type="button"
                 className="text-sm text-primary hover:underline"
-                onClick={() => {
-                  onOpenCreate?.('cascading_message', getLinkedCreateOptions({ id: item.id, title: item.title }, 'headline', 'cascading_message'));
-                  onClose();
-                }}
+                onClick={() => setLinkPickerOpen(true)}
               >
-                + Linked Flight Directive
+                + Linked Item
               </button>
             )}
           </section>
+          {linkPickerOpen && (
+            <>
+              <div className="fixed inset-0 z-[60] bg-black/40" onClick={() => setLinkPickerOpen(false)} aria-hidden />
+              <div className="fixed left-1/2 top-1/2 z-[70] w-[min(92vw,460px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-4 shadow-xl">
+                <div className="mb-3">
+                  <h3 className="text-sm font-semibold text-foreground">Link Announcement To</h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Choose what to create. Title and description will be pre-filled automatically.
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onOpenCreate?.('cascading_message', getLinkedCreateOptions({ id: item.id, title: item.title }, 'headline', 'cascading_message')); setLinkPickerOpen(false); onClose(); }}>
+                    <Send className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Flight Directive
+                  </button>
+                  <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onOpenCreate?.('rock', getLinkedCreateOptions({ id: item.id, title: item.title }, 'headline', 'rock')); setLinkPickerOpen(false); onClose(); }}>
+                    <Mountain className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Waypoint
+                  </button>
+                  <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onOpenCreate?.('todo', getLinkedCreateOptions({ id: item.id, title: item.title }, 'headline', 'todo')); setLinkPickerOpen(false); onClose(); }}>
+                    <CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Clearance
+                  </button>
+                  <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onOpenCreate?.('issue', getLinkedCreateOptions({ id: item.id, title: item.title }, 'headline', 'issue')); setLinkPickerOpen(false); onClose(); }}>
+                    <AlertCircle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Turbulence
+                  </button>
+                  <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onOpenCreate?.('headline', getLinkedCreateOptions({ id: item.id, title: item.title }, 'headline', 'headline')); setLinkPickerOpen(false); onClose(); }}>
+                    <Megaphone className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Announcement
+                  </button>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setLinkPickerOpen(false)}
+                    className="px-3 py-1.5 rounded-md border border-border text-sm text-foreground hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
           <section className="pt-2 mt-2 border-t border-border">
             <h4 className="font-medium text-foreground mb-3">Attachments {attachments.length}</h4>
             <div className="border-2 border-dashed border-border rounded-lg p-8 text-center text-sm text-muted-foreground">
@@ -1200,6 +1263,7 @@ function HeadlineDetailPanel({
 function CascadingDetailPanel({
   item,
   teamName,
+  teamId,
   owners,
   organizationId,
   fileStorageMeetingId,
@@ -1211,6 +1275,7 @@ function CascadingDetailPanel({
 }: {
   item: CascadingMessageItem;
   teamName: string;
+  teamId?: string | null;
   owners: Array<{ id: string; name?: string | null; email?: string }>;
   organizationId?: string | null;
   fileStorageMeetingId?: string;
@@ -1231,10 +1296,12 @@ function CascadingDetailPanel({
     Array.isArray(item.attachments) ? item.attachments : []
   );
   const [newComment, setNewComment] = useState('');
+  const [incomingLinkedItems, setIncomingLinkedItems] = useState<Array<{ id: string; type: string; title: string }>>([]);
   const [ownerPickerOpen, setOwnerPickerOpen] = useState(false);
   const [ownerSearch, setOwnerSearch] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
+  const [linkPickerOpen, setLinkPickerOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -1245,6 +1312,42 @@ function CascadingDetailPanel({
     setComments(Array.isArray(item.comments) ? item.comments : []);
     setAttachments(Array.isArray(item.attachments) ? item.attachments : []);
   }, [item.id, item.title, item.description, item.from, item.ownerInitials, item.comments, item.attachments, teamName]);
+
+  useEffect(() => {
+    if (!organizationId || !teamId) {
+      setIncomingLinkedItems([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [todos, shortIssues, longIssues, rocks] = await Promise.all([
+          todosService.findAll(organizationId, teamId, false),
+          issuesService.findAll(organizationId, teamId, 'short_term', false),
+          issuesService.findAll(organizationId, teamId, 'long_term', false),
+          meetingsService.getRocksAll(organizationId, teamId),
+        ]);
+        const linkedTodos = todos
+          .filter((t) => t.linkedEntityType === 'cascading_message' && t.linkedEntityId === item.id)
+          .map((t) => ({ id: t.id, type: 'Clearance', title: t.title }));
+        const linkedIssues = [...shortIssues, ...longIssues]
+          .filter((i) => i.linkedEntityType === 'cascading_message' && i.linkedEntityId === item.id)
+          .map((i) => ({ id: i.id, type: 'Turbulence', title: i.title }));
+        const linkedRocks = rocks
+          .filter((r) => r.linkedEntityType === 'cascading_message' && r.linkedEntityId === item.id)
+          .map((r) => ({ id: r.id, type: 'Waypoint', title: r.title }));
+
+        if (!cancelled) {
+          setIncomingLinkedItems([...linkedRocks, ...linkedTodos, ...linkedIssues]);
+        }
+      } catch {
+        if (!cancelled) setIncomingLinkedItems([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId, teamId, item.id]);
 
   const ownerCandidates = useMemo(() => {
     const q = ownerSearch.trim().toLowerCase();
@@ -1374,8 +1477,8 @@ function CascadingDetailPanel({
           </div>
           <section className="pt-2 mt-2 border-t border-border">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="font-medium text-foreground">Linked Items {item.linkedEntityTitle ? 1 : 0}</h4>
-              {item.linkedEntityTitle && (
+              <h4 className="font-medium text-foreground">Linked Items {((item.linkedEntityTitle || item.linkedEntityId) ? 1 : 0) + incomingLinkedItems.length}</h4>
+              {(item.linkedEntityTitle || item.linkedEntityId) && (
                 <button
                   type="button"
                   className="text-sm text-primary hover:underline"
@@ -1385,24 +1488,74 @@ function CascadingDetailPanel({
                 </button>
               )}
             </div>
-            {item.linkedEntityTitle ? (
-              <div className="border border-border rounded-lg bg-muted/30 p-3 text-sm">
-                <div className="text-xs text-muted-foreground">{item.linkedEntityType || 'linked item'}</div>
-                <div className="font-medium text-foreground">{item.linkedEntityTitle}</div>
+            {(item.linkedEntityTitle || item.linkedEntityId) ? (
+              <div className="space-y-2">
+                <div className="border border-border rounded-lg bg-muted/30 p-3 text-sm">
+                  <div className="text-xs text-muted-foreground">{linkedEntityTypeLabel(item.linkedEntityType)}</div>
+                  <div className="font-medium text-foreground">{item.linkedEntityTitle || item.linkedEntityId}</div>
+                </div>
+                {incomingLinkedItems.map((linked) => (
+                  <div key={linked.id} className="border border-border rounded-lg bg-muted/30 p-3 text-sm">
+                    <div className="text-xs text-muted-foreground">{linked.type}</div>
+                    <div className="font-medium text-foreground">{linked.title}</div>
+                  </div>
+                ))}
+              </div>
+            ) : incomingLinkedItems.length > 0 ? (
+              <div className="space-y-2">
+                {incomingLinkedItems.map((linked) => (
+                  <div key={linked.id} className="border border-border rounded-lg bg-muted/30 p-3 text-sm">
+                    <div className="text-xs text-muted-foreground">{linked.type}</div>
+                    <div className="font-medium text-foreground">{linked.title}</div>
+                  </div>
+                ))}
               </div>
             ) : (
               <button
                 type="button"
                 className="text-sm text-primary hover:underline"
-                onClick={() => {
-                  onOpenCreate?.('headline', getLinkedCreateOptions({ id: item.id, title: item.title }, 'cascading_message', 'headline'));
-                  onClose();
-                }}
+                onClick={() => setLinkPickerOpen(true)}
               >
-                + Linked Announcement
+                + Linked Item
               </button>
             )}
           </section>
+          {linkPickerOpen && (
+            <>
+              <div className="fixed inset-0 z-[60] bg-black/40" onClick={() => setLinkPickerOpen(false)} aria-hidden />
+              <div className="fixed left-1/2 top-1/2 z-[70] w-[min(92vw,460px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-4 shadow-xl">
+                <div className="mb-3">
+                  <h3 className="text-sm font-semibold text-foreground">Link Flight Directive To</h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Choose what to create. Title and description will be pre-filled automatically.
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onOpenCreate?.('rock', getLinkedCreateOptions({ id: item.id, title: item.title }, 'cascading_message', 'rock')); setLinkPickerOpen(false); onClose(); }}>
+                    <Mountain className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Waypoint
+                  </button>
+                  <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onOpenCreate?.('todo', getLinkedCreateOptions({ id: item.id, title: item.title }, 'cascading_message', 'todo')); setLinkPickerOpen(false); onClose(); }}>
+                    <CheckSquare className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Clearance
+                  </button>
+                  <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onOpenCreate?.('issue', getLinkedCreateOptions({ id: item.id, title: item.title }, 'cascading_message', 'issue')); setLinkPickerOpen(false); onClose(); }}>
+                    <AlertCircle className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Turbulence
+                  </button>
+                  <button type="button" className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent flex items-center gap-2 rounded-md" onClick={() => { onOpenCreate?.('headline', getLinkedCreateOptions({ id: item.id, title: item.title }, 'cascading_message', 'headline')); setLinkPickerOpen(false); onClose(); }}>
+                    <Megaphone className="w-4 h-4 shrink-0 text-muted-foreground" /> Create linked Announcement
+                  </button>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setLinkPickerOpen(false)}
+                    className="px-3 py-1.5 rounded-md border border-border text-sm text-foreground hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
           <section className="pt-2 mt-2 border-t border-border">
             <h4 className="font-medium text-foreground mb-3">Attachments {attachments.length}</h4>
             <div className="border-2 border-dashed border-border rounded-lg p-8 text-center text-sm text-muted-foreground">

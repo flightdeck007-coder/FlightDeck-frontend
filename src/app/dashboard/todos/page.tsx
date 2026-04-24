@@ -5,6 +5,8 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MeetingSocketProvider } from '@/contexts/MeetingSocketContext';
 import { TodosProvider } from '@/contexts/TodosContext';
 import { IssuesProvider } from '@/contexts/IssuesContext';
+import { RocksProvider } from '@/contexts/RocksContext';
+import { HeadlinesProvider } from '@/contexts/HeadlinesContext';
 import { TodosSegmentView } from '@/components/meeting/TodosSegmentView';
 import { CreatePopup } from '@/components/meeting/CreatePopup';
 import { useMeetingsData } from '@/hooks/useMeetingsData';
@@ -19,6 +21,7 @@ export default function TodosPage() {
     isLoading: teamsLoading,
     selectedTeam,
     fileStorageMeetingId,
+    meetings,
   } = useMeetingsData();
   const [createOpen, setCreateOpen] = useState(false);
   const [createType, setCreateType] = useState<'issue' | 'rock' | 'todo' | 'headline' | 'cascading_message' | undefined>(undefined);
@@ -31,6 +34,8 @@ export default function TodosPage() {
     id: m.user.id,
     user: { id: m.user.id, name: m.user.name ?? null, email: m.user.email },
   }));
+  const fallbackMeetingId =
+    meetings.find((m) => !selectedTeamId || m.teamId === selectedTeamId)?.id;
 
   if (!organizationId || teamsLoading) {
     return (
@@ -48,80 +53,88 @@ export default function TodosPage() {
       <MeetingSocketProvider meetingId={null} organizationId={organizationId}>
         <TodosProvider meetingId={undefined} organizationId={organizationId} teamId={selectedTeamId || undefined}>
           <IssuesProvider organizationId={organizationId} teamId={selectedTeamId || undefined} meetingId={undefined}>
-            <div className="p-6 flex flex-col min-h-0 h-full">
-              <div className="-mx-6 -mt-6 px-6 pt-6 pb-4 border-b border-border bg-white shrink-0">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <h1 className="text-2xl font-semibold text-foreground">Clearances</h1>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      All to-dos for the team across meetings.
-                    </p>
+            <RocksProvider
+              organizationId={organizationId}
+              teamId={selectedTeamId || undefined}
+              fallbackMeetingId={fallbackMeetingId}
+            >
+              <HeadlinesProvider organizationId={organizationId} teamId={selectedTeamId || undefined} fallbackMeetingId={fallbackMeetingId}>
+                <div className="p-6 flex flex-col min-h-0 h-full">
+                  <div className="-mx-6 -mt-6 px-6 pt-6 pb-4 border-b border-border bg-white shrink-0">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <h1 className="text-2xl font-semibold text-foreground">Clearances</h1>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          All to-dos for the team across meetings.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Select
+                          value={selectedTeamId || undefined}
+                          onChange={(v) => setSelectedTeamId(v ?? '')}
+                          options={teams.map((t) => ({ label: t.name, value: t.id }))}
+                          className="min-w-[180px]"
+                          placeholder="Select team"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreateType('todo');
+                            setCreateTitle(undefined);
+                            setCreateDescription(undefined);
+                            setCreateLinkedEntity(undefined);
+                            setCreateOpen(true);
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium"
+                        >
+                          + Add Clearence
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Select
-                      value={selectedTeamId || undefined}
-                      onChange={(v) => setSelectedTeamId(v ?? '')}
-                      options={teams.map((t) => ({ label: t.name, value: t.id }))}
-                      className="min-w-[180px]"
-                      placeholder="Select team"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCreateType('todo');
-                        setCreateTitle(undefined);
-                        setCreateDescription(undefined);
-                        setCreateLinkedEntity(undefined);
+                  <div className="flex-1 min-h-0">
+                    <TodosSegmentView
+                      teamName={teamName}
+                      teamId={selectedTeamId || undefined}
+                      teams={teams.map((t) => ({ id: t.id, name: t.name }))}
+                      organizationId={organizationId}
+                      meetingId={undefined}
+                      fileStorageMeetingId={fileStorageMeetingId}
+                      canRecord
+                      meetingAttendances={meetingAttendances}
+                      onOpenCreate={(type, options) => {
+                        setCreateType(type);
+                        setCreateTitle(options?.title);
+                        setCreateDescription(options?.description);
+                        setCreateLinkedEntity(options?.linkedEntity);
                         setCreateOpen(true);
                       }}
-                      className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium"
-                    >
-                      + Add Clearence
-                    </button>
+                    />
                   </div>
                 </div>
-              </div>
-              <div className="flex-1 min-h-0">
-                <TodosSegmentView
+
+                <CreatePopup
+                  open={createOpen}
+                  onClose={() => {
+                    setCreateOpen(false);
+                    setCreateType(undefined);
+                    setCreateTitle(undefined);
+                    setCreateDescription(undefined);
+                    setCreateLinkedEntity(undefined);
+                  }}
                   teamName={teamName}
                   teamId={selectedTeamId || undefined}
-                  teams={teams.map((t) => ({ id: t.id, name: t.name }))}
+                  teams={teams}
                   organizationId={organizationId}
-                  meetingId={undefined}
-                  fileStorageMeetingId={fileStorageMeetingId}
-                  canRecord
+                  initialType={createType}
+                  initialTitle={createTitle}
+                  initialDescription={createDescription}
+                  initialLinkedEntity={createLinkedEntity}
                   meetingAttendances={meetingAttendances}
-                  onOpenCreate={(type, options) => {
-                    setCreateType(type);
-                    setCreateTitle(options?.title);
-                    setCreateDescription(options?.description);
-                    setCreateLinkedEntity(options?.linkedEntity);
-                    setCreateOpen(true);
-                  }}
+                  attachmentMeetingId={fileStorageMeetingId}
                 />
-              </div>
-            </div>
-
-            <CreatePopup
-              open={createOpen}
-              onClose={() => {
-                setCreateOpen(false);
-                setCreateType(undefined);
-                setCreateTitle(undefined);
-                setCreateDescription(undefined);
-                setCreateLinkedEntity(undefined);
-              }}
-              teamName={teamName}
-              teamId={selectedTeamId || undefined}
-              teams={teams}
-              organizationId={organizationId}
-              initialType={createType}
-              initialTitle={createTitle}
-              initialDescription={createDescription}
-              initialLinkedEntity={createLinkedEntity}
-              meetingAttendances={meetingAttendances}
-              attachmentMeetingId={fileStorageMeetingId}
-            />
+              </HeadlinesProvider>
+            </RocksProvider>
           </IssuesProvider>
         </TodosProvider>
       </MeetingSocketProvider>

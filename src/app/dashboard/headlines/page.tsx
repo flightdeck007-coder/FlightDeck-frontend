@@ -4,6 +4,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MeetingSocketProvider } from '@/contexts/MeetingSocketContext';
 import { HeadlinesProvider } from '@/contexts/HeadlinesContext';
+import { RocksProvider } from '@/contexts/RocksContext';
+import { TodosProvider } from '@/contexts/TodosContext';
+import { IssuesProvider } from '@/contexts/IssuesContext';
 import { HeadlinesSegmentView } from '@/components/meeting/HeadlinesSegmentView';
 import { CreatePopup, type CreatePopupLinkedEntity } from '@/components/meeting/CreatePopup';
 import { useMeetingsData } from '@/hooks/useMeetingsData';
@@ -87,50 +90,61 @@ export default function HeadlinesPage() {
         </div>
 
           <MeetingSocketProvider meetingId={null} organizationId={organizationId}>
-            <HeadlinesProvider organizationId={organizationId} teamId={selectedTeamId || undefined} fallbackMeetingId={fallbackMeetingId}>
-              <div className="flex-1 min-h-0 flex flex-col">
-                <HeadlinesSegmentView
-                  teamName={teamName}
-                  owners={(selectedTeam?.members ?? []).map((m) => ({
-                    id: m.user.id,
-                    name: m.user.name ?? undefined,
-                    email: m.user.email,
-                  }))}
-                  meetingId={undefined}
-                  organizationId={organizationId}
-                  fileStorageMeetingId={fileStorageMeetingId}
-                  canRecord
-                  onOpenCreate={(type, options) => {
-                    setCreateType(type);
-                    setCreateTitle(options?.title);
-                    setCreateDescription(options?.description);
-                    setCreateLinkedEntity(options?.linkedEntity as CreatePopupLinkedEntity | undefined);
-                    setCreateOpen(true);
-                  }}
-                />
-              </div>
+            <RocksProvider
+              organizationId={organizationId}
+              teamId={selectedTeamId || undefined}
+              fallbackMeetingId={fallbackMeetingId}
+            >
+              <IssuesProvider organizationId={organizationId} teamId={selectedTeamId || undefined} meetingId={undefined}>
+                <TodosProvider meetingId={undefined} organizationId={organizationId} teamId={selectedTeamId || undefined}>
+                  <HeadlinesProvider organizationId={organizationId} teamId={selectedTeamId || undefined} fallbackMeetingId={fallbackMeetingId}>
+                    <div className="flex-1 min-h-0 flex flex-col">
+                      <HeadlinesSegmentView
+                        teamName={teamName}
+                        teamId={selectedTeamId || undefined}
+                        owners={(selectedTeam?.members ?? []).map((m) => ({
+                          id: m.user.id,
+                          name: m.user.name ?? undefined,
+                          email: m.user.email,
+                        }))}
+                        meetingId={undefined}
+                        organizationId={organizationId}
+                        fileStorageMeetingId={fileStorageMeetingId}
+                        canRecord
+                        onOpenCreate={(type, options) => {
+                          setCreateType(type);
+                          setCreateTitle(options?.title);
+                          setCreateDescription(options?.description);
+                          setCreateLinkedEntity(options?.linkedEntity as CreatePopupLinkedEntity | undefined);
+                          setCreateOpen(true);
+                        }}
+                      />
+                    </div>
 
-              <CreatePopup
-                open={createOpen}
-                onClose={() => {
-                  setCreateOpen(false);
-                  setCreateType(undefined);
-                  setCreateTitle(undefined);
-                  setCreateDescription(undefined);
-                  setCreateLinkedEntity(undefined);
-                }}
-                teamName={teamName}
-                teamId={selectedTeamId || undefined}
-                teams={teams}
-                organizationId={organizationId}
-                initialType={createType}
-                initialTitle={createTitle}
-                initialDescription={createDescription}
-                initialLinkedEntity={createLinkedEntity}
-                meetingAttendances={selectedMeeting?.attendances ?? meetingAttendances}
-                attachmentMeetingId={fileStorageMeetingId}
-              />
-            </HeadlinesProvider>
+                    <CreatePopup
+                      open={createOpen}
+                      onClose={() => {
+                        setCreateOpen(false);
+                        setCreateType(undefined);
+                        setCreateTitle(undefined);
+                        setCreateDescription(undefined);
+                        setCreateLinkedEntity(undefined);
+                      }}
+                      teamName={teamName}
+                      teamId={selectedTeamId || undefined}
+                      teams={teams}
+                      organizationId={organizationId}
+                      initialType={createType}
+                      initialTitle={createTitle}
+                      initialDescription={createDescription}
+                      initialLinkedEntity={createLinkedEntity}
+                      meetingAttendances={selectedMeeting?.attendances ?? meetingAttendances}
+                      attachmentMeetingId={fileStorageMeetingId}
+                    />
+                  </HeadlinesProvider>
+                </TodosProvider>
+              </IssuesProvider>
+            </RocksProvider>
           </MeetingSocketProvider>
       </div>
     </DashboardLayout>
