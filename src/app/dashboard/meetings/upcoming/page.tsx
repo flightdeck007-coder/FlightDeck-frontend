@@ -209,9 +209,10 @@ export default function MeetingsUpcomingPage() {
     refetch();
   };
 
-  const openRowMenu = (e: React.MouseEvent, meetingId: string) => {
+  const openRowMenu = (e: React.MouseEvent<HTMLButtonElement>, meetingId: string) => {
     e.stopPropagation();
-    setRowMenuAnchor({ meetingId, left: e.clientX, top: e.clientY });
+    const rect = e.currentTarget.getBoundingClientRect();
+    setRowMenuAnchor({ meetingId, left: rect.right, top: rect.bottom + 4 });
   };
 
   return (
@@ -612,12 +613,32 @@ export default function MeetingsUpcomingPage() {
       {rowMenuAnchor && typeof document !== 'undefined' && (() => {
         const menuMeeting = upcomingMeetings.find((m) => m.id === rowMenuAnchor!.meetingId);
         if (!menuMeeting) return null;
+        const VIEWPORT_PADDING = 8;
+        const MENU_WIDTH = 180;
+        const MENU_HEIGHT = 132;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        const left = Math.min(
+          Math.max(rowMenuAnchor.left - MENU_WIDTH, VIEWPORT_PADDING),
+          viewportWidth - MENU_WIDTH - VIEWPORT_PADDING
+        );
+
+        const hasRoomBelow = rowMenuAnchor.top + MENU_HEIGHT <= viewportHeight - VIEWPORT_PADDING;
+        const preferredTop = hasRoomBelow
+          ? rowMenuAnchor.top
+          : rowMenuAnchor.top - MENU_HEIGHT - 8;
+        const top = Math.min(
+          Math.max(preferredTop, VIEWPORT_PADDING),
+          viewportHeight - MENU_HEIGHT - VIEWPORT_PADDING
+        );
+
         return createPortal(
           <>
             <div className="fixed inset-0 z-[45]" onClick={() => setRowMenuAnchor(null)} aria-hidden />
             <div
               className="fixed z-[50] py-1 min-w-[180px] rounded-lg border border-border bg-card shadow-lg"
-              style={{ left: rowMenuAnchor.left, top: rowMenuAnchor.top }}
+              style={{ left, top }}
             >
               <button
                 type="button"

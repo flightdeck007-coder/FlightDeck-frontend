@@ -55,6 +55,19 @@ export default function RocksPage() {
                 View and manage waypoints across all flight reviews for this crew.
               </p>
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                setCreateType('rock');
+                setCreateTitle(undefined);
+                setCreateDescription(undefined);
+                setCreateLinkedEntity(undefined);
+                setCreateOpen(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium"
+            >
+              + Add Waypoint
+            </button>
           </div>
         </div>
         <RocksProvider
