@@ -3343,70 +3343,74 @@ function RockRow({
           </>,
           document.body
         )}
-      {editingMilestoneModal && (
-        <MilestoneDetailPanel
-          rock={rock}
-          milestone={editingMilestoneModal}
-          meetingId={meetingId}
-          fileStorageMeetingId={fileStorageMeetingId ?? meetingId}
-          organizationId={organizationId}
-          teamId={teamId}
-          teamName={teamName ?? rock.ownerName}
-          milestones={milestones}
-          ownerCandidates={teamMembers}
-          onRequestOwnerChange={requestOwnerChange}
-          onOpenCreate={onOpenCreate}
-          onClose={() => setEditingMilestoneModal(null)}
-          onDelete={() => {
-            onUpdateMilestones?.(rock.id, milestones.filter((x) => x.id !== editingMilestoneModal.id));
-            setEditingMilestoneModal(null);
-          }}
-          onSave={(milestone) => {
-            upsertMilestone(milestone.id, {
-              title: milestone.title,
-              dueDate: milestone.dueDate,
-              description: milestone.description,
-              completed: milestone.completed,
-            });
-            setEditingMilestoneModal(null);
-          }}
-        />
-      )}
-      {confirmOwnerChangeOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-black/20 z-[80]"
-            onClick={() => {
-              setConfirmOwnerChangeOpen(false);
-              setPendingOwnerId(null);
+      {editingMilestoneModal && typeof document !== 'undefined' &&
+        createPortal(
+          <MilestoneDetailPanel
+            rock={rock}
+            milestone={editingMilestoneModal}
+            meetingId={meetingId}
+            fileStorageMeetingId={fileStorageMeetingId ?? meetingId}
+            organizationId={organizationId}
+            teamId={teamId}
+            teamName={teamName ?? rock.ownerName}
+            milestones={milestones}
+            ownerCandidates={teamMembers}
+            onRequestOwnerChange={requestOwnerChange}
+            onOpenCreate={onOpenCreate}
+            onClose={() => setEditingMilestoneModal(null)}
+            onDelete={() => {
+              onUpdateMilestones?.(rock.id, milestones.filter((x) => x.id !== editingMilestoneModal.id));
+              setEditingMilestoneModal(null);
             }}
-            aria-hidden
-          />
-          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[81] w-full max-w-sm bg-card border border-border rounded-lg shadow-xl p-5">
-            <h3 className="text-base font-semibold text-foreground mb-2">Change owner?</h3>
-            <p className="text-sm text-muted-foreground mb-4">Only admins can change owner. Confirm this owner update.</p>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="px-3 py-2 border border-border rounded-md text-sm hover:bg-muted"
-                onClick={() => {
-                  setConfirmOwnerChangeOpen(false);
-                  setPendingOwnerId(null);
-                }}
-              >
-                No
-              </button>
-              <button
-                type="button"
-                className="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90"
-                onClick={confirmOwnerChange}
-              >
-                Yes
-              </button>
+            onSave={(milestone) => {
+              upsertMilestone(milestone.id, {
+                title: milestone.title,
+                dueDate: milestone.dueDate,
+                description: milestone.description,
+                completed: milestone.completed,
+              });
+              setEditingMilestoneModal(null);
+            }}
+          />,
+          document.body
+        )}
+      {confirmOwnerChangeOpen && typeof document !== 'undefined' &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 bg-black/20 z-[80]"
+              onClick={() => {
+                setConfirmOwnerChangeOpen(false);
+                setPendingOwnerId(null);
+              }}
+              aria-hidden
+            />
+            <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[81] w-full max-w-sm bg-card border border-border rounded-lg shadow-xl p-5">
+              <h3 className="text-base font-semibold text-foreground mb-2">Change owner?</h3>
+              <p className="text-sm text-muted-foreground mb-4">Only admins can change owner. Confirm this owner update.</p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="px-3 py-2 border border-border rounded-md text-sm hover:bg-muted"
+                  onClick={() => {
+                    setConfirmOwnerChangeOpen(false);
+                    setPendingOwnerId(null);
+                  }}
+                >
+                  No
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90"
+                  onClick={confirmOwnerChange}
+                >
+                  Yes
+                </button>
+              </div>
             </div>
-          </div>
-        </>
-      )}
+          </>,
+          document.body
+        )}
     </>
   );
 }

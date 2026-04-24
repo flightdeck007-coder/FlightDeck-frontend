@@ -1333,7 +1333,7 @@ function CascadingDetailPanel({
         const linkedIssues = [...shortIssues, ...longIssues]
           .filter((i) => i.linkedEntityType === 'cascading_message' && i.linkedEntityId === item.id)
           .map((i) => ({ id: i.id, type: 'Turbulence', title: i.title }));
-        const linkedRocks = rocks
+        const linkedRocks = (rocks as Array<{ id: string; title: string; linkedEntityType?: string | null; linkedEntityId?: string | null }>)
           .filter((r) => r.linkedEntityType === 'cascading_message' && r.linkedEntityId === item.id)
           .map((r) => ({ id: r.id, type: 'Waypoint', title: r.title }));
 
